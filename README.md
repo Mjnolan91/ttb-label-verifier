@@ -158,7 +158,20 @@ AZURE_OPENAI_DEPLOYMENT=<your-vision-capable-deployment>
 VISION_PROVIDER=ocr
 AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT=https://<your-resource>.cognitiveservices.azure.com
 AZURE_DOCUMENT_INTELLIGENCE_KEY=<key>
+
+# Option C — OpenAI API directly (simplest; no Azure resource or quota approval needed)
+VISION_PROVIDER=openai
+OPENAI_API_KEY=sk-...
+# OPENAI_MODEL=gpt-4o   # optional (default; gpt-4o-mini also works)
 ```
+
+> **Why an OpenAI option exists.** Azure OpenAI is the in-tenant production target (it's the
+> firewall-survival story). But Azure access is sometimes gated by per-region/per-subscription
+> quota approvals that can block a quick demo. Because extraction sits behind the generic
+> `VisionProvider` interface, adding an OpenAI-direct provider (`src/extraction/OpenAIVisionProvider.ts`)
+> was a small, self-contained change that reuses the exact same prompt and JSON parsing — a concrete
+> payoff of the "AI extracts, code compares" abstraction. The live demo can run on whichever the
+> author has access to; the Azure path stays documented and implemented for production.
 
 If a selected provider's required vars are unset, the request **fails loud** with an actionable
 message (a clear 500) — it never silently falls back to the mock and pretends to read the image.

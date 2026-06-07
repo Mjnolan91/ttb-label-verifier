@@ -16,6 +16,11 @@ export {
   type AzureOpenAIConfig,
 } from "./LlmVisionProvider";
 export {
+  OpenAIVisionProvider,
+  readOpenAIConfig,
+  type OpenAIConfig,
+} from "./OpenAIVisionProvider";
+export {
   OcrVisionProvider,
   readAzureDocIntelConfig,
   type AzureDocIntelConfig,
@@ -34,6 +39,7 @@ import type { VisionProvider } from "./VisionProvider";
 import { MockVisionProvider } from "./MockVisionProvider";
 import { LlmVisionProvider } from "./LlmVisionProvider";
 import { OcrVisionProvider } from "./OcrVisionProvider";
+import { OpenAIVisionProvider } from "./OpenAIVisionProvider";
 
 /**
  * Resolve a single configured vision provider.
@@ -52,9 +58,12 @@ export function getVisionProvider(name?: string): VisionProvider {
     case "ocr":
       // Azure AI Document Intelligence; reads env config at construction and errors cleanly if unset.
       return new OcrVisionProvider();
+    case "openai":
+      // OpenAI API directly (no Azure resource needed); errors cleanly if OPENAI_API_KEY is unset.
+      return new OpenAIVisionProvider();
     default:
       throw new Error(
-        `Unknown VISION_PROVIDER='${selected}'. Use one of: mock|llm|ocr|ensemble (default: mock).`,
+        `Unknown VISION_PROVIDER='${selected}'. Use one of: mock|llm|ocr|openai|ensemble (default: mock).`,
       );
   }
 }

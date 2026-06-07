@@ -55,7 +55,7 @@ export function readAzureOpenAIConfig(
   return { endpoint, apiKey, deployment, apiVersion };
 }
 
-const SYSTEM_PROMPT =
+export const SYSTEM_PROMPT =
   "You are a meticulous compliance assistant that TRANSCRIBES U.S. TTB alcohol-beverage labels for " +
   "verification. You read text from the image — you never judge compliance. Hard rules:\n" +
   "1. Transcribe ONLY text actually printed on the label in the image.\n" +
@@ -64,7 +64,7 @@ const SYSTEM_PROMPT =
   "3. Report per-field confidence in [0,1] honestly, reflecting how legible the text is.\n" +
   "4. Return exactly ONE JSON object and nothing else — no prose, no markdown, no code fences.";
 
-const USER_PROMPT =
+export const USER_PROMPT =
   "Extract these fields from the alcohol label image and return STRICT JSON with EXACTLY this shape:\n" +
   '{"brand":{"value":string,"confidence":number},' +
   '"classType":{"value":string,"confidence":number},' +

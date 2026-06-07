@@ -8,14 +8,17 @@
  *   - `mock` (default) — hermetic, keys off the image FILENAME, runs offline with no keys.
  *   - `llm` (US-009)   — Azure OpenAI multimodal (in-tenant; firewall-survival path).
  *   - `ocr` (US-010)   — Azure AI Document Intelligence.
+ *   - `openai`         — OpenAI API directly (api.openai.com); a drop-in demo path that needs no
+ *                        Azure resource/quota. The interface staying generic is what makes this
+ *                        a small addition; Azure (`llm`) remains the in-tenant production target.
  *
- * The interface stays GENERIC; only the concrete providers are Azure-specific. The mock stays
+ * The interface stays GENERIC; only the concrete providers are vendor-specific. The mock stays
  * the default so the app and the entire test suite run with no network and no API keys.
  */
 import type { ExtractedFields } from "@/domain";
 
 /** The set of provider names selectable via the `VISION_PROVIDER` env var. */
-export type VisionProviderName = "mock" | "llm" | "ocr";
+export type VisionProviderName = "mock" | "llm" | "ocr" | "openai";
 
 /**
  * The input to extraction. `filename` is the ONLY thing the mock provider keys off (hermetic
