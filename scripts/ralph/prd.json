@@ -220,7 +220,7 @@
         "Typecheck, lint, and tests pass"
       ],
       "priority": 14,
-      "passes": false,
+      "passes": true,
       "notes": ""
     }
   ]

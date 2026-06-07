@@ -135,3 +135,11 @@ US-013 (batch + CSV, stretch): /batch route (src/app/batch/page.tsx + BatchVerif
   Export downloads CSV (verified blob content via createObjectURL intercept). All 8 fixtures' batch verdicts
   matched; unreadable shows "re-upload", never approve. `npm test` = 18 files / 146. Favicon 404 is still
   the only console error (consider adding src/app/icon.svg in US-014 for a clean console).
+US-014 (deploy config): next.config.ts now `output: "standalone"` (emits .next/standalone/server.js).
+  Added a multi-stage Dockerfile (node:20-alpine; Next 16 needs >=20.9; HOSTNAME=0.0.0.0 + PORT for
+  Container Apps; non-root) + .dockerignore + public/.gitkeep (Docker COPY needs the dir). .env.example
+  documents EVERY env var (VISION_PROVIDER + AZURE_OPENAI_* + AZURE_DOCUMENT_INTELLIGENCE_*), all OPTIONAL,
+  mock-mode-with-zero-keys made explicit. README deploy section finalized (App Service + Container Apps
+  copy-paste steps already present; removed the "US-014 will finalize" caveat, linked Dockerfile/.env.example).
+  Added src/app/icon.svg favicon -> browser console is now 0 errors. `npm run build` OK (standalone present),
+  typecheck/lint/test (18 files / 146) + eval all green. ALL 14 STORIES PASS.
