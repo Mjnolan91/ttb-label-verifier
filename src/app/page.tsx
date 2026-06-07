@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { APP_TITLE } from "./constants";
 import { VerifyForm } from "./VerifyForm";
 // Single source of truth: the canonical warning shown as a reference comes from src/domain.
@@ -15,6 +16,14 @@ export default function Home() {
         <p className="mt-2 text-lg text-slate-700">
           Upload a label image and the claimed application values to check the brand name,
           alcohol content, and the government health warning.
+        </p>
+        <p className="mt-2">
+          <Link
+            href="/batch"
+            className="font-semibold text-blue-700 underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-700 focus-visible:ring-offset-2"
+          >
+            Verifying many labels? Use batch mode →
+          </Link>
         </p>
       </header>
 
