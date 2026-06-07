@@ -42,12 +42,16 @@ Honest accounting of the choices and what they cost:
   env vars. **Trade-off:** reviewers see the deterministic comparator working end-to-end
   immediately; judging real OCR/vision accuracy requires supplying Azure credentials.
 - **Test fixtures are hermetic and key off the image *filename*, not pixels.** The mock
-  returns a fixture's extracted fields based on its filename, so the suite needs **no real
-  images** (`eval/fixtures/cases.json` is the labeled manifest). **Trade-off / action
-  required:** the six images in `eval/fixtures/images/` are **`.svg` placeholders**, not real
-  label photos. Real label images are **user-supplied later** — drop them at the exact paths
-  in `eval/fixtures/images/MANIFEST.md` before exercising a real provider (`llm`/`ocr`) or a
-  live demo. The offline test + eval suite passes without them.
+  returns a fixture's extracted fields based on its filename, so the offline suite needs **no
+  real images** (`eval/fixtures/cases.json` is the labeled manifest). The seven defect/edge-case
+  fixtures stay lightweight **`.svg` placeholders** (their pixels are never read); the **demo
+  sample labels are real rasters** — `abc-single-barrel-clean.jpg` plus three generated
+  `demo-*.png` (clean / title-case / brand-typo) wired to the home-screen sample buttons, so the
+  live `llm` demo extracts genuine pixels. Their filenames stay in lockstep with `cases.json`, so
+  they also yield the right verdict offline (regenerate with `node scripts/generate-demo-labels.cjs`).
+  **Trade-off:** to exercise a real provider on the *other* scenarios (smart-quote brand,
+  out-of-tolerance ABV, missing warning, unreadable), drop real images at the exact paths in
+  `eval/fixtures/images/MANIFEST.md`; the offline test + eval suite passes without them.
 - **Azure is the chosen cloud, not a multi-cloud abstraction.** The reference providers and
   deploy steps are Azure-specific *on purpose* — it's the in-tenant answer to Marcus's
   outbound-firewall constraint. The `VisionProvider` interface itself stays generic, so a
@@ -156,9 +160,23 @@ AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT=https://<your-resource>.cognitiveservices.a
 AZURE_DOCUMENT_INTELLIGENCE_KEY=<key>
 ```
 
-If a selected provider's required vars are unset, it fails with an actionable message — and
-the absence of Azure keys never affects the default (mock) dev/test path. Running both
-extractors reconciles them in parallel within the ~5s budget (US-010).
+If a selected provider's required vars are unset, the request **fails loud** with an actionable
+message (a clear 500) — it never silently falls back to the mock and pretends to read the image.
+The absence of Azure keys never affects the default (mock) dev/test path. Running both extractors
+reconciles them in parallel within the budget (US-010).
+
+**What changes once `llm` is configured (e.g. on the deployed demo):**
+- **Arbitrary uploads are read for real.** Any photo a reviewer uploads goes to Azure OpenAI and
+  is transcribed by the model — not matched against a fixture. A genuinely unreadable photo gets a
+  "re-upload a clearer photo" prompt (never a fabricated verdict).
+- **The one-click sample buttons send real raster labels.** `public/samples/demo-*.png` are real,
+  legible labels (regenerate with `node scripts/generate-demo-labels.cjs`), so the samples
+  demonstrate genuine extraction — not just the offline mock. Their filenames stay in lockstep with
+  `eval/fixtures/cases.json`, so they also produce the right verdict offline.
+- **Large photos are downscaled in the browser** (longest edge ~1400px, JPEG) before upload to cut
+  latency, tokens, and cost — falling back to the original on any failure (`src/app/imageDownscale.ts`).
+- **Tune the per-call timeout** with `VISION_TIMEOUT_MS` (default ~8s for real providers; see
+  `.env.example`).
 
 ## Evaluation: measuring "better than human"
 `npm run eval` runs the full pipeline (mock provider, **offline**) over the labeled fixtures in
@@ -167,17 +185,21 @@ extractors reconciles them in parallel within the ~5s budget (US-010).
 ```text
 Per-field precision / recall (support = # expected):
   field    status   precision   recall   support
-  brand    pass       100.0%   100.0%     6
-  brand    review     100.0%   100.0%     2
+  brand    pass       100.0%   100.0%     8
+  brand    review     100.0%   100.0%     3
+  alcohol  pass       100.0%   100.0%     9
+  alcohol  fail       100.0%   100.0%     1
+  warning  pass       100.0%   100.0%     7
+  warning  fail       100.0%   100.0%     3
   ...
 Overall verdict precision / recall:
   verdict   precision   recall   support
-  approve    100.0%   100.0%     3
-  review     100.0%   100.0%     2
-  reject     100.0%   100.0%     3
+  approve    100.0%   100.0%     4
+  review     100.0%   100.0%     3
+  reject     100.0%   100.0%     4
 
-Overall accuracy: 100.0%  (8 cases)
-Latency: p50 0.0 ms, p95 0.8 ms
+Overall accuracy: 100.0%  (11 cases)
+Latency: p50 0.1 ms, p95 0.8 ms
 
 APPROVE precision: 100.0% (floor 98.0%) -> PASS
 ```
@@ -191,8 +213,11 @@ APPROVE precision: 100.0% (floor 98.0%) -> PASS
 - **Overall verdict precision/recall** — the same, for the end-to-end verdict (`approve` /
   `review` / `reject`).
 - **Latency p50 / p95** — median and 95th-percentile time per label. The hard requirement is a
-  ~5s ceiling; the offline mock path is sub-millisecond (real Azure providers run in parallel
-  with a ~3s per-call timeout to stay under budget).
+  ~5s ceiling; the offline mock path shown here is sub-millisecond, so **these numbers measure
+  the pipeline, not a real model**. Real Azure-vision calls typically return in ~1–4s; large
+  uploads are downscaled client-side (~1400px longest edge) to help, and a per-call straggler cap
+  (default ~8s, override with `VISION_TIMEOUT_MS`) keeps a hang from blocking the verdict. Capture
+  real p50/p95 from a keyed deployment (e.g. the browser Network panel over the sample labels).
 - **APPROVE precision + floor** — the headline metric. Because a **false approval is far worse
   than an unnecessary review**, the harness enforces a floor: **approve-precision must be
   ≥ 0.98**, or `npm run eval` exits non-zero (failing CI). The floor is the named, documented

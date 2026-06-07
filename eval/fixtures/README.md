@@ -46,6 +46,9 @@ placeholders are human-viewable documentation of each scenario; they are not con
 | `warning-missing-fail` | `warning-missing.svg` | pass | pass | **fail** | **reject** |
 | `unreadable-low-confidence-review` | `unreadable-blurry.svg` | review | review | review | **review** |
 | `abc-rye-clean-real-image` | `abc-single-barrel-clean.jpg` (real image) | pass | pass | pass | **approve** |
+| `demo-clean-approve` | `demo-old-tom-clean.png` (real demo raster) | pass | pass | pass | **approve** |
+| `demo-warning-title-case-reject` | `demo-warning-title-case.png` (real demo raster) | pass | pass | **fail** | **reject** |
+| `demo-brand-typo-review` | `demo-brand-typo.png` (real demo raster) | **review** | pass | pass | **review** |
 
 ### Verdict model (must match the comparator in `src/compare/`)
 - Per-field status is one of `pass` | `review` | `fail`.

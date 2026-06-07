@@ -4,8 +4,17 @@ This manifest is the contract between the hermetic test fixtures and the real la
 human supplies later. Every `imageFilename` in [`../cases.json`](../cases.json) maps to exactly
 one file in this directory. Rows #1–#7 are lightweight **`.svg` PLACEHOLDERS** that depict the
 intended label so the suite is fully self-contained and needs no real image bytes; **row #8 is a
-real supplied image** (the ABC clean-pass demo case). When a story needs a real raster image (the
-real `llm` / `ocr` provider, or a live demo), drop the real file in at the exact path below.
+real supplied image** (the ABC clean-pass demo case); **rows #9–#11 are REAL generated raster
+labels** (`.png`) wired to the demo's sample buttons, so the live Azure-vision demo extracts genuine
+pixels — regenerate them with `node scripts/generate-demo-labels.cjs`. When a story needs a real
+raster image (the real `llm` / `ocr` provider, or a live demo), drop the real file in at the exact
+path below.
+
+> **Dual role of these files.** The offline mock keys off the *filename* (pixels irrelevant), so the
+> suite stays hermetic; but on the deployed `llm` demo the *same files' bytes* are sent to Azure. The
+> `.svg` stubs (#1–#7) literally say "PLACEHOLDER" and aren't valid raster input for a vision model,
+> which is why the demo sample buttons point at the real `.png` rows #9–#11 (+ the real `.jpg` #8),
+> whose authored text matches their `extracted` block so the offline verdict equals a correct read.
 
 ## How the keying works (why these can be placeholders)
 The mock `VisionProvider` keys off the **filename**, not the pixels: given `imageFilename` it
@@ -27,6 +36,9 @@ hermetic-keying explanation.
 | 6 | `warning-missing.svg` | `eval/fixtures/images/warning-missing.svg` | `warning-missing-fail` | Same as #1 | Brand/class/alcohol/net all correct, but the government health warning block is **entirely absent** from the label. Product is 45% ABV (well above 0.5%), so the warning is mandatory. | **reject** |
 | 7 | `unreadable-blurry.svg` | `eval/fixtures/images/unreadable-blurry.svg` | `unreadable-low-confidence-review` | Portrait label, ~600x800, deliberately **illegible** (heavy blur + glare wash) so no field can be read | A label photo so blurry/glare-washed/skewed that **none** of the fields are legible. The point is the unreadable *capture*, not any specific text. Drives the low-confidence "re-upload a clearer photo" path; must never auto-approve. | **review** |
 | 8 | `abc-single-barrel-clean.jpg` | `eval/fixtures/images/abc-single-barrel-clean.jpg` | `abc-rye-clean-real-image` | **REAL IMAGE — already supplied** (front+back artwork, flat) | Brand **ABC** (ABC Distillery, "Single Barrel"); class/type "Straight Rye Whisky"; **45% ALC/VOL** (no proof printed — proof is optional); net **750 mL**; the full canonical government warning with an ALL-CAPS **bold** `GOVERNMENT WARNING:` prefix. Everything correct. | **approve** |
+| 9 | `demo-old-tom-clean.png` | `eval/fixtures/images/demo-old-tom-clean.png` | `demo-clean-approve` | **REAL generated raster** (720×820), wired to a demo sample button | Brand **OLD TOM DISTILLERY**; "Kentucky Straight Bourbon Whiskey"; **45% Alc./Vol. (90 Proof)**; **750 mL**; full canonical warning, ALL-CAPS **bold** `GOVERNMENT WARNING:` prefix. Everything correct. | **approve** |
+| 10 | `demo-warning-title-case.png` | `eval/fixtures/images/demo-warning-title-case.png` | `demo-warning-title-case-reject` | **REAL generated raster** (720×820), demo sample button | Identical to #9 EXCEPT the warning prefix is rendered title-case **`Government Warning:`**. Sole defect. | **reject** |
+| 11 | `demo-brand-typo.png` | `eval/fixtures/images/demo-brand-typo.png` | `demo-brand-typo-review` | **REAL generated raster** (720×820), demo sample button | Brand printed **`Old Tomm Distillery`** (one extra "m") vs claimed `Old Tom Distillery`. Sole near-miss; alcohol and warning correct. | **review** |
 
 > Dimensions note: ~600x800 is a guideline that matches the placeholder canvas. Real photos may be
 > larger or a different aspect ratio — that is fine. What matters is that the label is legible and
