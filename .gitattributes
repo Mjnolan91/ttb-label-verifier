@@ -1,0 +1,15 @@
+# Cross-platform line endings.
+# Normalize text files to LF in the repository and on checkout. This matters
+# because development here is on Windows but the Ralph loop (scripts/ralph/ralph.sh)
+# runs under Git Bash / WSL, where a CRLF shebang line breaks the script.
+* text=auto eol=lf
+
+# Shell scripts MUST be LF regardless of platform.
+*.sh text eol=lf
+
+# Future real label images (replacing the SVG placeholders) are binary.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
