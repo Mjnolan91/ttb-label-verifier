@@ -15,9 +15,16 @@ build/
 # test / coverage
 coverage/
 
+# typescript incremental build cache
+*.tsbuildinfo
+
 # ralph local state
 scripts/ralph/.last-branch
 
 # os / editor
 .DS_Store
 *.log
+
+# playwright mcp / local verification artifacts
+.playwright-mcp/
+us0*-*.png

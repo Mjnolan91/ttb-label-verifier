@@ -164,3 +164,20 @@ and latency p50/p95. It fails if precision on "approve" drops below a floor.
   module. Its asymmetric boundary limits (wine 14% clamp 4.36(c); malt 0.5% floor / 2.5% cap
   7.65) are carried as metadata and are the COMPARATOR's job to enforce (US-004) — the domain
   module only supplies the data. Do not retune its constants to pass a test.
+- **Toolchain (US-001 scaffold).** Next 16 (App Router, Turbopack) + React 19.2 + TypeScript
+  (strict) + Tailwind v4 + Vitest 4. Commands: `npm run dev|build|typecheck|lint|test`.
+  Non-obvious bits the next iteration must respect:
+  - **Lint = `eslint .`, NOT `next lint`** (removed in Next 16). Config is the flat
+    `eslint.config.mjs` (`eslint-config-next/core-web-vitals` + `/typescript`). ESLint is pinned
+    `^9.34`; TypeScript is pinned `^5.9.3` (both deliberate — newer majors risk
+    `typescript-eslint` / tsconfig incompatibilities mid-loop). Don't bump them casually.
+  - **Tailwind v4**: `@tailwindcss/postcss` in `postcss.config.mjs` + `@import "tailwindcss"` in
+    `src/app/globals.css`. No `tailwind.config.*` and no `autoprefixer` needed (auto content
+    detection). Add a `@theme` block in `globals.css` if you need design tokens.
+  - **`next build` self-edits config**: it sets `tsconfig.compilerOptions.jsx` to `react-jsx`
+    and rewrites `next-env.d.ts` to import `./.next/types/routes.d.ts`. Keep both — cold
+    `tsc --noEmit` still passes with `.next/` absent, so `npm run typecheck` is fresh-checkout safe.
+  - **Tests**: `vitest run`, scoped to `src/**` + `eval/**`, `environment: node`, `@`→`src`
+    alias mirrors tsconfig `paths`. Tests use explicit `import { ... } from "vitest"` (no
+    globals). For React component tests later, switch that file to jsdom with a
+    `// @vitest-environment jsdom` docblock and add `@vitejs/plugin-react` + `@testing-library/react`.

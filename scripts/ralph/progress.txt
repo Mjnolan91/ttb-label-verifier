@@ -1,5 +1,16 @@
 # Ralph Progress Log
 Project: TTB Label Verifier
 ---
-(No iterations yet. Each loop iteration appends a short entry here:
-what was built, gotchas discovered, and anything the next iteration needs to know.)
+US-001 (scaffold): Next 16 (App Router, Turbopack) + React 19.2 + TS (strict) + Tailwind v4 +
+  Vitest 4. Home page is one centered card (src/app/page.tsx); title lives once in
+  src/app/constants.ts (APP_TITLE) and feeds both the UI and <title>, unit-tested in app.test.ts.
+  Scaffold cleanly absorbed the pre-seeded src/domain tests: `npm test` = 5 files / 31 tests green.
+GOTCHAS for next iterations: (1) `next lint` was REMOVED in Next 16 — lint is `eslint .` via flat
+  config eslint.config.mjs (eslint-config-next/core-web-vitals + /typescript). ESLint pinned ^9.34
+  (config-next peer wants >=9; 10 risks typescript-eslint compat). (2) TypeScript pinned ^5.9.3 on
+  purpose (avoid TS 6.0 tsconfig-removal + typescript-eslint range surprises). (3) Tailwind v4:
+  @tailwindcss/postcss in postcss.config.mjs + `@import "tailwindcss"` in globals.css; NO
+  tailwind.config / autoprefixer needed. (4) `next build` auto-rewrites tsconfig (jsx->react-jsx)
+  and next-env.d.ts (adds import of .next/types/routes.d.ts) — keep those; cold `tsc --noEmit` still
+  passes with .next absent, so the loop's typecheck is fresh-checkout safe. (5) Tests scoped to
+  src/** + eval/** (vitest.config.ts), env=node; switch UI test files to jsdom per-file later.
