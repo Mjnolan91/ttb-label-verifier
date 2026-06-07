@@ -45,6 +45,7 @@ placeholders are human-viewable documentation of each scenario; they are not con
 | `brand-typo-review` | `brand-typo-review.svg` | **review** | pass | pass | **review** |
 | `warning-missing-fail` | `warning-missing.svg` | pass | pass | **fail** | **reject** |
 | `unreadable-low-confidence-review` | `unreadable-blurry.svg` | review | review | review | **review** |
+| `abc-rye-clean-real-image` | `abc-single-barrel-clean.jpg` (real image) | pass | pass | pass | **approve** |
 
 ### Verdict model (must match the comparator in `src/compare/`)
 - Per-field status is one of `pass` | `review` | `fail`.
@@ -77,6 +78,11 @@ placeholders are human-viewable documentation of each scenario; they are not con
   for a clearer photo instead of guessing. Contrast with *missing warning*, which is an empty
   warning at **high** confidence (a real violation -> fail). This is the path the asymmetric
   thresholds protect: never auto-approve what you could not read.
+- **ABC rye (real image) -> approve** — the one real supplied label
+  (`abc-single-barrel-clean.jpg`): brand ABC, **45% Alc./Vol. with no proof printed** (proof is
+  optional — the comparator must not require the proof = 2x ABV cross-check when it is absent), and
+  the canonical warning with a bold all-caps prefix. All fields pass -> approve. This is the label a
+  reviewer can actually upload at the live demo and see verified end to end in mock mode.
 
 ## Real images are user-supplied (per the MANIFEST)
 
@@ -85,7 +91,9 @@ at the exact paths and to the exact specs in [`images/MANIFEST.md`](./images/MAN
 only required once a story exercises a real extraction provider (`VISION_PROVIDER=llm` / `ocr`) or a
 live demo. Until then, the `.svg` placeholders keep the whole offline suite green. If you replace an
 `.svg` with a raster image, keep the `imageFilename` in `cases.json` and the path in the MANIFEST in
-lockstep — the filename is the only key the mock uses.
+lockstep — the filename is the only key the mock uses. (One real image is already wired in:
+`abc-single-barrel-clean.jpg`, the ABC clean-pass demo case; the other seven remain `.svg`
+placeholders.)
 
 ## Editing rules
 

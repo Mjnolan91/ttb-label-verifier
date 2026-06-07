@@ -2,10 +2,10 @@
 
 This manifest is the contract between the hermetic test fixtures and the real label images a
 human supplies later. Every `imageFilename` in [`../cases.json`](../cases.json) maps to exactly
-one file in this directory. Today each file is a lightweight **`.svg` PLACEHOLDER** that depicts
-the intended label so the suite is fully self-contained and needs no real image bytes. When a
-story needs a real raster image (the real `llm` / `ocr` provider, or a live demo), drop the real
-file in at the exact path below.
+one file in this directory. Rows #1–#7 are lightweight **`.svg` PLACEHOLDERS** that depict the
+intended label so the suite is fully self-contained and needs no real image bytes; **row #8 is a
+real supplied image** (the ABC clean-pass demo case). When a story needs a real raster image (the
+real `llm` / `ocr` provider, or a live demo), drop the real file in at the exact path below.
 
 ## How the keying works (why these can be placeholders)
 The mock `VisionProvider` keys off the **filename**, not the pixels: given `imageFilename` it
@@ -26,6 +26,7 @@ hermetic-keying explanation.
 | 5 | `brand-typo-review.svg` | `eval/fixtures/images/brand-typo-review.svg` | `brand-typo-review` | Same as #1 | Brand printed **`Old Tomm Distillery`** (one extra "m") while the application claims `Old Tom Distillery`. A genuine near-miss typo (single-character edit). Alcohol and warning are correct. Should land in REVIEW, not pass and not fail. | **review** |
 | 6 | `warning-missing.svg` | `eval/fixtures/images/warning-missing.svg` | `warning-missing-fail` | Same as #1 | Brand/class/alcohol/net all correct, but the government health warning block is **entirely absent** from the label. Product is 45% ABV (well above 0.5%), so the warning is mandatory. | **reject** |
 | 7 | `unreadable-blurry.svg` | `eval/fixtures/images/unreadable-blurry.svg` | `unreadable-low-confidence-review` | Portrait label, ~600x800, deliberately **illegible** (heavy blur + glare wash) so no field can be read | A label photo so blurry/glare-washed/skewed that **none** of the fields are legible. The point is the unreadable *capture*, not any specific text. Drives the low-confidence "re-upload a clearer photo" path; must never auto-approve. | **review** |
+| 8 | `abc-single-barrel-clean.jpg` | `eval/fixtures/images/abc-single-barrel-clean.jpg` | `abc-rye-clean-real-image` | **REAL IMAGE — already supplied** (front+back artwork, flat) | Brand **ABC** (ABC Distillery, "Single Barrel"); class/type "Straight Rye Whisky"; **45% ALC/VOL** (no proof printed — proof is optional); net **750 mL**; the full canonical government warning with an ALL-CAPS **bold** `GOVERNMENT WARNING:` prefix. Everything correct. | **approve** |
 
 > Dimensions note: ~600x800 is a guideline that matches the placeholder canvas. Real photos may be
 > larger or a different aspect ratio — that is fine. What matters is that the label is legible and
@@ -36,7 +37,8 @@ hermetic-keying explanation.
 
 ## ACTION REQUIRED: replace these placeholders with real images at these exact paths
 
-The seven files above are **`.svg` placeholders**, not real label photographs. The hermetic suite
+Rows **#1–#7** above are **`.svg` placeholders**, not real label photographs (row **#8** is already
+a real supplied image — the ABC clean-pass demo case). The hermetic suite
 (unit tests, the `/api/verify` integration test, and `npm run eval`) passes WITHOUT real images
 because the mock provider keys off the filename. **But** the moment a story exercises a real
 extraction provider (`VISION_PROVIDER=llm` or `ocr`) or a live demo/screenshot is needed, real
