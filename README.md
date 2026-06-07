@@ -1,13 +1,15 @@
 # TTB Label Verifier
 
-AI-powered alcohol label verification prototype, built autonomously with
-[Ralph](https://github.com/snarktank/ralph) (Ryan Carson; based on
+AI-powered alcohol label **reading** (+ optional compliance verification) prototype, built
+autonomously with [Ralph](https://github.com/snarktank/ralph) (Ryan Carson; based on
 [Geoffrey Huntley's loop pattern](https://ghuntley.com/ralph/)).
 
-It verifies that a label image matches the values claimed in an application across three
-TTB checks — brand name, alcohol content, and the government health warning — using an
-ensemble-extraction + deterministic-comparison architecture. See `specs/PROJECT_SPEC.md`
-for the full spec and `AGENTS.md` for the architecture and conventions.
+It **reads an alcohol label image into structured data** with AI — brand, class/type, alcohol
+content, net contents, and the government warning — exportable as **JSON or CSV**, with **no typing
+required**. It can **optionally verify** that reading against the values claimed in an application
+across three TTB checks (brand, alcohol, government warning) via a deterministic comparator.
+**Extraction-first; verification opt-in.** See `specs/PROJECT_SPEC.md` for the full spec and
+`AGENTS.md` for the architecture and conventions.
 
 > **Runs with zero keys.** The app and the *entire* test suite run offline on a mock
 > provider — `npm install && npm run dev`, no API keys, no network. Real Azure extractors

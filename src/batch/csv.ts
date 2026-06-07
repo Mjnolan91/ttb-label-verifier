@@ -1,7 +1,9 @@
 /**
  * batch/csv.ts — pure CSV helpers for the batch screen (US-013). Parsing the claimed-values CSV
- * (filename -> claimed) and serializing the results table to CSV. No DOM, fully unit-testable.
+ * (filename -> claimed) and serializing results to CSV. No DOM, fully unit-testable.
  */
+import type { ExtractedFields } from "@/domain";
+import type { VerifyResult } from "@/compare";
 
 /** Claimed values for one label, keyed by its image filename. */
 export interface ClaimedRow {
@@ -94,5 +96,68 @@ export function resultsToCsv(rows: CsvResultRow[]): string {
   const body = rows.map((r) =>
     [r.filename, r.brand, r.alcohol, r.warning, r.overall].map(csvCell).join(","),
   );
+  return [header.join(","), ...body].join("\n");
+}
+
+/** One analysis row: the extracted fields for an image, plus an optional verification verdict. */
+export interface AnalysisRow {
+  filename: string;
+  extracted: ExtractedFields;
+  result?: VerifyResult | null;
+}
+
+const fmtConf = (n: number | undefined): string => (typeof n === "number" ? n.toFixed(2) : "");
+const fmtBool = (b: boolean | null | undefined): string =>
+  b === true ? "yes" : b === false ? "no" : "";
+
+/**
+ * Serialize extracted label data to CSV (the extraction-first export). Verdict columns
+ * (brand_status, alcohol_status, warning_status, overall) are appended ONLY when at least one row
+ * carries a verification result; rows without a result leave them blank.
+ */
+export function analysisToCsv(rows: AnalysisRow[]): string {
+  const hasVerdict = rows.some((r) => r.result);
+  const base = [
+    "filename",
+    "brand",
+    "class_type",
+    "alcohol",
+    "net_contents",
+    "warning_present",
+    "warning_all_caps",
+    "warning_bold",
+    "brand_conf",
+    "alcohol_conf",
+    "warning_conf",
+  ];
+  const verdictCols = ["brand_status", "alcohol_status", "warning_status", "overall"];
+  const header = hasVerdict ? [...base, ...verdictCols] : base;
+
+  const body = rows.map((r) => {
+    const e = r.extracted;
+    const cells = [
+      r.filename,
+      e.brand ?? "",
+      e.classType ?? "",
+      e.alcoholContentText ?? "",
+      e.netContents ?? "",
+      e.warningText ? "yes" : "no",
+      fmtBool(e.warningPrefixIsAllCaps),
+      fmtBool(e.warningPrefixIsBold),
+      fmtConf(e.confidence.brand),
+      fmtConf(e.confidence.alcoholContent),
+      fmtConf(e.confidence.warningText),
+    ];
+    if (hasVerdict) {
+      const v = r.result;
+      cells.push(
+        v ? v.brand.status : "",
+        v ? v.alcohol.status : "",
+        v ? v.warning.status : "",
+        v ? v.overall : "",
+      );
+    }
+    return cells.map(csvCell).join(",");
+  });
   return [header.join(","), ...body].join("\n");
 }

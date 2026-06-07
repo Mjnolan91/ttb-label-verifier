@@ -5,5 +5,5 @@
 export const APP_TITLE = "TTB Label Verifier";
 
 export const APP_DESCRIPTION =
-  "Verify an alcohol label image against the values claimed in an application — " +
-  "brand name, alcohol content, and the government health warning.";
+  "Read an alcohol label's details from an image with AI — brand, class/type, alcohol content, net " +
+  "contents, and the government warning — exportable as JSON or CSV, with optional compliance verification.";

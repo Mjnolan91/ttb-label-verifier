@@ -16,12 +16,13 @@ export default function Home() {
         </p>
         <h1 className="mt-1 text-4xl font-bold tracking-tight text-ink">{APP_TITLE}</h1>
         <p className="mt-3 max-w-2xl text-lg text-ink-muted">
-          Upload a label image and the claimed application values to check the brand name, alcohol
-          content, and the government health warning — a clear, per-field verdict in seconds.
+          Drop in a label image and the AI reads its details into structured data — brand, class,
+          alcohol content, net contents, and the government warning — in seconds, no typing. Export
+          as JSON or CSV, and optionally verify it against an application.
         </p>
         <p className="mt-3">
           <Link href="/batch" className={linkClass}>
-            Verifying many labels? Use batch mode →
+            Reading many labels at once? Use batch mode →
           </Link>
         </p>
       </header>

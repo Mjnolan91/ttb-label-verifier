@@ -1,79 +1,70 @@
 "use client";
 
 /**
- * BatchVerify (US-013, stretch) — upload many label images + a CSV (filename -> claimed values),
- * verify them all, show a progressive results table, and export the results to CSV.
+ * BatchVerify — extraction-first batch screen. Upload many label images and the AI reads them all
+ * into a results table, exportable as JSON or CSV. A claimed-values CSV is OPTIONAL: supply one and
+ * each image is additionally verified against its row (a per-image verdict column appears).
  *
- * Scales without freezing the UI: images are processed through a small concurrency pool and the
- * table updates per-result (React state), so a 50-row batch streams in rather than blocking.
+ * Scales without freezing the UI: images run through a small concurrency pool and the table updates
+ * per-result (React state), so a 50-image batch streams in rather than blocking.
  */
 import { useId, useState } from "react";
-import { parseClaimedCsv, resultsToCsv, type ClaimedRow } from "@/batch/csv";
+import { parseClaimedCsv, analysisToCsv, type ClaimedRow } from "@/batch/csv";
+import type { ExtractedFields } from "@/domain";
+import type { VerifyResult } from "@/compare";
 import type { VerifyApiResponse, VerifyApiError } from "../api/verify/contract";
+import { downscaleForUpload } from "../imageDownscale";
 import { FormField } from "../ui/FormField";
 import { ErrorAlert } from "../ui/ErrorAlert";
 import { StatusBadge } from "../ui/StatusBadge";
 import { toneForStatus } from "../ui/status";
 import { inputClass, primaryButtonClass, secondaryButtonClass } from "../ui/fieldStyles";
+import { downloadJson, downloadCsv } from "../ui/download";
 
 const CONCURRENCY = 4;
 
 type RowStatus = "pending" | "done" | "error";
 interface BatchRow {
   filename: string;
-  brand: string;
-  alcohol: string;
-  warning: string;
-  overall: string;
   status: RowStatus;
+  extracted?: ExtractedFields;
+  result?: VerifyResult | null;
   note?: string;
 }
 
-async function verifyOne(file: File, claimed: ClaimedRow | undefined): Promise<BatchRow> {
-  const base: BatchRow = {
-    filename: file.name,
-    brand: "—",
-    alcohol: "—",
-    warning: "—",
-    overall: "—",
-    status: "error",
-  };
-  if (!claimed) return { ...base, note: "No CSV row matches this filename." };
-
-  const form = new FormData();
-  form.set("image", file);
-  form.set("brand", claimed.brand ?? "");
-  form.set("alcoholContent", claimed.alcoholContent ?? "");
-  form.set("classType", claimed.classType ?? "");
-  form.set("netContents", claimed.netContents ?? "");
-
+async function analyzeOne(file: File, claimed: ClaimedRow | undefined): Promise<BatchRow> {
   try {
+    const uploadFile = await downscaleForUpload(file);
+    const form = new FormData();
+    form.set("image", uploadFile);
+    // Claimed values are OPTIONAL — present only if the CSV had a matching row, which requests a verdict.
+    if (claimed?.brand) form.set("brand", claimed.brand);
+    if (claimed?.alcoholContent) form.set("alcoholContent", claimed.alcoholContent);
+    if (claimed?.classType) form.set("classType", claimed.classType);
+    if (claimed?.netContents) form.set("netContents", claimed.netContents);
+
     const res = await fetch("/api/verify", { method: "POST", body: form });
     const json: VerifyApiResponse | VerifyApiError = await res.json();
-    if (!res.ok) return { ...base, note: (json as VerifyApiError).error };
+    if (!res.ok) return { filename: file.name, status: "error", note: (json as VerifyApiError).error };
     const r = json as VerifyApiResponse;
-    if (!r.readable || !r.result) {
-      return { ...base, status: "done", overall: "re-upload", note: r.message };
-    }
     return {
       filename: file.name,
-      brand: r.result.brand.status,
-      alcohol: r.result.alcohol.status,
-      warning: r.result.warning.status,
-      overall: r.result.overall,
       status: "done",
+      extracted: r.extracted,
+      result: r.result,
+      note: r.readable ? undefined : r.message,
     };
   } catch {
-    return { ...base, note: "Request failed." };
+    return { filename: file.name, status: "error", note: "Request failed." };
   }
 }
 
-/** A result-table cell: a StatusBadge for real verdicts, plain muted text for pending/placeholder. */
-function Cell({ value }: { value: string }) {
-  if (value === "…" || value === "—") {
-    return <span className="text-ink-muted">{value}</span>;
-  }
-  return <StatusBadge tone={toneForStatus(value)} label={value} />;
+/** A table cell value pulled from the extraction (or a placeholder for pending/error/missing). */
+function cell(row: BatchRow, pick: (e: ExtractedFields) => string | undefined): string {
+  if (row.status === "pending") return "…";
+  if (!row.extracted) return "—";
+  const v = pick(row.extracted);
+  return v && v.trim() !== "" ? v : "—";
 }
 
 export function BatchVerify() {
@@ -92,27 +83,11 @@ export function BatchVerify() {
       setError("Add one or more label images.");
       return;
     }
-    if (!csvText) {
-      setError("Add a CSV that maps each image filename to its claimed values.");
-      return;
-    }
-    const claimedMap = parseClaimedCsv(csvText);
-    if (claimedMap.size === 0) {
-      setError("The CSV needs a 'filename' column and at least one row.");
-      return;
-    }
+    // CSV is optional: with one, we also verify each image against its matching row.
+    const claimedMap = csvText ? parseClaimedCsv(csvText) : new Map<string, ClaimedRow>();
 
     const files = images;
-    setRows(
-      files.map((f) => ({
-        filename: f.name,
-        brand: "…",
-        alcohol: "…",
-        warning: "…",
-        overall: "…",
-        status: "pending" as RowStatus,
-      })),
-    );
+    setRows(files.map((f) => ({ filename: f.name, status: "pending" as RowStatus })));
     setRunning(true);
     setDone(0);
 
@@ -121,7 +96,7 @@ export function BatchVerify() {
     const worker = async () => {
       while (next < files.length) {
         const idx = next++;
-        const row = await verifyOne(files[idx], claimedMap.get(files[idx].name));
+        const row = await analyzeOne(files[idx], claimedMap.get(files[idx].name));
         setRows((prev) => {
           const copy = prev.slice();
           copy[idx] = row;
@@ -135,34 +110,33 @@ export function BatchVerify() {
     setRunning(false);
   }
 
-  function exportCsv() {
-    const completed = rows.filter((r) => r.status === "done");
-    const csv = resultsToCsv(
-      completed.map(({ filename, brand, alcohol, warning, overall }) => ({
-        filename,
-        brand,
-        alcohol,
-        warning,
-        overall,
+  const completed = rows.filter((r) => r.status === "done" && r.extracted);
+  const hasVerdict = rows.some((r) => r.result);
+
+  function exportJson() {
+    downloadJson(
+      "ttb-extractions.json",
+      completed.map((r) => ({
+        filename: r.filename,
+        extracted: r.extracted,
+        ...(r.result ? { result: r.result } : {}),
       })),
     );
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "ttb-batch-results.csv";
-    a.click();
-    URL.revokeObjectURL(url);
   }
-
-  const completedRows = rows.filter((r) => r.status === "done").length;
+  function exportCsv() {
+    downloadCsv(
+      "ttb-extractions.csv",
+      analysisToCsv(completed.map((r) => ({ filename: r.filename, extracted: r.extracted!, result: r.result }))),
+    );
+  }
 
   return (
     <section className="rounded-card border border-border border-t-4 border-t-brand-600 bg-surface p-6 shadow-card sm:p-8">
-      <h2 className="text-xl font-semibold text-ink">Batch verify</h2>
+      <h2 className="text-xl font-semibold text-ink">Batch read</h2>
       <p className="mt-1 text-ink-muted">
-        Upload many label images plus a CSV mapping each image <code>filename</code> to its claimed
-        values (<code>filename, brand, alcoholContent, classType, netContents</code>).
+        Upload many label images and the AI reads them all into the table below — export as JSON or
+        CSV. Optionally add an application-values CSV (<code>filename, brand, alcoholContent,
+        classType, netContents</code>) to also verify each label.
       </p>
 
       <div className="mt-5 flex flex-col gap-5">
@@ -180,7 +154,11 @@ export function BatchVerify() {
           )}
         </FormField>
 
-        <FormField label="Claimed-values CSV" htmlFor={ids.csv} required>
+        <FormField
+          label="Application-values CSV"
+          htmlFor={ids.csv}
+          hint="Optional — add one only if you also want a compliance verdict per label."
+        >
           <input
             id={ids.csv}
             type="file"
@@ -201,21 +179,19 @@ export function BatchVerify() {
 
         <div className="flex flex-wrap gap-3">
           <button type="button" onClick={() => void process()} disabled={running} className={`${primaryButtonClass} text-lg`}>
-            {running ? "Processing…" : "Verify batch"}
+            {running ? "Reading…" : "Read all labels"}
           </button>
-          <button
-            type="button"
-            onClick={exportCsv}
-            disabled={completedRows === 0}
-            className={`${secondaryButtonClass} text-lg`}
-          >
-            Export results to CSV
+          <button type="button" onClick={exportJson} disabled={completed.length === 0} className={secondaryButtonClass}>
+            Download JSON
+          </button>
+          <button type="button" onClick={exportCsv} disabled={completed.length === 0} className={secondaryButtonClass}>
+            Download CSV
           </button>
         </div>
 
         {rows.length > 0 && (
           <p aria-live="polite" className="text-sm font-medium text-ink-muted">
-            Processed {done} / {rows.length}
+            Read {done} / {rows.length}
           </p>
         )}
       </div>
@@ -223,35 +199,45 @@ export function BatchVerify() {
       {rows.length > 0 && (
         <div className="mt-5 max-h-[32rem] overflow-auto rounded-card border border-border">
           <table className="w-full border-collapse text-left text-sm">
-            <caption className="sr-only">Batch verification results</caption>
+            <caption className="sr-only">Batch extraction results</caption>
             <thead>
               <tr className="text-ink-muted">
-                {["Filename", "Brand", "Alcohol", "Warning", "Overall"].map((h) => (
-                  <th
-                    key={h}
-                    scope="col"
-                    className="sticky top-0 z-10 border-b-2 border-border bg-surface px-3 py-2.5 font-semibold"
-                  >
-                    {h}
-                  </th>
-                ))}
+                {["Filename", "Brand", "Class / type", "Alcohol", "Net", "Warning", ...(hasVerdict ? ["Verdict"] : [])].map(
+                  (h) => (
+                    <th
+                      key={h}
+                      scope="col"
+                      className="sticky top-0 z-10 border-b-2 border-border bg-surface px-3 py-2.5 font-semibold"
+                    >
+                      {h}
+                    </th>
+                  ),
+                )}
               </tr>
             </thead>
             <tbody>
               {rows.map((r, i) => (
-                <tr
-                  key={`${r.filename}-${i}`}
-                  className="border-b border-border align-top odd:bg-surface-muted hover:bg-brand-50"
-                >
+                <tr key={`${r.filename}-${i}`} className="border-b border-border align-top odd:bg-surface-muted hover:bg-brand-50">
                   <td className="px-3 py-2.5 font-mono text-xs text-ink">
                     {r.filename}
                     {r.note && <span className="mt-0.5 block font-sans text-ink-muted">{r.note}</span>}
                   </td>
-                  {[r.brand, r.alcohol, r.warning, r.overall].map((v, j) => (
-                    <td key={j} className="px-3 py-2.5">
-                      <Cell value={v} />
+                  <td className="px-3 py-2.5 text-ink">{cell(r, (e) => e.brand)}</td>
+                  <td className="px-3 py-2.5 text-ink">{cell(r, (e) => e.classType)}</td>
+                  <td className="px-3 py-2.5 text-ink">{cell(r, (e) => e.alcoholContentText)}</td>
+                  <td className="px-3 py-2.5 text-ink">{cell(r, (e) => e.netContents)}</td>
+                  <td className="px-3 py-2.5 text-ink">
+                    {r.status === "pending" ? "…" : r.extracted ? (r.extracted.warningText ? "yes" : "no") : "—"}
+                  </td>
+                  {hasVerdict && (
+                    <td className="px-3 py-2.5">
+                      {r.result ? (
+                        <StatusBadge tone={toneForStatus(r.result.overall)} label={r.result.overall} />
+                      ) : (
+                        <span className="text-ink-muted">{r.status === "pending" ? "…" : "—"}</span>
+                      )}
                     </td>
-                  ))}
+                  )}
                 </tr>
               ))}
             </tbody>

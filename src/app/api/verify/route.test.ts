@@ -1,8 +1,9 @@
 /**
- * route.test.ts (US-005) — end-to-end /api/verify using the default MockVisionProvider.
+ * route.test.ts — end-to-end /api/verify using the default MockVisionProvider.
  *
- * Posts multipart/form-data with a known fixture FILENAME (the mock keys off the name, so the
- * image bytes are a throwaway stub) and asserts the full JSON. No network; fully offline.
+ * Posts multipart/form-data with a known fixture FILENAME (the mock keys off the name, so the image
+ * bytes are a throwaway stub) and asserts the full JSON. Covers the extraction-first path (no claimed
+ * values → fields only) and the optional verification (claimed supplied → verdict). No network.
  */
 import { describe, it, expect } from "vitest";
 import { POST } from "./route";
@@ -73,19 +74,31 @@ describe("POST /api/verify — unreadable / low-confidence (re-upload, no verdic
 });
 
 describe("POST /api/verify — validation (clear 4xx)", () => {
-  it("400 when the image is missing", async () => {
+  it("400 when the image is missing (the only required input)", async () => {
     const res = await postForm(cleanClaim); // no image
     expect(res.status).toBe(400);
     const json = await res.json();
     expect(json.error).toMatch(/image/i);
   });
+});
 
-  it("400 when required claimed fields are missing", async () => {
-    const res = await postForm({ classType: "distilled-spirits" }, stubImage("old-tom-bourbon-clean.svg"));
-    expect(res.status).toBe(400);
+describe("POST /api/verify — extraction-first (no claimed values → read only, no verdict)", () => {
+  it("returns the extracted fields with result=null when no claimed values are supplied", async () => {
+    const res = await postForm({}, stubImage("old-tom-bourbon-clean.svg"));
+    expect(res.status).toBe(200);
     const json = await res.json();
-    expect(json.error).toMatch(/brand/);
-    expect(json.error).toMatch(/alcoholContent/);
+    expect(json.readable).toBe(true);
+    expect(json.extracted.brand).toBe("OLD TOM DISTILLERY");
+    expect(json.extracted.alcoholContentText).toBe("45% Alc./Vol. (90 Proof)");
+    expect(json.result).toBeNull(); // no verification ran
+    expect(json.claimed).toBeUndefined();
+  });
+
+  it("still verifies (and echoes claimed) when claimed values ARE supplied", async () => {
+    const res = await postForm(cleanClaim, stubImage("old-tom-bourbon-clean.svg"));
+    const json = await res.json();
+    expect(json.result.overall).toBe("approve");
+    expect(json.claimed.brand).toBe("OLD TOM DISTILLERY");
   });
 });
 
