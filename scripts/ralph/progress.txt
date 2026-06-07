@@ -107,3 +107,12 @@ US-010 (ocr + reconciler): src/extraction/OcrVisionProvider.ts (Azure AI Documen
   Reconciler tested with two MOCK providers (no network): agree/disagree/timeout/all-timeout/single/merge.
   `npm test` = 16 files / 127; build OK. NOTE US-011: disagreement already lowers confidence to 0.3;
   the per-field gate you build will turn that (and any low-confidence field) into a `review` verdict.
+US-011 (asymmetric thresholds): EXPANDED src/compare/thresholds.ts with FIELD_REVIEW_CONFIDENCE (0.7)
+  + applyConfidenceGate(result, confidence): a value-based pass/fail BELOW 0.7 is downgraded to
+  `review` (existing review untouched; reason preserved). Documented with the cost-of-errors rationale
+  (false approval >> unnecessary review). verifyLabel now gates brand+alcohol always, and warning unless
+  the product is <0.5% ABV exempt (that verdict keys off claimed ABV, not the extracted warning). This
+  is what makes the reconciler's 0.3 disagreement-confidence and any low read become review end-to-end.
+  Two thresholds, distinct purposes: MIN_READABLE_CONFIDENCE 0.5 (image readable at all -> re-upload,
+  checked in the route before verifyLabel) vs FIELD_REVIEW_CONFIDENCE 0.7 (trust THIS field's verdict).
+  Boundary tests added. `npm test` = 16 files / 135. US-012 (eval) can now rely on unreadable -> review.

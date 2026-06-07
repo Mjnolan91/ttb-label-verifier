@@ -70,4 +70,13 @@ describe("verifyLabel", () => {
     expect(r.brand.status).toBe("review");
     expect(r.overall).toBe("review");
   });
+
+  it("routes a LOW-CONFIDENCE field to review via the asymmetric gate (overall review)", () => {
+    const ex = extractedClean();
+    ex.confidence = { ...ex.confidence, alcoholContent: 0.4 }; // below the 0.7 field threshold
+    const r = verifyLabel(claimedClean, ex);
+    expect(r.alcohol.status).toBe("review");
+    expect(r.brand.status).toBe("pass"); // high-confidence fields still pass
+    expect(r.overall).toBe("review");
+  });
 });
