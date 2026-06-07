@@ -7,7 +7,7 @@
  * overall verdict as JSON. Uses the web-standard Request/Response so it is offline-testable.
  */
 import type { ClaimedFields } from "@/domain";
-import { getVisionProvider } from "@/extraction";
+import { getActiveProviders, reconcileExtract } from "@/extraction";
 import { verifyLabel, isExtractionReadable } from "@/compare";
 import type { VerifyApiResponse } from "./contract";
 
@@ -59,12 +59,14 @@ export async function POST(request: Request): Promise<Response> {
     netContents: netContents || undefined,
   };
 
-  const provider = getVisionProvider();
+  const providers = getActiveProviders();
+  const providerName = providers.map((p) => p.name).join("+");
   const bytes = new Uint8Array(await image.arrayBuffer());
 
   let extracted;
   try {
-    extracted = await provider.extract({
+    // Runs the configured provider(s) in parallel with a per-call timeout and reconciles them.
+    extracted = await reconcileExtract(providers, {
       filename: image.name,
       data: bytes,
       contentType: image.type || undefined,
@@ -87,7 +89,7 @@ export async function POST(request: Request): Promise<Response> {
   // Unreadable / low-confidence image: surface the re-upload prompt, never a fabricated verdict.
   if (!isExtractionReadable(extracted)) {
     const payload: VerifyApiResponse = {
-      provider: provider.name,
+      provider: providerName,
       readable: false,
       claimed,
       extracted,
@@ -100,7 +102,7 @@ export async function POST(request: Request): Promise<Response> {
 
   const result = verifyLabel(claimed, extracted);
   const payload: VerifyApiResponse = {
-    provider: provider.name,
+    provider: providerName,
     readable: true,
     claimed,
     extracted,

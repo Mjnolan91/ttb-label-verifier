@@ -93,3 +93,17 @@ US-009 (Azure OpenAI llm provider): src/extraction/LlmVisionProvider.ts implemen
   injectable env param use Record<string,string|undefined>, not NodeJS.ProcessEnv. (2) TS won't narrow
   string|undefined via an array-based `missing` check — use `if (!a||!b||!c) throw` for narrowing.
   US-010 (ocr) mirrors this pattern with AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT/KEY + the parallel reconciler.
+US-010 (ocr + reconciler): src/extraction/OcrVisionProvider.ts (Azure AI Document Intelligence
+  prebuilt-read; env AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT/KEY; analyze POST -> poll operation-location;
+  derives alcohol/warning/netContents from OCR text; warningPrefixIsBold=null since OCR has no type
+  metadata). src/extraction/reconcile.ts = reconcileExtract(providers, image, timeoutMs=3000): runs all
+  providers in PARALLEL via Promise.allSettled + per-call AbortController timeout (extractWithTimeout
+  RACES so a straggler never blocks), then mergeExtracted field-by-field: AGREE->max confidence,
+  DISAGREE->DISAGREEMENT_CONFIDENCE (0.3, routes to review), one-sided->use it; all-timeout->TimeoutError
+  (US-008 504). extract() now takes optional AbortSignal (mock ignores; llm/ocr forward to fetch).
+  Shared FetchLike+defaultFetch moved to src/extraction/http.ts (body now OPTIONAL for GET polls; return
+  type has optional headers.get for operation-location). Route now uses getActiveProviders()+reconcileExtract;
+  VISION_PROVIDER=ensemble runs [llm,ocr]. provider field is names.join("+") (mock default still "mock").
+  Reconciler tested with two MOCK providers (no network): agree/disagree/timeout/all-timeout/single/merge.
+  `npm test` = 16 files / 127; build OK. NOTE US-011: disagreement already lowers confidence to 0.3;
+  the per-field gate you build will turn that (and any low-confidence field) into a `review` verdict.

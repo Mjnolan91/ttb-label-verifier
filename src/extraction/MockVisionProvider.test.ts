@@ -100,10 +100,8 @@ describe("getVisionProvider — env selection (mock by default, offline)", () =>
     expect(getVisionProvider("MOCK").name).toBe("mock");
   });
 
-  it("errors cleanly for the ocr provider not yet wired in", () => {
-    // llm IS wired (US-009); its config/selection is covered in LlmVisionProvider.test.ts.
-    expect(() => getVisionProvider("ocr")).toThrow(/ocr/i);
-  });
+  // llm (US-009) and ocr (US-010) are both wired; their config/selection live in their own
+  // test files (LlmVisionProvider.test.ts, OcrVisionProvider.test.ts).
 
   it("rejects an unknown provider name", () => {
     expect(() => getVisionProvider("banana")).toThrow(/mock\|llm\|ocr/i);

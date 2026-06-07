@@ -161,7 +161,7 @@
         "Typecheck, lint, and tests pass"
       ],
       "priority": 10,
-      "passes": false,
+      "passes": true,
       "notes": ""
     },
     {

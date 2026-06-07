@@ -40,7 +40,11 @@ export interface ImageInput {
 export interface VisionProvider {
   /** Stable identifier for the provider, e.g. "mock". */
   readonly name: VisionProviderName;
-  /** Read the label fields from the image. Never throws for an unreadable image — it returns a
-   *  low-confidence result with no fabricated values (the re-upload path), not an exception. */
-  extract(image: ImageInput): Promise<ExtractedFields>;
+  /**
+   * Read the label fields from the image. Never throws for an unreadable image — it returns a
+   * low-confidence result with no fabricated values (the re-upload path), not an exception.
+   * The optional `signal` lets the parallel reconciler (US-010) abort a straggler at the
+   * per-call timeout; providers that perform I/O should forward it to their request.
+   */
+  extract(image: ImageInput, signal?: AbortSignal): Promise<ExtractedFields>;
 }

@@ -31,8 +31,11 @@ const MODEL_OUTPUT = {
   warningPrefixIsBold: true,
 };
 
-function mockFetch(): { fetchImpl: FetchLike; calls: { url: string; init: { headers: Record<string, string>; body: string } }[] } {
-  const calls: { url: string; init: { headers: Record<string, string>; body: string } }[] = [];
+function mockFetch(): {
+  fetchImpl: FetchLike;
+  calls: { url: string; init: { headers: Record<string, string>; body?: string } }[];
+} {
+  const calls: { url: string; init: { headers: Record<string, string>; body?: string } }[] = [];
   const fetchImpl: FetchLike = (url, init) => {
     calls.push({ url, init });
     return Promise.resolve({
@@ -84,7 +87,7 @@ describe("LlmVisionProvider.extract — request shape + parsing (HTTP mocked)", 
     expect(calls[0].url).toContain("/openai/deployments/gpt-4o-vision/chat/completions");
     expect(calls[0].url).toContain("api-version=2024-10-21");
     expect(calls[0].init.headers["api-key"]).toBe("test-key-123");
-    const body = JSON.parse(calls[0].init.body) as {
+    const body = JSON.parse(calls[0].init.body ?? "{}") as {
       messages: { role: string; content: unknown }[];
       response_format: { type: string };
     };

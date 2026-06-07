@@ -18,6 +18,7 @@ import {
   type RawConfidencedValue,
   type RawExtractedFields,
 } from "./extractedShape";
+import { defaultFetch, type FetchLike } from "./http";
 
 /** Resolved Azure OpenAI connection config. */
 export interface AzureOpenAIConfig {
@@ -27,15 +28,7 @@ export interface AzureOpenAIConfig {
   apiVersion: string;
 }
 
-/** Minimal fetch shape the provider needs — injectable so tests avoid the network. */
-export type FetchLike = (
-  url: string,
-  init: { method: string; headers: Record<string, string>; body: string },
-) => Promise<{ ok: boolean; status: number; json: () => Promise<unknown> }>;
-
 const DEFAULT_API_VERSION = "2024-10-21";
-
-const defaultFetch: FetchLike = (url, init) => fetch(url, init);
 
 /**
  * Read + validate Azure OpenAI config from env vars. Throws an actionable error listing any that
@@ -125,7 +118,7 @@ export class LlmVisionProvider implements VisionProvider {
     this.fetchImpl = opts?.fetchImpl ?? defaultFetch;
   }
 
-  async extract(image: ImageInput): Promise<ExtractedFields> {
+  async extract(image: ImageInput, signal?: AbortSignal): Promise<ExtractedFields> {
     if (!image.data || image.data.length === 0) {
       throw new Error("The llm provider requires image bytes (image.data).");
     }
@@ -139,6 +132,7 @@ export class LlmVisionProvider implements VisionProvider {
     const res = await this.fetchImpl(url, {
       method: "POST",
       headers: { "api-key": this.config.apiKey, "content-type": "application/json" },
+      signal,
       body: JSON.stringify({
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
