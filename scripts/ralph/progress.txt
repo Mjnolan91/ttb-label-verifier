@@ -1,0 +1,5 @@
+# Ralph Progress Log
+Project: TTB Label Verifier
+---
+(No iterations yet. Each loop iteration appends a short entry here:
+what was built, gotchas discovered, and anything the next iteration needs to know.)

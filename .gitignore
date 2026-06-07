@@ -1,0 +1,23 @@
+# dependencies
+node_modules/
+
+# next.js / build
+.next/
+out/
+dist/
+build/
+
+# env / secrets
+.env
+.env.*
+!.env.example
+
+# test / coverage
+coverage/
+
+# ralph local state
+scripts/ralph/.last-branch
+
+# os / editor
+.DS_Store
+*.log

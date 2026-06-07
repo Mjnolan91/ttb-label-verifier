@@ -1,0 +1,220 @@
+{
+  "project": "TTB Label Verifier",
+  "branchName": "ralph/ttb-label-verifier",
+  "description": "AI-powered alcohol label verification prototype. Verifies that a label image matches claimed application values for three TTB checks (brand name, alcohol content, government health warning), built on an ensemble-extraction + deterministic-comparison architecture with an evaluation harness.",
+  "userStories": [
+    {
+      "id": "US-001",
+      "title": "Project scaffold (Next.js + TS + Tailwind)",
+      "description": "As a developer, I need a running app so all later work has a home.",
+      "acceptanceCriteria": [
+        "Next.js App Router + TypeScript (strict mode) + Tailwind initialized; app runs on `npm run dev`",
+        "Home page renders a single centered card titled 'TTB Label Verifier'",
+        "npm scripts exist and work: dev, build, typecheck, lint, test",
+        "A trivial unit test runs and passes via `npm test`",
+        "Typecheck passes",
+        "Lint passes"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-002",
+      "title": "Domain model + canonical government-warning constant",
+      "description": "As a developer, I need the compliance domain encoded in one authoritative place.",
+      "acceptanceCriteria": [
+        "src/domain/ exports types ClaimedFields and ExtractedFields (brand, classType, alcoholContent, netContents, warningText)",
+        "Exports the canonical TTB government warning constant EXACTLY as written in AGENTS.md",
+        "Exports ABV tolerance config: default tolerance, wine >14% = +/-1.0 percentage point, and a proof = 2x ABV helper",
+        "Unit tests cover the ABV/proof helpers and assert the warning constant matches AGENTS.md verbatim",
+        "Typecheck, lint, and tests pass"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-003",
+      "title": "VisionProvider interface + offline MockVisionProvider",
+      "description": "As a developer, I need a swappable extraction interface that works with no network by default.",
+      "acceptanceCriteria": [
+        "src/extraction/VisionProvider.ts defines an interface: extract(image) => Promise<ExtractedFields with per-field confidence>",
+        "MockVisionProvider returns fixture data for known test images and is the default in dev and ALL tests",
+        "Provider chosen via env var VISION_PROVIDER=mock|llm|ocr, defaulting to mock",
+        "No network call occurs in the default or test path",
+        "Unit test verifies mock extraction against a fixture",
+        "Typecheck, lint, and tests pass"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-004",
+      "title": "Deterministic comparator (brand / alcohol / warning)",
+      "description": "As a compliance agent, I need each field compared with the correct tolerance so verdicts are consistent and explainable.",
+      "acceptanceCriteria": [
+        "src/compare/ exports pure functions compareBrand, compareAlcohol, compareWarning returning {status: pass|review|fail, claimed, extracted, reason}",
+        "Brand: normalize case/whitespace/punctuation/smart-quotes; exact-after-normalize = pass; high similarity = review; else fail (so 'STONE\\u2019S THROW' vs 'Stone\\u2019s Throw' = pass)",
+        "Alcohol: parse ABV and proof, apply tolerance from domain config, cross-check proof = 2x ABV; out of tolerance = fail",
+        "Warning: compare against canonical text; confirm the 'GOVERNMENT WARNING:' prefix is present and all-caps (and bold where detectable); title-case or reworded = fail; missing = fail",
+        "Comprehensive unit tests: pass cases, review cases, and each failure mode (title-case warning, ABV off by a point, brand typo, missing warning)",
+        "All comparator functions are pure (no I/O) and deterministic",
+        "Typecheck, lint, and tests pass"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-005",
+      "title": "POST /api/verify route",
+      "description": "As the frontend, I need an endpoint that runs extraction then comparison.",
+      "acceptanceCriteria": [
+        "POST /api/verify accepts an uploaded image plus claimed field values",
+        "Calls the configured VisionProvider, then the comparator, and returns per-field results plus an overall verdict as JSON",
+        "Validates input and returns a clear 4xx on missing image or fields",
+        "Integration test using MockVisionProvider asserts the end-to-end JSON for a known fixture",
+        "Typecheck, lint, and tests pass"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-006",
+      "title": "Upload UI (single, accessible screen)",
+      "description": "As an agent who may be 70+, I need one obvious screen to submit a label.",
+      "acceptanceCriteria": [
+        "Single page: image upload (drag-drop + file picker) and labeled inputs for claimed brand, alcohol content, optional class/type and net contents",
+        "Large touch targets, high contrast, visible focus states, fully keyboard accessible, one primary 'Verify' button",
+        "Everything on one screen with no hunting for features",
+        "Verify in browser using dev-browser skill",
+        "Typecheck, lint, and tests pass"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-007",
+      "title": "Result UI (at-a-glance verdict)",
+      "description": "As an agent, I need a clear verdict I can trust or override.",
+      "acceptanceCriteria": [
+        "Per-field result cards: green=pass, yellow=review, red=fail, each showing extracted vs claimed side by side with a one-line plain-language reason",
+        "Overall banner (Approve / Needs review / Reject) derived from the field results",
+        "A single-label result is readable without scrolling",
+        "Verify in browser using dev-browser skill",
+        "Typecheck, lint, and tests pass"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-008",
+      "title": "Graceful errors + unreadable-image handling",
+      "description": "As an agent, I need clear messages instead of silent failures.",
+      "acceptanceCriteria": [
+        "Provider timeout, unreadable/low-confidence extraction, and invalid input each show a specific, clear message",
+        "An unreadable image prompts 're-upload a clearer photo' rather than asserting a verdict",
+        "No uncaught error crashes the page",
+        "Verify in browser using dev-browser skill",
+        "Typecheck, lint, and tests pass"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-009",
+      "title": "Real fast-tier LLM provider (pluggable)",
+      "description": "As an operator, I need a real multimodal extractor available behind an env var without breaking the offline path.",
+      "acceptanceCriteria": [
+        "LlmVisionProvider implements VisionProvider using a fast-tier multimodal model, selected via VISION_PROVIDER=llm plus an API key env var",
+        "Returns model output parsed into ExtractedFields with per-field confidence",
+        "Errors cleanly if the key is missing and never breaks the mock/test path",
+        "Unit test with a mocked HTTP layer (no live network in CI)",
+        "Typecheck, lint, and tests pass"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-010",
+      "title": "Second extractor + parallel reconciler",
+      "description": "As a reviewer, I want two extractors run in parallel with disagreement surfaced as review.",
+      "acceptanceCriteria": [
+        "A second provider (OCR or second model) implements VisionProvider and is mockable",
+        "A reconciler runs both providers in parallel with a per-call timeout (~3s) using Promise.allSettled + AbortController and never blocks on a straggler",
+        "Reconciliation: fields where providers agree get high confidence; fields where they disagree are flagged 'review'",
+        "Tests with two mock providers prove the agree->confident path, the disagree->review path, and that a slow provider is timed out",
+        "Total verify path stays within the 5-second budget under normal conditions",
+        "Typecheck, lint, and tests pass"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-011",
+      "title": "Asymmetric confidence thresholds",
+      "description": "As compliance, I want to minimize false approvals at the cost of more human reviews.",
+      "acceptanceCriteria": [
+        "src/compare/thresholds.ts holds the config; a field/overall passes only above a high-confidence threshold, otherwise routes to review",
+        "Thresholds are documented inline with the cost-of-errors rationale (a missed violation is far worse than an unnecessary review)",
+        "Tests cover the threshold boundaries",
+        "Typecheck, lint, and tests pass"
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-012",
+      "title": "Evaluation harness (precision/recall + latency)",
+      "description": "As the author, I need to measure 'better than human' with numbers, not vibes.",
+      "acceptanceCriteria": [
+        "eval/fixtures/ holds labeled cases: correct labels plus deliberately broken ones (title-case warning, ABV off, brand typo, missing warning)",
+        "`npm run eval` runs the pipeline (mock provider) over the fixtures and prints per-field precision/recall and latency p50/p95 as a table",
+        "Eval exits non-zero if precision on 'approve' falls below a configured floor",
+        "README documents how to read the eval output",
+        "Typecheck, lint, and tests pass"
+      ],
+      "priority": 12,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-013",
+      "title": "Batch upload + CSV export (stretch)",
+      "description": "As an agent handling big importers, I want to process many labels at once.",
+      "acceptanceCriteria": [
+        "Upload multiple images plus a CSV mapping filename -> claimed values, and process all of them",
+        "Results table (filename, per-field status, overall verdict) with export of results to CSV",
+        "Handles a 50-row batch without freezing the UI (progressive results)",
+        "Verify in browser using dev-browser skill",
+        "Typecheck, lint, and tests pass"
+      ],
+      "priority": 13,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-014",
+      "title": "Deploy configuration + public URL",
+      "description": "As the author, I need a public URL reviewers can test.",
+      "acceptanceCriteria": [
+        "App builds for a standard Node host (Vercel/Render/Railway); env vars documented in .env.example",
+        "README has copy-paste deploy steps and states the app runs in mock mode with no keys",
+        "`npm run build` succeeds",
+        "Typecheck, lint, and tests pass"
+      ],
+      "priority": 14,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}
