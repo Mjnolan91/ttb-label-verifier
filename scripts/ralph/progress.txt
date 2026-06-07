@@ -82,3 +82,14 @@ US-008 (graceful errors): NEW src/compare/thresholds.ts = MIN_READABLE_CONFIDENC
   ("no uncaught error crashes the page"). Browser-verified unreadable + invalid-input paths. `npm test` =
   13 files / 107. NOTE for US-011: thresholds.ts EXISTS — expand it with the per-FIELD review gate
   (downgrade low-confidence fields to review) + boundary tests; don't recreate the file.
+US-009 (Azure OpenAI llm provider): src/extraction/LlmVisionProvider.ts implements VisionProvider
+  (name "llm"); reads AZURE_OPENAI_ENDPOINT/API_KEY/DEPLOYMENT (+ optional API_VERSION, default
+  2024-10-21) from env ONLY, errors cleanly listing missing vars. Builds the Azure chat/completions
+  request (image as base64 data URL, response_format json_object) via an INJECTABLE FetchLike, so the
+  test mocks HTTP (no network) and asserts URL/headers/body shape + parsed ExtractedFields. Shared the
+  {value,confidence}->ExtractedFields mapping into src/extraction/extractedShape.ts (mock now uses it too).
+  getVisionProvider("llm") returns it (constructs => reads env). `npm test` = 14 files / 114; build OK.
+  GOTCHAS for US-010/US-014: (1) NodeJS.ProcessEnv now REQUIRES NODE_ENV in @types/node — for an
+  injectable env param use Record<string,string|undefined>, not NodeJS.ProcessEnv. (2) TS won't narrow
+  string|undefined via an array-based `missing` check — use `if (!a||!b||!c) throw` for narrowing.
+  US-010 (ocr) mirrors this pattern with AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT/KEY + the parallel reconciler.

@@ -100,8 +100,8 @@ describe("getVisionProvider — env selection (mock by default, offline)", () =>
     expect(getVisionProvider("MOCK").name).toBe("mock");
   });
 
-  it("errors cleanly (synchronously, no network) for real providers not yet wired in", () => {
-    expect(() => getVisionProvider("llm")).toThrow(/llm/i);
+  it("errors cleanly for the ocr provider not yet wired in", () => {
+    // llm IS wired (US-009); its config/selection is covered in LlmVisionProvider.test.ts.
     expect(() => getVisionProvider("ocr")).toThrow(/ocr/i);
   });
 

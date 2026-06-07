@@ -8,9 +8,17 @@
  */
 export type { ImageInput, VisionProvider, VisionProviderName } from "./VisionProvider";
 export { MockVisionProvider } from "./MockVisionProvider";
+export {
+  LlmVisionProvider,
+  readAzureOpenAIConfig,
+  parseModelJson,
+  type AzureOpenAIConfig,
+  type FetchLike,
+} from "./LlmVisionProvider";
 
 import type { VisionProvider } from "./VisionProvider";
 import { MockVisionProvider } from "./MockVisionProvider";
+import { LlmVisionProvider } from "./LlmVisionProvider";
 
 /**
  * Resolve the configured vision provider.
@@ -24,10 +32,8 @@ export function getVisionProvider(name?: string): VisionProvider {
     case "mock":
       return new MockVisionProvider();
     case "llm":
-      throw new Error(
-        "VISION_PROVIDER=llm (Azure OpenAI) is not available yet — added in US-009. " +
-          "The default 'mock' provider runs fully offline with no keys.",
-      );
+      // Azure OpenAI; reads env config at construction and errors cleanly if unset.
+      return new LlmVisionProvider();
     case "ocr":
       throw new Error(
         "VISION_PROVIDER=ocr (Azure AI Document Intelligence) is not available yet — added in US-010. " +
