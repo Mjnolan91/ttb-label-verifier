@@ -32,7 +32,7 @@
         "Typecheck, lint, and tests pass"
       ],
       "priority": 2,
-      "passes": false,
+      "passes": true,
       "notes": "src/domain/ is pre-seeded and CFR-verified by a separate workstream; treat its canonical warning text and tolerance matrix as read-only ground truth. Only integrate, extend tests, and add missing plumbing — never re-derive domain values to make a check pass."
     },
     {

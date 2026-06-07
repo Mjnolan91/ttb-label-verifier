@@ -14,3 +14,16 @@ GOTCHAS for next iterations: (1) `next lint` was REMOVED in Next 16 — lint is 
   and next-env.d.ts (adds import of .next/types/routes.d.ts) — keep those; cold `tsc --noEmit` still
   passes with .next absent, so the loop's typecheck is fresh-checkout safe. (5) Tests scoped to
   src/** + eval/** (vitest.config.ts), env=node; switch UI test files to jsdom per-file later.
+US-002 (domain integration): Confirmed the pre-seeded src/domain exports everything later stories
+  need (ClaimedFields/ExtractedFields with per-field confidence; CANONICAL_GOVERNMENT_WARNING; full
+  tolerance matrix + selectToleranceFor; proof helpers) — NOTHING in the domain was reworded/retuned.
+  Wired it in as the single source of truth: app (src/app/page.tsx) and a new
+  src/domain/integration.test.ts both import via the "@/domain" barrel/alias. Verified no duplicate
+  copy of the warning/tolerance CONSTANTS exists in code (only warning.test.ts keeps an intentional
+  independent verbatim copy). `npm test` = 6 files / 34 tests; typecheck/lint/build all green; the
+  home page renders the canonical warning straight from the domain constant (bold caps prefix).
+NOTES for next iterations: (a) `@/domain` resolves in BOTH tsconfig paths and the Vitest alias — use
+  it everywhere; never re-declare domain constants. (b) ExtractedFields already carries the tri-state
+  warningPrefixIsBold (true|false|null) and warningPrefixIsAllCaps — US-004 reads these flags rather
+  than re-deriving format from raw text. (c) Harmless favicon.ico 404 in the browser console is the
+  only console error; add an app icon during a UI story if a story needs a clean console.
