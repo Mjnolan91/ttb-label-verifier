@@ -13,6 +13,16 @@ import {
   type AzureOpenAIConfig,
   type FetchLike,
 } from "./index";
+import { parseModelJson } from "./LlmVisionProvider";
+
+/** A FetchLike that returns one canned Azure chat-completions payload (no network). */
+function fetchReturning(payload: unknown, ok = true, status = 200): FetchLike {
+  return () => Promise.resolve({ ok, status, json: () => Promise.resolve(payload) });
+}
+/** Shorthand: an Azure 200 whose message content is the given string. */
+function fetchWithContent(content: string): FetchLike {
+  return fetchReturning({ choices: [{ message: { content } }] });
+}
 
 const CONFIG: AzureOpenAIConfig = {
   endpoint: "https://example.openai.azure.com",
@@ -165,5 +175,96 @@ describe("getVisionProvider('llm') — selection + offline safety", () => {
         expect(getVisionProvider().name).toBe("mock");
       },
     );
+  });
+});
+
+describe("parseModelJson — robust parsing (offline)", () => {
+  it("recovers JSON wrapped in ```json code fences", () => {
+    const r = parseModelJson('```json\n{"warningPrefixIsAllCaps":true,"warningPrefixIsBold":null}\n```');
+    expect(r.warningPrefixIsAllCaps).toBe(true);
+    expect(r.warningPrefixIsBold).toBeNull();
+  });
+
+  it("recovers the first balanced object from surrounding prose", () => {
+    const r = parseModelJson(
+      'Here is the JSON: {"brand":{"value":"X","confidence":0.9},' +
+        '"warningPrefixIsAllCaps":false,"warningPrefixIsBold":false} — done.',
+    );
+    expect(r.brand).toBe("X");
+    expect(r.confidence.brand).toBeCloseTo(0.9, 5);
+  });
+
+  it("throws when there is no JSON object at all", () => {
+    expect(() => parseModelJson("no json here, sorry")).toThrow(/not valid JSON/i);
+  });
+
+  it("defaults a missing per-field confidence to 0 (routes to review, never auto-approve)", () => {
+    const r = parseModelJson('{"brand":{"value":"X"},"warningPrefixIsAllCaps":true,"warningPrefixIsBold":null}');
+    expect(r.brand).toBe("X");
+    expect(r.confidence.brand).toBe(0);
+  });
+
+  it("coerces a non-boolean warningPrefixIsBold to null (never guesses true)", () => {
+    expect(
+      parseModelJson('{"warningPrefixIsAllCaps":true,"warningPrefixIsBold":"true"}').warningPrefixIsBold,
+    ).toBeNull();
+    expect(parseModelJson('{"warningPrefixIsAllCaps":true}').warningPrefixIsBold).toBeNull();
+  });
+
+  it("preserves a high-confidence empty warningText (confidently absent, not unreadable)", () => {
+    const r = parseModelJson(
+      '{"warningText":{"value":"","confidence":0.95},"warningPrefixIsAllCaps":false,"warningPrefixIsBold":null}',
+    );
+    expect(r.warningText).toBe("");
+    expect(r.confidence.warningText).toBeCloseTo(0.95, 5);
+  });
+});
+
+describe("LlmVisionProvider.extract — error/refusal handling (HTTP mocked)", () => {
+  const img = { filename: "x.jpg", data: new Uint8Array([1, 2, 3]) };
+
+  it("recovers a fenced JSON response end-to-end", async () => {
+    const p = new LlmVisionProvider({
+      config: CONFIG,
+      fetchImpl: fetchWithContent("```json\n" + JSON.stringify(MODEL_OUTPUT) + "\n```"),
+    });
+    const r = await p.extract(img);
+    expect(r.brand).toBe("OLD TOM DISTILLERY");
+  });
+
+  it("throws a distinct error when the content filter blocks the image", async () => {
+    const p = new LlmVisionProvider({
+      config: CONFIG,
+      fetchImpl: fetchReturning({
+        choices: [{ finish_reason: "content_filter", message: { content: null } }],
+      }),
+    });
+    await expect(p.extract(img)).rejects.toThrow(/content filter/i);
+  });
+
+  it("surfaces a structured Azure error message on a non-OK status", async () => {
+    const p = new LlmVisionProvider({
+      config: CONFIG,
+      fetchImpl: fetchReturning({ error: { message: "Deployment not found" } }, false, 404),
+    });
+    await expect(p.extract(img)).rejects.toThrow(/404.*Deployment not found/i);
+  });
+
+  it("hints at the API key on a 401", async () => {
+    const p = new LlmVisionProvider({ config: CONFIG, fetchImpl: fetchReturning({}, false, 401) });
+    await expect(p.extract(img)).rejects.toThrow(/AZURE_OPENAI_API_KEY/);
+  });
+
+  it("throws when the response has empty message content", async () => {
+    const p = new LlmVisionProvider({ config: CONFIG, fetchImpl: fetchWithContent("   ") });
+    await expect(p.extract(img)).rejects.toThrow(/message content/i);
+  });
+
+  it("surfaces a top-level error object returned with HTTP 200", async () => {
+    const p = new LlmVisionProvider({
+      config: CONFIG,
+      fetchImpl: fetchReturning({ error: { message: "quota exceeded", code: "429" } }),
+    });
+    await expect(p.extract(img)).rejects.toThrow(/quota exceeded/i);
   });
 });

@@ -7,7 +7,7 @@
  * overall verdict as JSON. Uses the web-standard Request/Response so it is offline-testable.
  */
 import type { ClaimedFields } from "@/domain";
-import { getActiveProviders } from "@/extraction";
+import { getActiveProviders, resolveTimeoutMs } from "@/extraction";
 import { runVerification } from "@/pipeline";
 import type { VerifyApiResponse } from "./contract";
 
@@ -59,18 +59,36 @@ export async function POST(request: Request): Promise<Response> {
     netContents: netContents || undefined,
   };
 
-  const providers = getActiveProviders();
+  // Resolve the configured provider(s) up front. A misconfigured REAL provider (e.g.
+  // VISION_PROVIDER=llm with no Azure keys) is an operator error — fail loud with an actionable
+  // 500 rather than silently falling back to the mock and pretending to read the image. The
+  // default mock needs no keys, so this branch never affects the offline path.
+  let providers;
+  try {
+    providers = getActiveProviders();
+  } catch (err) {
+    return Response.json(
+      {
+        error: "The label reader is not configured.",
+        detail: err instanceof Error ? err.message : String(err),
+      },
+      { status: 500 },
+    );
+  }
   const providerName = providers.map((p) => p.name).join("+");
   const bytes = new Uint8Array(await image.arrayBuffer());
 
   let outcome;
   try {
-    // Reconciles the configured provider(s) in parallel (per-call timeout), gates readability, compares.
-    outcome = await runVerification(providers, claimed, {
-      filename: image.name,
-      data: bytes,
-      contentType: image.type || undefined,
-    });
+    // Reconciles the configured provider(s) in parallel, gates readability, compares. The per-call
+    // timeout is sized to the active providers (~3s mock / ~8s real, overridable via
+    // VISION_TIMEOUT_MS) so a real vision call isn't aborted prematurely.
+    outcome = await runVerification(
+      providers,
+      claimed,
+      { filename: image.name, data: bytes, contentType: image.type || undefined },
+      resolveTimeoutMs(providers),
+    );
   } catch (err) {
     // Provider-timeout message is driven by the per-call timeout machinery built in US-010
     // (Promise.allSettled + AbortController); this route only SURFACES it to the user.
@@ -90,6 +108,8 @@ export async function POST(request: Request): Promise<Response> {
   if (!outcome.readable || !outcome.result) {
     // Distinguish "demo mock recognized nothing" (all-zero confidence) from a genuine
     // low-confidence read, so the message is honest rather than misleadingly "blurry".
+    // INVARIANT: usingMock is false under VISION_PROVIDER=llm/ocr/ensemble, so the demo-only
+    // message can NEVER appear for a real model read — a real low read gets "clearer photo".
     const usingMock = providers.every((p) => p.name === "mock");
     const confidences = Object.values(outcome.extracted.confidence).filter(
       (c): c is number => typeof c === "number",

@@ -56,20 +56,36 @@ export function readAzureOpenAIConfig(
 }
 
 const SYSTEM_PROMPT =
-  "You are a meticulous TTB alcohol-label reader. Read ONLY what is printed on the label image. " +
-  "Never invent values. Report your per-field confidence honestly in [0,1].";
+  "You are a meticulous compliance assistant that TRANSCRIBES U.S. TTB alcohol-beverage labels for " +
+  "verification. You read text from the image — you never judge compliance. Hard rules:\n" +
+  "1. Transcribe ONLY text actually printed on the label in the image.\n" +
+  "2. NEVER guess, infer, autocomplete, translate, or correct text. If a field is not legibly " +
+  'present, return "" for its value and a LOW confidence (<= 0.3).\n' +
+  "3. Report per-field confidence in [0,1] honestly, reflecting how legible the text is.\n" +
+  "4. Return exactly ONE JSON object and nothing else — no prose, no markdown, no code fences.";
 
 const USER_PROMPT =
-  "Extract these fields from the label and return STRICT JSON with this exact shape:\n" +
+  "Extract these fields from the alcohol label image and return STRICT JSON with EXACTLY this shape:\n" +
   '{"brand":{"value":string,"confidence":number},' +
   '"classType":{"value":string,"confidence":number},' +
   '"alcoholContent":{"value":string,"confidence":number},' +
   '"netContents":{"value":string,"confidence":number},' +
   '"warningText":{"value":string,"confidence":number},' +
-  '"warningPrefixIsAllCaps":boolean,"warningPrefixIsBold":boolean|null}\n' +
-  'alcoholContent.value is the verbatim statement, e.g. "45% Alc./Vol. (90 Proof)". ' +
-  'warningText.value is the full government warning verbatim ("" if absent). ' +
-  "warningPrefixIsAllCaps/Bold describe the 'GOVERNMENT WARNING:' prefix (Bold null if undetectable).";
+  '"warningPrefixIsAllCaps":boolean,"warningPrefixIsBold":boolean|null}\n\n' +
+  "Field rules:\n" +
+  "- brand: the brand name exactly as printed (e.g. \"OLD TOM DISTILLERY\").\n" +
+  "- classType: the class/type designation (e.g. \"Kentucky Straight Bourbon Whiskey\").\n" +
+  "- alcoholContent: the VERBATIM alcohol statement exactly as printed, e.g. " +
+  '"45% Alc./Vol. (90 Proof)" or "13.5% ALC BY VOL". Do NOT convert units or compute proof — copy the text.\n' +
+  '- netContents: the net contents exactly as printed (e.g. "750 mL").\n' +
+  "- warningText: the FULL government warning, verbatim from the word GOVERNMENT/Government through the " +
+  'final "...health problems.", preserving the "(1) ... (2) ..." numbering. Use "" if no warning is present.\n' +
+  "- warningPrefixIsAllCaps: true ONLY if the \"GOVERNMENT WARNING:\" prefix is printed in ALL CAPITAL " +
+  'LETTERS; false if it is title-case or mixed-case (e.g. "Government Warning:").\n' +
+  "- warningPrefixIsBold: true if that prefix is clearly heavier/bolder than the warning body text; " +
+  "false if clearly the same weight; null if you cannot reliably judge stroke weight from the image. " +
+  "When unsure, return null — never guess true.\n" +
+  "- confidence: your per-field legibility confidence in [0,1]; empty or illegible fields must use <= 0.3.";
 
 function coerceConfidenced(v: unknown): RawConfidencedValue | undefined {
   if (typeof v === "object" && v !== null && "value" in v) {
@@ -82,13 +98,34 @@ function coerceConfidenced(v: unknown): RawConfidencedValue | undefined {
   return undefined;
 }
 
+/**
+ * Pull the first balanced JSON object out of a string, tolerating code fences or stray prose the
+ * model may wrap around it (```json ... ```, "Here is the JSON: { ... }"). Returns null if none.
+ */
+function extractFirstJsonObject(content: string): string | null {
+  const start = content.indexOf("{");
+  const end = content.lastIndexOf("}");
+  if (start === -1 || end === -1 || end <= start) return null;
+  return content.slice(start, end + 1);
+}
+
 /** Parse the model's JSON content defensively into ExtractedFields. */
 export function parseModelJson(content: string): ExtractedFields {
   let parsed: unknown;
   try {
     parsed = JSON.parse(content);
   } catch {
-    throw new Error("Azure OpenAI returned content that was not valid JSON.");
+    // The model occasionally wraps JSON in fences/prose despite json_object mode — recover the
+    // first balanced object before giving up.
+    const candidate = extractFirstJsonObject(content);
+    if (candidate === null) {
+      throw new Error("Azure OpenAI returned content that was not valid JSON.");
+    }
+    try {
+      parsed = JSON.parse(candidate);
+    } catch {
+      throw new Error("Azure OpenAI returned content that was not valid JSON.");
+    }
   }
   if (typeof parsed !== "object" || parsed === null) {
     throw new Error("Azure OpenAI returned an unexpected payload.");
@@ -105,6 +142,34 @@ export function parseModelJson(content: string): ExtractedFields {
       p.warningPrefixIsBold === true ? true : p.warningPrefixIsBold === false ? false : null,
   };
   return mapRawExtracted(raw);
+}
+
+/**
+ * Best-effort actionable detail for a non-OK Azure response. The injectable FetchLike only exposes
+ * json(), so read it defensively and surface the structured `error.message`, plus a hint for the
+ * common 401/429 cases. Never throws — a result of "" is fine.
+ */
+async function azureErrorDetail(res: {
+  status: number;
+  json: () => Promise<unknown>;
+}): Promise<string> {
+  const hint =
+    res.status === 401
+      ? " (check AZURE_OPENAI_API_KEY)"
+      : res.status === 429
+        ? " (rate limited — retry shortly)"
+        : "";
+  let message = "";
+  try {
+    const body = await res.json();
+    if (body && typeof body === "object" && "error" in body) {
+      const err = (body as { error?: { message?: string } }).error;
+      if (err?.message) message = `: ${err.message}`;
+    }
+  } catch {
+    // Body wasn't JSON — status + hint is enough.
+  }
+  return `${message}${hint}`;
 }
 
 export class LlmVisionProvider implements VisionProvider {
@@ -145,18 +210,28 @@ export class LlmVisionProvider implements VisionProvider {
           },
         ],
         temperature: 0,
+        max_tokens: 800,
         response_format: { type: "json_object" },
       }),
     });
 
     if (!res.ok) {
-      throw new Error(`Azure OpenAI request failed with status ${res.status}.`);
+      throw new Error(`Azure OpenAI request failed with status ${res.status}${await azureErrorDetail(res)}.`);
     }
     const json = (await res.json()) as {
-      choices?: { message?: { content?: unknown } }[];
+      error?: { message?: string; code?: string };
+      choices?: { finish_reason?: string; message?: { content?: unknown } }[];
     };
-    const content = json.choices?.[0]?.message?.content;
-    if (typeof content !== "string") {
+    // Some failures arrive as HTTP 200 with a top-level error object — surface them, don't parse.
+    if (json.error) {
+      throw new Error(`Azure OpenAI error: ${json.error.message ?? json.error.code ?? "unknown"}.`);
+    }
+    const choice = json.choices?.[0];
+    if (choice?.finish_reason === "content_filter") {
+      throw new Error("Azure OpenAI declined to read this image (content filter).");
+    }
+    const content = choice?.message?.content;
+    if (typeof content !== "string" || content.trim() === "") {
       throw new Error("Azure OpenAI response did not include message content.");
     }
     return parseModelJson(content);

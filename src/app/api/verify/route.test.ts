@@ -88,3 +88,46 @@ describe("POST /api/verify — validation (clear 4xx)", () => {
     expect(json.error).toMatch(/alcoholContent/);
   });
 });
+
+describe("POST /api/verify — misconfigured real provider (fail loud, no silent mock fallback)", () => {
+  async function withEnv(
+    vars: Record<string, string | undefined>,
+    fn: () => Promise<void>,
+  ): Promise<void> {
+    const keys = Object.keys(vars);
+    const prev = Object.fromEntries(keys.map((k) => [k, process.env[k]]));
+    for (const k of keys) {
+      if (vars[k] === undefined) delete process.env[k];
+      else process.env[k] = vars[k];
+    }
+    try {
+      await fn();
+    } finally {
+      for (const k of keys) {
+        if (prev[k] === undefined) delete process.env[k];
+        else process.env[k] = prev[k];
+      }
+    }
+  }
+
+  it("returns an actionable 500 when VISION_PROVIDER=llm but Azure is unconfigured", async () => {
+    await withEnv(
+      {
+        VISION_PROVIDER: "llm",
+        AZURE_OPENAI_ENDPOINT: undefined,
+        AZURE_OPENAI_API_KEY: undefined,
+        AZURE_OPENAI_DEPLOYMENT: undefined,
+      },
+      async () => {
+        // A KNOWN mock fixture filename — proves the route does NOT silently fall back to the mock.
+        const res = await postForm(cleanClaim, stubImage("old-tom-bourbon-clean.svg"));
+        expect(res.status).toBe(500);
+        const json = await res.json();
+        expect(json.error).toMatch(/not configured/i);
+        expect(json.detail).toMatch(/AZURE_OPENAI/);
+        expect(json.result).toBeUndefined(); // no verdict
+        expect(json.message).toBeUndefined(); // not the demo-mock message either
+      },
+    );
+  });
+});

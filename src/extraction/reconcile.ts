@@ -11,11 +11,38 @@
 import type { ExtractedFields, FieldConfidence } from "@/domain";
 import type { ImageInput, VisionProvider } from "./VisionProvider";
 
-/** Per-call extraction timeout (~3s) — keeps the parallel verify path within the ~5s budget. */
+/** Per-call extraction timeout (~3s) — the mock/offline default; keeps tests fast and deterministic. */
 export const DEFAULT_PER_CALL_TIMEOUT_MS = 3000;
+
+/**
+ * Per-call timeout for the real (network) providers — a straggler CAP, not the ~5s result budget.
+ * A single Azure-vision call normally returns in ~1–4s; this only kills a genuine hang. With the
+ * parallel reconciler a slow partner is abandoned, never blocking the verdict. Override per-deploy
+ * with `VISION_TIMEOUT_MS`.
+ */
+export const REAL_PROVIDER_TIMEOUT_MS = 8000;
 
 /** Confidence assigned to a field when providers DISAGREE — low, so it routes to review. */
 export const DISAGREEMENT_CONFIDENCE = 0.3;
+
+/**
+ * Resolve the per-call timeout for a verify run. Precedence: a valid `VISION_TIMEOUT_MS` override;
+ * else the real-provider cap (~8s) when any non-mock provider is active; else the mock default (~3s)
+ * — which leaves the offline/test path and the existing reconcile tests unchanged.
+ */
+export function resolveTimeoutMs(
+  providers: VisionProvider[],
+  env: Record<string, string | undefined> = process.env,
+): number {
+  const raw = env.VISION_TIMEOUT_MS?.trim();
+  if (raw) {
+    const n = Number(raw);
+    if (Number.isFinite(n) && n > 0) return n;
+  }
+  return providers.some((p) => p.name !== "mock")
+    ? REAL_PROVIDER_TIMEOUT_MS
+    : DEFAULT_PER_CALL_TIMEOUT_MS;
+}
 
 function isTimeoutLike(e: unknown): boolean {
   return e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
