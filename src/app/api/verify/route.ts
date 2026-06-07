@@ -9,6 +9,7 @@
 import type { ClaimedFields } from "@/domain";
 import { getVisionProvider } from "@/extraction";
 import { verifyLabel } from "@/compare";
+import type { VerifyApiResponse } from "./contract";
 
 function field(form: FormData, name: string): string {
   const v = form.get(name);
@@ -71,5 +72,6 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   const result = verifyLabel(claimed, extracted);
-  return Response.json({ provider: provider.name, claimed, extracted, result });
+  const payload: VerifyApiResponse = { provider: provider.name, claimed, extracted, result };
+  return Response.json(payload);
 }
