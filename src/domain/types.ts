@@ -116,8 +116,17 @@ export interface ExtractedFields {
   classType?: string;
   /** Normalized beverage class inferred from the label, if determinable. */
   beverageClass?: BeverageClass;
-  /** Alcohol content read off the label (ABV, optional proof). */
+  /** Alcohol content read off the label (ABV, optional proof) — optional pre-parsed form. */
   alcoholContent?: AlcoholContent;
+  /**
+   * Raw, AS-WRITTEN alcohol statement read off the label, e.g. "45% Alc./Vol. (90 Proof)" or
+   * "45% Alc./Vol." (proof absent). Added for the extraction->comparison pipeline: extraction
+   * stays raw/probabilistic and the deterministic comparator (US-004) PARSES this into ABV +
+   * proof and cross-checks proof = 2 x ABV ("AI extracts, code compares"). The structured
+   * `alcoholContent` above is an optional already-parsed convenience; providers populate this
+   * text field and leave parsing/interpretation to the comparator.
+   */
+  alcoholContentText?: string;
   /** Net contents read off the label, e.g. "750 mL". */
   netContents?: string;
   /** The full government-warning text read off the label, verbatim as extracted. */

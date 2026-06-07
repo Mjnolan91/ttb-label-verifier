@@ -27,3 +27,13 @@ NOTES for next iterations: (a) `@/domain` resolves in BOTH tsconfig paths and th
   warningPrefixIsBold (true|false|null) and warningPrefixIsAllCaps — US-004 reads these flags rather
   than re-deriving format from raw text. (c) Harmless favicon.ico 404 in the browser console is the
   only console error; add an app icon during a UI story if a story needs a clean console.
+US-003 (extraction): src/extraction/ = VisionProvider interface + ImageInput ({filename, data?,
+  contentType?}; mock uses filename ONLY) + MockVisionProvider + getVisionProvider(env) factory
+  (default mock; llm/ocr throw clean "not wired yet" errors — no network). Mock imports
+  eval/fixtures/cases.json at BUILD time (resolveJsonModule) and maps each `extracted` block to
+  ExtractedFields; unknown filename -> deterministic zero-confidence, no-value result. `npm test`
+  = 7 files / 44 tests. KEY DECISION for US-004: extracted/claimed alcohol flows as RAW TEXT via
+  the new ExtractedFields.alcoholContentText (e.g. "45% Alc./Vol. (90 Proof)"); the COMPARATOR
+  parses it (extraction stays raw). US-004 must add ClaimedFields.alcoholContentText + the parser.
+  Empty warningText is preserved verbatim: "" at HIGH confidence = confidently-absent (US-004 fail);
+  "" / all-low confidence = unreadable (review/re-upload) — the mock keeps these two paths distinct.
