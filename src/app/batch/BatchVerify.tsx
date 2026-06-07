@@ -10,6 +10,11 @@
 import { useId, useState } from "react";
 import { parseClaimedCsv, resultsToCsv, type ClaimedRow } from "@/batch/csv";
 import type { VerifyApiResponse, VerifyApiError } from "../api/verify/contract";
+import { FormField } from "../ui/FormField";
+import { ErrorAlert } from "../ui/ErrorAlert";
+import { StatusBadge } from "../ui/StatusBadge";
+import { toneForStatus } from "../ui/status";
+import { inputClass, primaryButtonClass, secondaryButtonClass } from "../ui/fieldStyles";
 
 const CONCURRENCY = 4;
 
@@ -22,22 +27,6 @@ interface BatchRow {
   overall: string;
   status: RowStatus;
   note?: string;
-}
-
-function badgeClass(value: string): string {
-  switch (value) {
-    case "pass":
-    case "approve":
-      return "bg-green-700 text-white";
-    case "review":
-    case "re-upload":
-      return "bg-amber-700 text-white";
-    case "fail":
-    case "reject":
-      return "bg-red-700 text-white";
-    default:
-      return "bg-slate-500 text-white";
-  }
 }
 
 async function verifyOne(file: File, claimed: ClaimedRow | undefined): Promise<BatchRow> {
@@ -77,6 +66,14 @@ async function verifyOne(file: File, claimed: ClaimedRow | undefined): Promise<B
   } catch {
     return { ...base, note: "Request failed." };
   }
+}
+
+/** A result-table cell: a StatusBadge for real verdicts, plain muted text for pending/placeholder. */
+function Cell({ value }: { value: string }) {
+  if (value === "…" || value === "—") {
+    return <span className="text-ink-muted">{value}</span>;
+  }
+  return <StatusBadge tone={toneForStatus(value)} label={value} />;
 }
 
 export function BatchVerify() {
@@ -159,23 +156,17 @@ export function BatchVerify() {
   }
 
   const completedRows = rows.filter((r) => r.status === "done").length;
-  const inputClass =
-    "min-h-[44px] w-full rounded-lg border-2 border-slate-400 bg-white px-3 py-2 text-slate-900 " +
-    "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-700 focus-visible:ring-offset-2";
 
   return (
-    <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-      <h2 className="text-xl font-semibold text-slate-900">Batch verify</h2>
-      <p className="mt-1 text-slate-700">
+    <section className="rounded-card border border-border border-t-4 border-t-brand-600 bg-surface p-6 shadow-card sm:p-8">
+      <h2 className="text-xl font-semibold text-ink">Batch verify</h2>
+      <p className="mt-1 text-ink-muted">
         Upload many label images plus a CSV mapping each image <code>filename</code> to its claimed
         values (<code>filename, brand, alcoholContent, classType, netContents</code>).
       </p>
 
-      <div className="mt-4 flex flex-col gap-5">
-        <div>
-          <label htmlFor={ids.images} className="mb-1 block font-medium text-slate-800">
-            Label images (select multiple)
-          </label>
+      <div className="mt-5 flex flex-col gap-5">
+        <FormField label="Label images (select multiple)" htmlFor={ids.images} required>
           <input
             id={ids.images}
             type="file"
@@ -185,14 +176,11 @@ export function BatchVerify() {
             className={inputClass}
           />
           {images.length > 0 && (
-            <p className="mt-1 text-sm text-slate-600">{images.length} image(s) selected.</p>
+            <p className="mt-1.5 text-sm text-ink-muted">{images.length} image(s) selected.</p>
           )}
-        </div>
+        </FormField>
 
-        <div>
-          <label htmlFor={ids.csv} className="mb-1 block font-medium text-slate-800">
-            Claimed-values CSV
-          </label>
+        <FormField label="Claimed-values CSV" htmlFor={ids.csv} required>
           <input
             id={ids.csv}
             type="file"
@@ -206,75 +194,62 @@ export function BatchVerify() {
             }}
             className={inputClass}
           />
-          {csvName && <p className="mt-1 text-sm text-slate-600">Loaded: {csvName}</p>}
-        </div>
+          {csvName && <p className="mt-1.5 text-sm text-ink-muted">Loaded: {csvName}</p>}
+        </FormField>
 
-        {error && (
-          <p
-            id={ids.err}
-            role="alert"
-            className="rounded-lg border-2 border-red-700 bg-red-50 px-3 py-2 font-medium text-red-800"
-          >
-            <span aria-hidden="true">⚠ </span>
-            {error}
-          </p>
-        )}
+        {error && <ErrorAlert id={ids.err}>{error}</ErrorAlert>}
 
         <div className="flex flex-wrap gap-3">
-          <button
-            type="button"
-            onClick={() => void process()}
-            disabled={running}
-            className="min-h-[48px] rounded-lg bg-blue-700 px-6 text-lg font-semibold text-white hover:bg-blue-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-700 focus-visible:ring-offset-2 disabled:opacity-60"
-          >
+          <button type="button" onClick={() => void process()} disabled={running} className={`${primaryButtonClass} text-lg`}>
             {running ? "Processing…" : "Verify batch"}
           </button>
           <button
             type="button"
             onClick={exportCsv}
             disabled={completedRows === 0}
-            className="min-h-[48px] rounded-lg border-2 border-blue-700 px-6 text-lg font-semibold text-blue-700 hover:bg-blue-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-700 focus-visible:ring-offset-2 disabled:opacity-50"
+            className={`${secondaryButtonClass} text-lg`}
           >
             Export results to CSV
           </button>
         </div>
 
         {rows.length > 0 && (
-          <p aria-live="polite" className="text-sm font-medium text-slate-700">
+          <p aria-live="polite" className="text-sm font-medium text-ink-muted">
             Processed {done} / {rows.length}
           </p>
         )}
       </div>
 
       {rows.length > 0 && (
-        <div className="mt-4 overflow-x-auto">
+        <div className="mt-5 max-h-[32rem] overflow-auto rounded-card border border-border">
           <table className="w-full border-collapse text-left text-sm">
             <caption className="sr-only">Batch verification results</caption>
             <thead>
-              <tr className="border-b-2 border-slate-300 text-slate-700">
-                <th scope="col" className="py-2 pr-3 font-semibold">Filename</th>
-                <th scope="col" className="py-2 pr-3 font-semibold">Brand</th>
-                <th scope="col" className="py-2 pr-3 font-semibold">Alcohol</th>
-                <th scope="col" className="py-2 pr-3 font-semibold">Warning</th>
-                <th scope="col" className="py-2 pr-3 font-semibold">Overall</th>
+              <tr className="text-ink-muted">
+                {["Filename", "Brand", "Alcohol", "Warning", "Overall"].map((h) => (
+                  <th
+                    key={h}
+                    scope="col"
+                    className="sticky top-0 z-10 border-b-2 border-border bg-surface px-3 py-2.5 font-semibold"
+                  >
+                    {h}
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
               {rows.map((r, i) => (
-                <tr key={`${r.filename}-${i}`} className="border-b border-slate-200 align-top">
-                  <td className="py-2 pr-3 font-mono text-xs text-slate-900">
+                <tr
+                  key={`${r.filename}-${i}`}
+                  className="border-b border-border align-top odd:bg-surface-muted hover:bg-brand-50"
+                >
+                  <td className="px-3 py-2.5 font-mono text-xs text-ink">
                     {r.filename}
-                    {r.note && <span className="block text-slate-500">{r.note}</span>}
+                    {r.note && <span className="mt-0.5 block font-sans text-ink-muted">{r.note}</span>}
                   </td>
                   {[r.brand, r.alcohol, r.warning, r.overall].map((v, j) => (
-                    <td key={j} className="py-2 pr-3">
-                      <span
-                        className={`inline-block rounded-full px-2 py-0.5 text-xs font-bold ${
-                          ["…", "—"].includes(v) ? "text-slate-500" : badgeClass(v)
-                        }`}
-                      >
-                        {v}
-                      </span>
+                    <td key={j} className="px-3 py-2.5">
+                      <Cell value={v} />
                     </td>
                   ))}
                 </tr>

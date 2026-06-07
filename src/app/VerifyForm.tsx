@@ -4,22 +4,22 @@
  * VerifyForm — the single, accessible upload screen (US-006).
  *
  * Drag-and-drop OR file picker for the label image (with a live preview), labeled inputs for the
- * claimed values, and one-click sample labels so a reviewer can see a real verdict instantly
- * (the offline mock recognizes the bundled samples by filename). Accessibility (WCAG 2.1 AA):
- * every control has an associated label, required fields use aria-required + errors linked via
- * aria-describedby, controls are >=44px tall, focus is always visible, one primary Verify button.
+ * claimed values, and one-click sample labels so a reviewer can see a real verdict instantly.
+ * Accessibility (WCAG 2.1 AA): every control has an associated label, required fields use
+ * aria-required + errors linked via aria-describedby, controls are >=44px tall, focus is always
+ * visible, one primary Verify button, and focus moves to the result heading on completion.
  */
-import {
-  useEffect,
-  useId,
-  useRef,
-  useState,
-  type ChangeEvent,
-  type DragEvent,
-  type FormEvent,
-} from "react";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import type { VerifyApiResponse, VerifyApiError } from "./api/verify/contract";
 import { ResultView } from "./ResultView";
+import { downscaleForUpload } from "./imageDownscale";
+import { DropZone } from "./ui/DropZone";
+import { FormField } from "./ui/FormField";
+import { ErrorAlert } from "./ui/ErrorAlert";
+import { ResultSkeleton } from "./ui/ResultSkeleton";
+import { inputClass, primaryButtonClass } from "./ui/fieldStyles";
+import { toneForStatus, TONE_SOLID } from "./ui/status";
+import { IconReview, IconSpinner } from "./ui/icons";
 
 type SubmitState = "idle" | "loading" | "done" | "error";
 
@@ -30,11 +30,11 @@ interface Claims {
   netContents: string;
 }
 
-/** Bundled sample labels (served from /public/samples) — the offline mock keys off the filename,
- *  so clicking one loads its image + claimed values and produces a real verdict with no keys. */
+/** Bundled sample labels (served from /public/samples) — REAL readable rasters for the live demo;
+ *  the offline mock also keys off the filename, so each yields a real verdict with no keys. */
 const SAMPLES: ReadonlyArray<{ file: string; label: string; outcome: string } & Claims> = [
   {
-    file: "old-tom-bourbon-clean.svg",
+    file: "demo-old-tom-clean.png",
     label: "Clean label",
     outcome: "Approve",
     brand: "OLD TOM DISTILLERY",
@@ -43,7 +43,7 @@ const SAMPLES: ReadonlyArray<{ file: string; label: string; outcome: string } & 
     netContents: "750 mL",
   },
   {
-    file: "warning-title-case.svg",
+    file: "demo-warning-title-case.png",
     label: "Title-case warning",
     outcome: "Reject",
     brand: "OLD TOM DISTILLERY",
@@ -52,7 +52,7 @@ const SAMPLES: ReadonlyArray<{ file: string; label: string; outcome: string } & 
     netContents: "750 mL",
   },
   {
-    file: "brand-typo-review.svg",
+    file: "demo-brand-typo.png",
     label: "Brand typo",
     outcome: "Review",
     brand: "Old Tom Distillery",
@@ -79,7 +79,6 @@ export function VerifyForm() {
   const [classType, setClassType] = useState("");
   const [netContents, setNetContents] = useState("");
 
-  const [dragOver, setDragOver] = useState(false);
   const [state, setState] = useState<SubmitState>("idle");
   const [formError, setFormError] = useState<string | null>(null);
   const [result, setResult] = useState<VerifyApiResponse | null>(null);
@@ -114,20 +113,14 @@ export function VerifyForm() {
     setPreview(URL.createObjectURL(f));
   }
 
-  function onDrop(e: DragEvent<HTMLDivElement>) {
-    e.preventDefault();
-    setDragOver(false);
-    pickFile(e.dataTransfer.files?.[0]);
-  }
-  function onFileChange(e: ChangeEvent<HTMLInputElement>) {
-    pickFile(e.target.files?.[0]);
-  }
-
   async function submitVerification(f: File, c: Claims) {
     setState("loading");
     try {
+      // Shrink large photos before upload to cut latency/cost (no-op for the vector samples and
+      // already-small images; falls back to the original on any failure). Preview keeps the original.
+      const uploadFile = await downscaleForUpload(f);
       const body = new FormData();
-      body.set("image", f);
+      body.set("image", uploadFile);
       body.set("brand", c.brand);
       body.set("alcoholContent", c.alcohol);
       body.set("classType", c.classType);
@@ -168,7 +161,7 @@ export function VerifyForm() {
       const res = await fetch(`/samples/${s.file}`);
       if (!res.ok) throw new Error(`Failed to load sample (${res.status})`);
       const blob = await res.blob();
-      const f = new File([blob], s.file, { type: blob.type || "image/svg+xml" });
+      const f = new File([blob], s.file, { type: blob.type || "image/png" });
       pickFile(f);
       setBrand(s.brand);
       setAlcohol(s.alcohol);
@@ -186,98 +179,63 @@ export function VerifyForm() {
     }
   }
 
-  const inputClass =
-    "min-h-[44px] w-full rounded-lg border-2 border-slate-400 bg-white px-3 py-2 text-slate-900 " +
-    "placeholder:text-slate-500 focus-visible:outline-none focus-visible:ring-2 " +
-    "focus-visible:ring-blue-700 focus-visible:ring-offset-2";
-
   return (
-    <section aria-labelledby={`${ids.formErr}-h`} className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-      <h2 id={`${ids.formErr}-h`} className="text-xl font-semibold text-slate-900">
+    <section
+      aria-labelledby={`${ids.formErr}-h`}
+      aria-busy={state === "loading"}
+      className="rounded-card border border-border border-t-4 border-t-brand-600 bg-surface p-6 shadow-card sm:p-8"
+    >
+      <h2 id={`${ids.formErr}-h`} className="text-xl font-semibold text-ink">
         Verify a label
       </h2>
 
-      {/* One-click sample labels — instant real verdicts with no keys (offline mock). */}
-      <div className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
-        <p className="text-sm font-medium text-slate-800">
-          No image handy? Try a bundled sample label:
-        </p>
-        <div className="mt-2 flex flex-wrap gap-2">
-          {SAMPLES.map((s) => (
-            <button
-              key={s.file}
-              type="button"
-              onClick={() => void loadSample(s)}
-              disabled={state === "loading"}
-              className="min-h-[40px] rounded-full border-2 border-blue-700 px-3 py-1 text-sm font-semibold text-blue-700 hover:bg-blue-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-700 focus-visible:ring-offset-2 disabled:opacity-50"
-            >
-              {s.label} → {s.outcome}
-            </button>
-          ))}
+      {/* One-click sample labels — instant real verdicts (offline mock keys off the filename). */}
+      <div className="mt-4 rounded-card border border-border bg-surface-muted p-4">
+        <p className="text-sm font-semibold text-ink">No image handy? Try a bundled sample label:</p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {SAMPLES.map((s) => {
+            const tone = toneForStatus(s.outcome.toLowerCase());
+            return (
+              <button
+                key={s.file}
+                type="button"
+                onClick={() => void loadSample(s)}
+                disabled={state === "loading"}
+                className="inline-flex min-h-[44px] items-center gap-2 rounded-pill border-2 border-border-strong bg-surface px-4 text-sm font-semibold text-ink transition hover:border-brand-600 hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2 disabled:opacity-50"
+              >
+                {s.label}
+                <span className={`rounded-pill px-2 py-0.5 text-xs font-bold ${TONE_SOLID[tone]}`}>
+                  {s.outcome}
+                </span>
+              </button>
+            );
+          })}
         </div>
-        <p className="mt-2 text-xs text-slate-600">
-          Demo (mock) mode reads these bundled labels offline. To verify your own photos, configure a
-          real provider — see the README.
+        <p className="mt-3 text-xs text-ink-muted">
+          These bundled labels read offline with no keys. Configure Azure OpenAI to verify your own
+          photos — see the README.
         </p>
       </div>
 
-      <form onSubmit={onSubmit} noValidate className="mt-5 flex flex-col gap-5">
-        {/* Image upload: drag-and-drop wrapping a real (keyboard-focusable) file input, with preview */}
+      <form onSubmit={onSubmit} noValidate className="mt-6 flex flex-col gap-5">
         <div>
-          <span className="mb-1 block font-medium text-slate-800">Label image (required)</span>
-          <div
-            onDragOver={(e) => {
-              e.preventDefault();
-              setDragOver(true);
-            }}
-            onDragLeave={(e) => {
-              e.preventDefault();
-              setDragOver(false);
-            }}
-            onDrop={onDrop}
-            className={
-              "rounded-xl border-2 border-dashed p-6 text-center transition-colors " +
-              "focus-within:outline-none focus-within:ring-2 focus-within:ring-blue-700 focus-within:ring-offset-2 " +
-              (dragOver ? "border-blue-700 bg-blue-50" : "border-slate-400 bg-slate-50")
-            }
-          >
-            <label htmlFor={ids.image} className="flex cursor-pointer flex-col items-center gap-1">
-              {preview && (
-                // eslint-disable-next-line @next/next/no-img-element -- local object URL preview, not a remote asset
-                <img
-                  src={preview}
-                  alt={file ? `Preview of ${file.name}` : "Selected label preview"}
-                  className="mx-auto mb-3 max-h-56 w-auto rounded border border-slate-300 bg-white object-contain"
-                />
-              )}
-              <span className="font-medium text-slate-900">
-                {file ? `Selected: ${file.name}` : "Drag & drop a label image here"}
-              </span>
-              <span className="text-sm text-slate-600">
-                or <span className="font-semibold text-blue-700 underline">browse for a file</span>
-              </span>
-              <input
-                ref={fileInputRef}
-                id={ids.image}
-                name="image"
-                type="file"
-                accept="image/*"
-                onChange={onFileChange}
-                aria-required="true"
-                aria-describedby={ids.imageErr}
-                className="sr-only"
-              />
-            </label>
-          </div>
+          <span className="mb-1.5 block font-medium text-ink">
+            Label image <span className="font-normal text-ink-muted">(required)</span>
+          </span>
+          <DropZone
+            id={ids.image}
+            file={file}
+            preview={preview}
+            onFile={pickFile}
+            inputRef={fileInputRef}
+            describedById={ids.imageErr}
+          />
           <p id={ids.imageErr} className="sr-only">
             Choose the photo of the alcohol label you want to verify.
           </p>
         </div>
 
-        <div>
-          <label htmlFor={ids.brand} className="mb-1 block font-medium text-slate-800">
-            Brand name (required)
-          </label>
+        <FormField label="Brand name" htmlFor={ids.brand} required>
           <input
             id={ids.brand}
             name="brand"
@@ -288,12 +246,9 @@ export function VerifyForm() {
             placeholder="e.g. Old Tom Distillery"
             className={inputClass}
           />
-        </div>
+        </FormField>
 
-        <div>
-          <label htmlFor={ids.alcohol} className="mb-1 block font-medium text-slate-800">
-            Alcohol content (required)
-          </label>
+        <FormField label="Alcohol content" htmlFor={ids.alcohol} required>
           <input
             id={ids.alcohol}
             name="alcoholContent"
@@ -304,12 +259,9 @@ export function VerifyForm() {
             placeholder="e.g. 45% Alc./Vol. (90 Proof)"
             className={inputClass}
           />
-        </div>
+        </FormField>
 
-        <div>
-          <label htmlFor={ids.classType} className="mb-1 block font-medium text-slate-800">
-            Class / type (optional)
-          </label>
+        <FormField label="Class / type" htmlFor={ids.classType}>
           <input
             id={ids.classType}
             name="classType"
@@ -319,12 +271,9 @@ export function VerifyForm() {
             placeholder="e.g. Distilled spirits, Table wine, India Pale Ale"
             className={inputClass}
           />
-        </div>
+        </FormField>
 
-        <div>
-          <label htmlFor={ids.netContents} className="mb-1 block font-medium text-slate-800">
-            Net contents (optional)
-          </label>
+        <FormField label="Net contents" htmlFor={ids.netContents}>
           <input
             id={ids.netContents}
             name="netContents"
@@ -334,28 +283,34 @@ export function VerifyForm() {
             placeholder="e.g. 750 mL"
             className={inputClass}
           />
-        </div>
+        </FormField>
 
-        {formError && (
-          <p
-            id={ids.formErr}
-            role="alert"
-            className="rounded-lg border-2 border-red-700 bg-red-50 px-3 py-2 font-medium text-red-800"
-          >
-            <span aria-hidden="true">⚠ </span>
-            {formError}
-          </p>
-        )}
+        {formError && <ErrorAlert id={ids.formErr}>{formError}</ErrorAlert>}
 
         <button
           type="submit"
           disabled={state === "loading"}
           aria-describedby={formError ? ids.formErr : undefined}
-          className="min-h-[48px] rounded-lg bg-blue-700 px-6 text-lg font-semibold text-white hover:bg-blue-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-700 focus-visible:ring-offset-2 disabled:opacity-60"
+          className={`${primaryButtonClass} text-lg`}
         >
-          {state === "loading" ? "Verifying…" : "Verify"}
+          {state === "loading" ? (
+            <>
+              <IconSpinner className="h-5 w-5 motion-safe:animate-spin" /> Verifying…
+            </>
+          ) : (
+            "Verify label"
+          )}
         </button>
       </form>
+
+      {state === "loading" && (
+        <>
+          <p role="status" aria-live="polite" className="sr-only">
+            Verifying label…
+          </p>
+          <ResultSkeleton />
+        </>
+      )}
 
       {state === "done" && result?.readable && result.result && (
         <ResultView result={result.result} headingRef={resultHeadingRef} />
@@ -364,18 +319,16 @@ export function VerifyForm() {
       {state === "done" && result && !result.readable && (
         <section
           role="alert"
-          className="mt-6 rounded-xl border-l-8 border-amber-500 bg-amber-50 p-4"
+          className="mt-6 rounded-card border-l-8 border-review-500 bg-review-50 p-5 shadow-card"
         >
           <h2
             ref={resultHeadingRef}
             tabIndex={-1}
-            className="text-lg font-semibold text-amber-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-700 focus-visible:ring-offset-2"
+            className="flex items-center gap-2 text-lg font-semibold text-review-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2"
           >
-            <span aria-hidden="true">⚠ </span>Couldn&apos;t read the label
+            <IconReview className="h-6 w-6 shrink-0" /> Couldn&apos;t read the label
           </h2>
-          <p className="mt-2 text-amber-900">
-            {result.message ?? "Please re-upload a clearer photo."}
-          </p>
+          <p className="mt-2 text-review-900">{result.message ?? "Please re-upload a clearer photo."}</p>
         </section>
       )}
     </section>

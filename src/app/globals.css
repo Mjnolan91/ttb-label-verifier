@@ -1,1 +1,87 @@
 @import "tailwindcss";
+
+/*
+ * Design tokens (Tailwind v4 @theme — there is NO tailwind.config file). Each token auto-generates
+ * utilities, e.g. --color-brand-600 -> bg-brand-600/text-brand-600/border-brand-600/ring-brand-600.
+ * Status ramps mirror the previously-verified luminances so contrast stays WCAG AA (see below), but
+ * are now named tokens instead of scattered literals.
+ */
+@theme {
+  /* Brand — confident, trustworthy blue (primary actions, links, focus rings) */
+  --color-brand-50: #eef4ff;
+  --color-brand-100: #dbe6fe;
+  --color-brand-500: #2563eb;
+  --color-brand-600: #1d4ed8; /* primary button bg; white text ~7:1 */
+  --color-brand-700: #1e40af; /* hover / focus ring; on white ~8.5:1 */
+  --color-brand-800: #1e3a8a;
+
+  /* Neutrals — surfaces, ink, borders */
+  --color-surface: #ffffff;
+  --color-surface-muted: #f4f7fb; /* page background / inset panels */
+  --color-surface-sunken: #eaeff6; /* zebra rows / skeletons / wells */
+  --color-border: #dfe5ee; /* hairline card border */
+  --color-border-strong: #64748b; /* input borders — ~3.9:1 on white (>=3:1 UI) */
+  --color-ink: #0f172a; /* primary text */
+  --color-ink-muted: #475569; /* secondary text — ~7.4:1 on white */
+
+  /* Status ramps — tint bg (50), accent (500/600), solid badge (700), dark text (900) */
+  --color-pass-50: #f0fdf4;
+  --color-pass-600: #16a34a;
+  --color-pass-700: #15803d;
+  --color-pass-900: #14532d;
+  --color-review-50: #fffbeb;
+  --color-review-500: #f59e0b;
+  --color-review-700: #b45309;
+  --color-review-900: #78350f;
+  --color-fail-50: #fef2f2;
+  --color-fail-600: #dc2626;
+  --color-fail-700: #b91c1c;
+  --color-fail-900: #7f1d1d;
+
+  /* Radii */
+  --radius-field: 0.625rem;
+  --radius-card: 1rem;
+  --radius-pill: 9999px;
+
+  /* Shadows — soft, layered (the "elevated" feel) */
+  --shadow-card: 0 1px 2px rgb(15 23 42 / 0.04), 0 4px 12px rgb(15 23 42 / 0.06);
+  --shadow-card-hover: 0 2px 4px rgb(15 23 42 / 0.06), 0 12px 28px rgb(15 23 42 / 0.1);
+
+  /* Motion */
+  --animate-reveal: fadeInUp 0.28s ease-out both;
+
+  /* Type — Inter is wired via next/font in layout.tsx and exposed as --font-inter */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+@layer base {
+  body {
+    font-family: var(--font-sans);
+    /* A calm, designed page backdrop (very subtle, high-contrast-safe). */
+    background-image: radial-gradient(60rem 40rem at 50% -10%, #ffffff 0%, var(--color-surface-muted) 60%);
+    background-attachment: fixed;
+  }
+}
+
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Honor reduced-motion globally: collapse animations/transitions to instant, leaving final state. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
