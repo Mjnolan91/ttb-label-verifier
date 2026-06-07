@@ -11,8 +11,17 @@
  * On success it stores the verdict; US-007 renders the polished, announced result cards. For now a
  * minimal text summary closes the loop.
  */
-import { useId, useRef, useState, type ChangeEvent, type DragEvent, type FormEvent } from "react";
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type ChangeEvent,
+  type DragEvent,
+  type FormEvent,
+} from "react";
 import type { VerifyApiResponse, VerifyApiError } from "./api/verify/contract";
+import { ResultView } from "./ResultView";
 
 type SubmitState = "idle" | "loading" | "done" | "error";
 
@@ -38,6 +47,13 @@ export function VerifyForm() {
     formErr: useId(),
   };
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const resultHeadingRef = useRef<HTMLHeadingElement>(null);
+
+  // Move focus to the result heading once a verdict is in, so keyboard/screen-reader users land
+  // on the announced result (it is also an aria-live region).
+  useEffect(() => {
+    if (state === "done") resultHeadingRef.current?.focus();
+  }, [state]);
 
   function pickFile(f: File | undefined) {
     if (f) setFile(f);
@@ -228,18 +244,8 @@ export function VerifyForm() {
         </button>
       </form>
 
-      {/* Minimal result summary (US-007 replaces this with announced, color+icon result cards). */}
       {state === "done" && result && (
-        <div aria-live="polite" className="mt-6 rounded-lg border border-slate-300 bg-slate-50 p-4">
-          <p className="font-semibold text-slate-900">
-            Overall verdict: <span className="uppercase">{result.result.overall}</span>
-          </p>
-          <ul className="mt-2 space-y-1 text-sm text-slate-700">
-            <li>Brand — {result.result.brand.status}: {result.result.brand.reason}</li>
-            <li>Alcohol — {result.result.alcohol.status}: {result.result.alcohol.reason}</li>
-            <li>Warning — {result.result.warning.status}: {result.result.warning.reason}</li>
-          </ul>
-        </div>
+        <ResultView result={result.result} headingRef={resultHeadingRef} />
       )}
     </section>
   );
