@@ -94,6 +94,12 @@ export interface ClaimedFields {
   beverageClass?: BeverageClass;
   /** Claimed alcohol content (ABV, optional proof). May be absent if the application omits it. */
   alcoholContent?: AlcoholContent;
+  /**
+   * Raw, as-written claimed alcohol statement, e.g. "45% Alc./Vol. (90 Proof)". Mirrors
+   * ExtractedFields.alcoholContentText so the comparator parses claimed and extracted from the
+   * SAME free-text form the application/label actually carry (claimed vs extracted, symmetric).
+   */
+  alcoholContentText?: string;
   /** Claimed net contents, e.g. "750 mL". Free text; not one of the three core checks. */
   netContents?: string;
   /**

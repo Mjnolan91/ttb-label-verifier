@@ -49,3 +49,11 @@ US-004 (comparator): src/compare/ = compareBrand/compareAlcohol/compareWarning (
   comparator, NOT domain. For US-005: build verifyLabel = getVisionProvider().extract -> the 3 compares
   -> overall (reject if any fail; else review if any review; else approve). compareAlcohol takes
   claimedClass text (resolve to enum) or an explicit beverageClass.
+US-005 (API): POST /api/verify (src/app/api/verify/route.ts) parses multipart form (image + brand,
+  alcoholContent, classType?, netContents?), validates (missing image/brand/alcoholContent -> 400),
+  runs getVisionProvider().extract -> verifyLabel -> JSON {provider, claimed, extracted, result}.
+  Uses web-standard Request/Response.json (NOT next/server) so the handler imports + runs directly in
+  Vitest. New: src/compare/verify.ts (verifyLabel + overallVerdict + VerifyResult/OverallVerdict) and
+  ClaimedFields.alcoholContentText (additive). `npm test` = 12 files / 101 tests; build OK (/api/verify
+  is a dynamic route). NOTE: verifyLabel is still value-based (unreadable fixture would over-reject
+  until the US-011 confidence gate). US-006 (upload UI) + US-007 (result UI) consume this JSON shape.
