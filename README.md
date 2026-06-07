@@ -160,6 +160,46 @@ If a selected provider's required vars are unset, it fails with an actionable me
 the absence of Azure keys never affects the default (mock) dev/test path. Running both
 extractors reconciles them in parallel within the ~5s budget (US-010).
 
+## Evaluation: measuring "better than human"
+`npm run eval` runs the full pipeline (mock provider, **offline**) over the labeled fixtures in
+`eval/fixtures/cases.json` and prints a report:
+
+```text
+Per-field precision / recall (support = # expected):
+  field    status   precision   recall   support
+  brand    pass       100.0%   100.0%     6
+  brand    review     100.0%   100.0%     2
+  ...
+Overall verdict precision / recall:
+  verdict   precision   recall   support
+  approve    100.0%   100.0%     3
+  review     100.0%   100.0%     2
+  reject     100.0%   100.0%     3
+
+Overall accuracy: 100.0%  (8 cases)
+Latency: p50 0.0 ms, p95 0.8 ms
+
+APPROVE precision: 100.0% (floor 98.0%) -> PASS
+```
+
+**How to read it:**
+- **Per-field precision/recall** — for each check (brand / alcohol / warning) and each status
+  (`pass` / `review` / `fail`): *precision* = of the times we predicted this status, how often
+  it was correct; *recall* = of the fixtures that truly had this status, how many we caught;
+  *support* = how many fixtures carry that expected status (`—` = none present, so the metric is
+  N/A).
+- **Overall verdict precision/recall** — the same, for the end-to-end verdict (`approve` /
+  `review` / `reject`).
+- **Latency p50 / p95** — median and 95th-percentile time per label. The hard requirement is a
+  ~5s ceiling; the offline mock path is sub-millisecond (real Azure providers run in parallel
+  with a ~3s per-call timeout to stay under budget).
+- **APPROVE precision + floor** — the headline metric. Because a **false approval is far worse
+  than an unnecessary review**, the harness enforces a floor: **approve-precision must be
+  ≥ 0.98**, or `npm run eval` exits non-zero (failing CI). The floor is the named, documented
+  constant `APPROVE_PRECISION_FLOOR` in `eval/evaluate.ts`. The labeled set deliberately mixes
+  clean labels with broken ones (title-case warning, ABV off by a point, brand typo, missing
+  warning) and an unreadable image that must **never** auto-approve.
+
 ## Deploying to Azure
 Azure is the deploy target on purpose: the real extractors run **inside the Azure tenant**, so
 they survive the outbound firewall that blocked the previous vendor (Marcus's constraint). The

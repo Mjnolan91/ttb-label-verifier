@@ -116,3 +116,13 @@ US-011 (asymmetric thresholds): EXPANDED src/compare/thresholds.ts with FIELD_RE
   Two thresholds, distinct purposes: MIN_READABLE_CONFIDENCE 0.5 (image readable at all -> re-upload,
   checked in the route before verifyLabel) vs FIELD_REVIEW_CONFIDENCE 0.7 (trust THIS field's verdict).
   Boundary tests added. `npm test` = 16 files / 135. US-012 (eval) can now rely on unreadable -> review.
+US-012 (eval harness): extracted the route core into src/pipeline.ts runVerification(providers,claimed,
+  image) (reconcile -> readable? -> verifyLabel) and the ROUTE now uses it (eval == prod pipeline).
+  eval/evaluate.ts runEval()+formatReport() compute per-field (brand/alcohol/warning x pass/review/fail)
+  precision/recall/support + overall-verdict P/R + latency p50/p95 over cases.json; APPROVE_PRECISION_FLOOR
+  = 0.98 (documented; false approval >> review). eval/run.ts is the `npm run eval` CLI (tsx). eval ALL
+  fixtures: per-field + overall 100% match, approve precision 100% -> PASS, unreadable -> review (never
+  approve). eval/evaluate.test.ts runs it in `npm test` too. `npm test` = 17 files / 140; build OK.
+  GOTCHAS: (1) added tsx (^4.22) for `npm run eval`; tsx DOES resolve tsconfig `@/*` paths. (2) No
+  "type":"module" => tsx transforms .ts as CJS => NO top-level await in eval/run.ts; wrap in
+  main().catch() + process.exitCode. (3) latency p50/p95 are ~0ms on the mock path (sub-ms), well under 5s.

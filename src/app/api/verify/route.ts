@@ -7,8 +7,8 @@
  * overall verdict as JSON. Uses the web-standard Request/Response so it is offline-testable.
  */
 import type { ClaimedFields } from "@/domain";
-import { getActiveProviders, reconcileExtract } from "@/extraction";
-import { verifyLabel, isExtractionReadable } from "@/compare";
+import { getActiveProviders } from "@/extraction";
+import { runVerification } from "@/pipeline";
 import type { VerifyApiResponse } from "./contract";
 
 /** Recognize the abort/timeout error the US-010 reconciler raises, so US-008 can surface it. */
@@ -63,10 +63,10 @@ export async function POST(request: Request): Promise<Response> {
   const providerName = providers.map((p) => p.name).join("+");
   const bytes = new Uint8Array(await image.arrayBuffer());
 
-  let extracted;
+  let outcome;
   try {
-    // Runs the configured provider(s) in parallel with a per-call timeout and reconciles them.
-    extracted = await reconcileExtract(providers, {
+    // Reconciles the configured provider(s) in parallel (per-call timeout), gates readability, compares.
+    outcome = await runVerification(providers, claimed, {
       filename: image.name,
       data: bytes,
       contentType: image.type || undefined,
@@ -87,12 +87,12 @@ export async function POST(request: Request): Promise<Response> {
   }
 
   // Unreadable / low-confidence image: surface the re-upload prompt, never a fabricated verdict.
-  if (!isExtractionReadable(extracted)) {
+  if (!outcome.readable || !outcome.result) {
     const payload: VerifyApiResponse = {
       provider: providerName,
       readable: false,
       claimed,
-      extracted,
+      extracted: outcome.extracted,
       result: null,
       message:
         "We couldn't read this label clearly. Please re-upload a clearer, well-lit photo with the label flat and in focus.",
@@ -100,13 +100,12 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json(payload);
   }
 
-  const result = verifyLabel(claimed, extracted);
   const payload: VerifyApiResponse = {
     provider: providerName,
     readable: true,
     claimed,
-    extracted,
-    result,
+    extracted: outcome.extracted,
+    result: outcome.result,
   };
   return Response.json(payload);
 }
