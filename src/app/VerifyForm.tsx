@@ -244,8 +244,26 @@ export function VerifyForm() {
         </button>
       </form>
 
-      {state === "done" && result && (
+      {state === "done" && result?.readable && result.result && (
         <ResultView result={result.result} headingRef={resultHeadingRef} />
+      )}
+
+      {state === "done" && result && !result.readable && (
+        <section
+          role="alert"
+          className="mt-6 rounded-xl border-l-8 border-amber-500 bg-amber-50 p-4"
+        >
+          <h2
+            ref={resultHeadingRef}
+            tabIndex={-1}
+            className="text-lg font-semibold text-amber-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-700 focus-visible:ring-offset-2"
+          >
+            <span aria-hidden="true">⚠ </span>Couldn&apos;t read the label
+          </h2>
+          <p className="mt-2 text-amber-900">
+            {result.message ?? "Please re-upload a clearer photo."}
+          </p>
+        </section>
       )}
     </section>
   );

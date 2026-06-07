@@ -73,3 +73,12 @@ US-007 (result UI): src/app/ResultView.tsx = overall banner (Approve/Needs revie
   vs extracted shown side-by-side (sm:grid-cols-2), long warning text line-clamp-3. Browser-verified all
   three verdicts (approve/review/reject). `npm test` still 101 (UI browser-verified). Tailwind v4 line-clamp-3
   works out of the box. Favicon 404 is still the only console error.
+US-008 (graceful errors): NEW src/compare/thresholds.ts = MIN_READABLE_CONFIDENCE (0.5) +
+  isExtractionReadable() (readable if ANY field confidence >= floor). Route: if !readable -> 200 with
+  {readable:false, result:null, message:"re-upload a clearer photo"} (never a verdict); timeout (US-010
+  AbortError/TimeoutError) -> 504 surfaced message; invalid input -> 400 (US-005). Contract gained
+  readable:boolean + result:VerifyResult|null + message?. VerifyForm shows the amber re-upload alert
+  (role=alert, focus moved) when !readable, else ResultView. Added src/app/error.tsx route error boundary
+  ("no uncaught error crashes the page"). Browser-verified unreadable + invalid-input paths. `npm test` =
+  13 files / 107. NOTE for US-011: thresholds.ts EXISTS — expand it with the per-FIELD review gate
+  (downgrade low-confidence fields to review) + boundary tests; don't recreate the file.

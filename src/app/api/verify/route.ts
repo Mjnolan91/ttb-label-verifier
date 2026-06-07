@@ -8,8 +8,13 @@
  */
 import type { ClaimedFields } from "@/domain";
 import { getVisionProvider } from "@/extraction";
-import { verifyLabel } from "@/compare";
+import { verifyLabel, isExtractionReadable } from "@/compare";
 import type { VerifyApiResponse } from "./contract";
+
+/** Recognize the abort/timeout error the US-010 reconciler raises, so US-008 can surface it. */
+function isTimeoutError(err: unknown): boolean {
+  return err instanceof Error && (err.name === "AbortError" || err.name === "TimeoutError");
+}
 
 function field(form: FormData, name: string): string {
   const v = form.get(name);
@@ -65,13 +70,41 @@ export async function POST(request: Request): Promise<Response> {
       contentType: image.type || undefined,
     });
   } catch (err) {
+    // Provider-timeout message is driven by the per-call timeout machinery built in US-010
+    // (Promise.allSettled + AbortController); this route only SURFACES it to the user.
+    if (isTimeoutError(err)) {
+      return Response.json(
+        { error: "The label reader timed out. Please try again." },
+        { status: 504 },
+      );
+    }
     return Response.json(
       { error: "Extraction failed.", detail: err instanceof Error ? err.message : String(err) },
       { status: 502 },
     );
   }
 
+  // Unreadable / low-confidence image: surface the re-upload prompt, never a fabricated verdict.
+  if (!isExtractionReadable(extracted)) {
+    const payload: VerifyApiResponse = {
+      provider: provider.name,
+      readable: false,
+      claimed,
+      extracted,
+      result: null,
+      message:
+        "We couldn't read this label clearly. Please re-upload a clearer, well-lit photo with the label flat and in focus.",
+    };
+    return Response.json(payload);
+  }
+
   const result = verifyLabel(claimed, extracted);
-  const payload: VerifyApiResponse = { provider: provider.name, claimed, extracted, result };
+  const payload: VerifyApiResponse = {
+    provider: provider.name,
+    readable: true,
+    claimed,
+    extracted,
+    result,
+  };
   return Response.json(payload);
 }

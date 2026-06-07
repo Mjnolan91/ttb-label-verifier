@@ -4,6 +4,7 @@
 export type { FieldStatus, FieldResult } from "./types";
 export { compareBrand, compareAlcohol, compareWarning } from "./comparators";
 export { verifyLabel, overallVerdict, type OverallVerdict, type VerifyResult } from "./verify";
+export { MIN_READABLE_CONFIDENCE, isExtractionReadable } from "./thresholds";
 export { normalizeText, normalizeWarning, similarity, levenshtein } from "./text";
 export {
   parseAlcoholText,

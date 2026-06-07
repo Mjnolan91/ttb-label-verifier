@@ -31,6 +31,7 @@ describe("POST /api/verify — happy path (known clean fixture)", () => {
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.provider).toBe("mock");
+    expect(json.readable).toBe(true);
     expect(json.result.overall).toBe("approve");
     expect(json.result.brand.status).toBe("pass");
     expect(json.result.alcohol.status).toBe("pass");
@@ -47,6 +48,25 @@ describe("POST /api/verify — a deliberately broken fixture", () => {
     const json = await res.json();
     expect(json.result.alcohol.status).toBe("fail");
     expect(json.result.overall).toBe("reject");
+  });
+});
+
+describe("POST /api/verify — unreadable / low-confidence (re-upload, no verdict)", () => {
+  it("returns readable=false with a re-upload message for the unreadable fixture", async () => {
+    const res = await postForm(cleanClaim, stubImage("unreadable-blurry.svg"));
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.readable).toBe(false);
+    expect(json.result).toBeNull(); // never a fabricated verdict
+    expect(json.message).toMatch(/re-upload|clearer/i);
+  });
+
+  it("returns readable=false for an unrecognized filename (mock read nothing)", async () => {
+    const res = await postForm(cleanClaim, stubImage("some-random-unknown-image.png"));
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.readable).toBe(false);
+    expect(json.result).toBeNull();
   });
 });
 
