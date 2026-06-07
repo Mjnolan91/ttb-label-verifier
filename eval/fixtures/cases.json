@@ -1,0 +1,202 @@
+{
+  "_doc": "Shape and rationale documented in ./README.md and ./images/MANIFEST.md.",
+  "_README": "Hermetic labeled fixtures for the mock provider, the /api/verify integration test, and `npm run eval`. The mock VisionProvider keys off `imageFilename` (NOT image bytes) and returns the `extracted` block for that filename, so the whole suite runs with zero real images and zero network. `claimed` is what the application asserts; `extracted` is what the mock returns for the image; `expected` is the deterministic verdict the comparator MUST produce. Verdict model: per-field status is pass|review|fail; overall = reject if ANY field fails, else review if ANY field is review, else approve. Tolerances are CFR-derived (see notes per case and eval/fixtures/README.md). Do NOT reword the canonical government warning to make a case pass — the statutory text is fixed.",
+  "_verdictModel": {
+    "perFieldStatuses": ["pass", "review", "fail"],
+    "overallRule": "reject if any field == fail; else review if any field == review; else approve",
+    "overallStatuses": ["approve", "review", "reject"]
+  },
+  "_canonicalWarning": "GOVERNMENT WARNING: (1) According to the Surgeon General, women should not drink alcoholic beverages during pregnancy because of the risk of birth defects. (2) Consumption of alcoholic beverages impairs your ability to drive a car or operate machinery, and may cause health problems.",
+  "cases": [
+    {
+      "id": "clean-pass",
+      "imageFilename": "old-tom-bourbon-clean.svg",
+      "claimed": {
+        "brand": "OLD TOM DISTILLERY",
+        "classType": "distilled-spirits",
+        "beverageClass": "Distilled spirits",
+        "alcoholContent": "45% Alc./Vol. (90 Proof)",
+        "netContents": "750 mL"
+      },
+      "extracted": {
+        "brand": { "value": "OLD TOM DISTILLERY", "confidence": 0.98 },
+        "classType": { "value": "Kentucky Straight Bourbon Whiskey", "confidence": 0.97 },
+        "alcoholContent": { "value": "45% Alc./Vol. (90 Proof)", "confidence": 0.98 },
+        "netContents": { "value": "750 mL", "confidence": 0.96 },
+        "warningText": {
+          "value": "GOVERNMENT WARNING: (1) According to the Surgeon General, women should not drink alcoholic beverages during pregnancy because of the risk of birth defects. (2) Consumption of alcoholic beverages impairs your ability to drive a car or operate machinery, and may cause health problems.",
+          "confidence": 0.97
+        },
+        "warningPrefixIsAllCaps": true,
+        "warningPrefixIsBold": true
+      },
+      "expected": {
+        "perField": { "brand": "pass", "alcohol": "pass", "warning": "pass" },
+        "overall": "approve"
+      },
+      "notes": "The brief's clean reference label. Brand matches verbatim. ABV 45.0% exactly equals the labeled 45% and the (90 Proof) cross-check holds (proof = 2 x ABV = 90), so it is trivially inside the distilled-spirits +/-0.3 pp tolerance (27 CFR 5.65(c)). Warning is the exact canonical text with an all-caps, bold 'GOVERNMENT WARNING:' prefix. Every field passes -> overall approve. This is the happy path that proves the pipeline approves a genuinely compliant label."
+    },
+    {
+      "id": "warning-title-case-fail",
+      "imageFilename": "warning-title-case.svg",
+      "claimed": {
+        "brand": "OLD TOM DISTILLERY",
+        "classType": "distilled-spirits",
+        "beverageClass": "Distilled spirits",
+        "alcoholContent": "45% Alc./Vol. (90 Proof)",
+        "netContents": "750 mL"
+      },
+      "extracted": {
+        "brand": { "value": "OLD TOM DISTILLERY", "confidence": 0.98 },
+        "classType": { "value": "Kentucky Straight Bourbon Whiskey", "confidence": 0.97 },
+        "alcoholContent": { "value": "45% Alc./Vol. (90 Proof)", "confidence": 0.98 },
+        "netContents": { "value": "750 mL", "confidence": 0.96 },
+        "warningText": {
+          "value": "Government Warning: (1) According to the Surgeon General, women should not drink alcoholic beverages during pregnancy because of the risk of birth defects. (2) Consumption of alcoholic beverages impairs your ability to drive a car or operate machinery, and may cause health problems.",
+          "confidence": 0.95
+        },
+        "warningPrefixIsAllCaps": false,
+        "warningPrefixIsBold": true
+      },
+      "expected": {
+        "perField": { "brand": "pass", "alcohol": "pass", "warning": "fail" },
+        "overall": "reject"
+      },
+      "notes": "The warning body wording is verbatim, but the prefix is rendered title-case ('Government Warning:') instead of the required ALL-CAPS 'GOVERNMENT WARNING:'. Per 27 CFR 16.22(a)(2) the words GOVERNMENT WARNING must appear in capital letters; warningPrefixIsAllCaps=false makes this a hard FAIL (strict warning check), not a review. Brand and alcohol still pass; one fail -> overall reject. This is exactly the rote miss a tired human skims past, which the machine catches every time."
+    },
+    {
+      "id": "alcohol-out-of-tolerance-fail",
+      "imageFilename": "abv-out-of-tolerance.svg",
+      "claimed": {
+        "brand": "OLD TOM DISTILLERY",
+        "classType": "distilled-spirits",
+        "beverageClass": "Distilled spirits",
+        "alcoholContent": "45% Alc./Vol. (90 Proof)",
+        "netContents": "750 mL"
+      },
+      "extracted": {
+        "brand": { "value": "OLD TOM DISTILLERY", "confidence": 0.98 },
+        "classType": { "value": "Kentucky Straight Bourbon Whiskey", "confidence": 0.97 },
+        "alcoholContent": { "value": "46% Alc./Vol. (92 Proof)", "confidence": 0.97 },
+        "netContents": { "value": "750 mL", "confidence": 0.96 },
+        "warningText": {
+          "value": "GOVERNMENT WARNING: (1) According to the Surgeon General, women should not drink alcoholic beverages during pregnancy because of the risk of birth defects. (2) Consumption of alcoholic beverages impairs your ability to drive a car or operate machinery, and may cause health problems.",
+          "confidence": 0.97
+        },
+        "warningPrefixIsAllCaps": true,
+        "warningPrefixIsBold": true
+      },
+      "expected": {
+        "perField": { "brand": "pass", "alcohol": "fail", "warning": "pass" },
+        "overall": "reject"
+      },
+      "notes": "Application claims 45% ABV; the label as extracted reads 46% Alc./Vol. (92 Proof). Difference is 1.0 percentage point, which exceeds the distilled-spirits tolerance of +/-0.3 pp (27 CFR 5.65(c)) -> alcohol FAIL. The internal proof cross-check is self-consistent on the label (92 = 2 x 46) so the failure is a genuine claimed-vs-label mismatch, not a parse glitch. Brand and warning pass; one fail -> overall reject. 0.7 pp clear of the 0.3 pp band, so it is unambiguously fail (not a borderline review)."
+    },
+    {
+      "id": "brand-smartquote-normalizes-pass",
+      "imageFilename": "stones-throw-smartquote.svg",
+      "claimed": {
+        "brand": "Stone’s Throw",
+        "classType": "distilled-spirits",
+        "beverageClass": "Distilled spirits",
+        "alcoholContent": "40% Alc./Vol. (80 Proof)",
+        "netContents": "750 mL"
+      },
+      "extracted": {
+        "brand": { "value": "STONE’S THROW", "confidence": 0.97 },
+        "classType": { "value": "Kentucky Straight Bourbon Whiskey", "confidence": 0.96 },
+        "alcoholContent": { "value": "40% Alc./Vol. (80 Proof)", "confidence": 0.97 },
+        "netContents": { "value": "750 mL", "confidence": 0.95 },
+        "warningText": {
+          "value": "GOVERNMENT WARNING: (1) According to the Surgeon General, women should not drink alcoholic beverages during pregnancy because of the risk of birth defects. (2) Consumption of alcoholic beverages impairs your ability to drive a car or operate machinery, and may cause health problems.",
+          "confidence": 0.97
+        },
+        "warningPrefixIsAllCaps": true,
+        "warningPrefixIsBold": true
+      },
+      "expected": {
+        "perField": { "brand": "pass", "alcohol": "pass", "warning": "pass" },
+        "overall": "approve"
+      },
+      "notes": "The benign brand case from AGENTS.md and the brief: claimed 'Stone’s Throw' vs extracted 'STONE’S THROW' differ ONLY by letter case and the smart apostrophe (U+2019). After the comparator normalizes case + whitespace + punctuation + smart quotes, the two strings are identical -> brand PASS (must NOT be a review). ABV 40.0% == 40% with proof 80 = 2 x 40 (inside +/-0.3 pp). Warning canonical. All pass -> overall approve. This proves tolerant matching does not punish cosmetic differences."
+    },
+    {
+      "id": "brand-typo-review",
+      "imageFilename": "brand-typo-review.svg",
+      "claimed": {
+        "brand": "Old Tom Distillery",
+        "classType": "distilled-spirits",
+        "beverageClass": "Distilled spirits",
+        "alcoholContent": "45% Alc./Vol. (90 Proof)",
+        "netContents": "750 mL"
+      },
+      "extracted": {
+        "brand": { "value": "Old Tomm Distillery", "confidence": 0.9 },
+        "classType": { "value": "Kentucky Straight Bourbon Whiskey", "confidence": 0.95 },
+        "alcoholContent": { "value": "45% Alc./Vol. (90 Proof)", "confidence": 0.97 },
+        "netContents": { "value": "750 mL", "confidence": 0.95 },
+        "warningText": {
+          "value": "GOVERNMENT WARNING: (1) According to the Surgeon General, women should not drink alcoholic beverages during pregnancy because of the risk of birth defects. (2) Consumption of alcoholic beverages impairs your ability to drive a car or operate machinery, and may cause health problems.",
+          "confidence": 0.97
+        },
+        "warningPrefixIsAllCaps": true,
+        "warningPrefixIsBold": true
+      },
+      "expected": {
+        "perField": { "brand": "review", "alcohol": "pass", "warning": "pass" },
+        "overall": "review"
+      },
+      "notes": "A GENUINE near-miss typo: claimed 'Old Tom Distillery' vs extracted 'Old Tomm Distillery' (one inserted 'm'). This survives case/whitespace/punctuation normalization as a real character difference, so it is NOT an exact-after-normalize pass; but the strings are highly similar (single-character edit), so the comparator routes it to REVIEW rather than fail -- surfacing the discrepancy for a human instead of silently approving or hard-rejecting. Alcohol and warning pass; one review, no fail -> overall review. Contrast with the smart-quote case which must fully PASS. Tune any string-similarity threshold so this lands in review, not pass and not fail."
+    },
+    {
+      "id": "warning-missing-fail",
+      "imageFilename": "warning-missing.svg",
+      "claimed": {
+        "brand": "OLD TOM DISTILLERY",
+        "classType": "distilled-spirits",
+        "beverageClass": "Distilled spirits",
+        "alcoholContent": "45% Alc./Vol. (90 Proof)",
+        "netContents": "750 mL"
+      },
+      "extracted": {
+        "brand": { "value": "OLD TOM DISTILLERY", "confidence": 0.98 },
+        "classType": { "value": "Kentucky Straight Bourbon Whiskey", "confidence": 0.97 },
+        "alcoholContent": { "value": "45% Alc./Vol. (90 Proof)", "confidence": 0.98 },
+        "netContents": { "value": "750 mL", "confidence": 0.96 },
+        "warningText": { "value": "", "confidence": 0.92 },
+        "warningPrefixIsAllCaps": false,
+        "warningPrefixIsBold": false
+      },
+      "expected": {
+        "perField": { "brand": "pass", "alcohol": "pass", "warning": "fail" },
+        "overall": "reject"
+      },
+      "notes": "The government health warning is entirely ABSENT from the label (extracted warningText is empty; both prefix flags false). The product is 45% ABV distilled spirits, far above the 0.5% ABV threshold, so the warning is REQUIRED (27 CFR Part 16; ABLA 1988) and its absence is a hard FAIL -- never a review. Confidence on the empty extraction is high (the model is confident there is no warning), so this is a true missing-warning violation, not an unreadable image. Brand and alcohol pass; one fail -> overall reject."
+    },
+    {
+      "id": "unreadable-low-confidence-review",
+      "imageFilename": "unreadable-blurry.svg",
+      "claimed": {
+        "brand": "OLD TOM DISTILLERY",
+        "classType": "distilled-spirits",
+        "beverageClass": "Distilled spirits",
+        "alcoholContent": "45% Alc./Vol. (90 Proof)",
+        "netContents": "750 mL"
+      },
+      "extracted": {
+        "brand": { "value": "", "confidence": 0.31 },
+        "classType": { "value": "", "confidence": 0.28 },
+        "alcoholContent": { "value": "", "confidence": 0.26 },
+        "netContents": { "value": "", "confidence": 0.3 },
+        "warningText": { "value": "", "confidence": 0.29 },
+        "warningPrefixIsAllCaps": false,
+        "warningPrefixIsBold": null
+      },
+      "expected": {
+        "perField": { "brand": "review", "alcohol": "review", "warning": "review" },
+        "overall": "review"
+      },
+      "notes": "A glare-y / blurry photo the extractor cannot read: every field returns EMPTY with LOW confidence (~0.3, far below any approve/review threshold) and the warning prefix bold-ness is undetectable (warningPrefixIsBold = null). This is the unreadable-image path the brief calls out (Jenny: bad angles, lighting, glare). It is deliberately DISTINCT from warning-missing-fail: there the empty warning has HIGH confidence (the model is sure there is no warning -> hard FAIL), whereas here the LOW confidence means the system cannot assert anything -> route every field to REVIEW and surface a 're-upload a clearer photo' message, never a fabricated verdict. Overall is review (re-upload) and must NOT auto-approve. Exercised by US-003 (the mock returns this deterministic below-threshold result for an 'unreadable-' filename), US-008 (drives the re-upload message end to end), US-011 (asymmetric thresholds route low confidence to review), and US-012 (this case must not be counted as an approve)."
+    }
+  ]
+}

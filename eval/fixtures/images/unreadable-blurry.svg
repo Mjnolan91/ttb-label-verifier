@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="800" viewBox="0 0 600 800" font-family="Georgia, 'Times New Roman', serif">
+  <defs>
+    <filter id="blur" x="-20%" y="-20%" width="140%" height="140%">
+      <feGaussianBlur in="SourceGraphic" stdDeviation="7"/>
+    </filter>
+    <radialGradient id="glare" cx="35%" cy="30%" r="60%">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.85"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="600" height="800" fill="#f6efe2" stroke="#8a6d3b" stroke-width="6"/>
+  <rect x="14" y="14" width="572" height="772" fill="none" stroke="#8a6d3b" stroke-width="1.5"/>
+
+  <rect x="0" y="0" width="600" height="34" fill="#b03a2e"/>
+  <text x="300" y="23" text-anchor="middle" fill="#ffffff" font-size="15" font-weight="bold" letter-spacing="1">PLACEHOLDER — BROKEN ON PURPOSE — unreadable (low confidence) REVIEW</text>
+
+  <!-- DEFECT: the whole label is illegible (blur + glare), so no field can be read. -->
+  <g filter="url(#blur)">
+    <text x="300" y="170" text-anchor="middle" fill="#3a2c12" font-size="46" font-weight="bold" letter-spacing="3">OLD TOM</text>
+    <text x="300" y="220" text-anchor="middle" fill="#3a2c12" font-size="40" font-weight="bold" letter-spacing="6">DISTILLERY</text>
+    <text x="300" y="295" text-anchor="middle" fill="#5a4423" font-size="22" font-style="italic">Kentucky Straight</text>
+    <text x="300" y="325" text-anchor="middle" fill="#5a4423" font-size="22" font-style="italic">Bourbon Whiskey</text>
+    <text x="300" y="420" text-anchor="middle" fill="#3a2c12" font-size="24" font-weight="bold">45% Alc./Vol. (90 Proof)</text>
+    <text x="300" y="455" text-anchor="middle" fill="#3a2c12" font-size="20">750 mL</text>
+    <text x="300" y="560" text-anchor="middle" fill="#3a2c12" font-size="13">GOVERNMENT WARNING: (1) According to the Surgeon</text>
+    <text x="300" y="585" text-anchor="middle" fill="#3a2c12" font-size="13">General, women should not drink alcoholic beverages</text>
+    <text x="300" y="610" text-anchor="middle" fill="#3a2c12" font-size="13">during pregnancy ... and may cause health problems.</text>
+  </g>
+  <rect x="0" y="34" width="600" height="640" fill="url(#glare)"/>
+
+  <text x="300" y="700" text-anchor="middle" fill="#b03a2e" font-size="13" font-weight="bold">EXPECT REVIEW: image illegible — route to "re-upload a clearer photo", never auto-approve</text>
+  <text x="300" y="745" text-anchor="middle" fill="#8a6d3b" font-size="12">imageFilename: unreadable-blurry.svg — replace with a real blurry/glare image per MANIFEST.md</text>
+</svg>

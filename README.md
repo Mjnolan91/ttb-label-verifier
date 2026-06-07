@@ -9,6 +9,77 @@ TTB checks — brand name, alcohol content, and the government health warning �
 ensemble-extraction + deterministic-comparison architecture. See `specs/PROJECT_SPEC.md`
 for the full spec and `AGENTS.md` for the architecture and conventions.
 
+> **Runs with zero keys.** The app and the *entire* test suite run offline on a mock
+> provider — `npm install && npm run dev`, no API keys, no network. Real Azure extractors
+> are opt-in via environment variables only. See [Trade-offs & limitations](#trade-offs--limitations)
+> and [Deploying to Azure](#deploying-to-azure).
+
+## Design decisions → stakeholder needs
+Every major choice traces back to a specific person from the discovery interviews, so the
+"why" is never lost. (Full requirement list with citations in `specs/PROJECT_SPEC.md`.)
+
+| Stakeholder (role) | Their need | Design decision |
+| --- | --- | --- |
+| **Sarah** — supervising agent; her team is 50+, including a **73-year-old** reviewer; handles **batches of 200–300** at peak | A prior scanner took 30–40s/label and was abandoned — **speed is the #1 adoption gate**; the screen must be usable without hunting; big batches can't be processed one at a time | **~5s latency ceiling**: when two extractors run they run in **parallel** with a per-call **~3s timeout** (`Promise.allSettled` + `AbortController`), reconciling whatever returned instead of blocking on a straggler (US-010). **Accessibility-first single screen** targeting WCAG 2.1 AA — ≥4.5:1 contrast, ≥44×44px targets, visible non-color-only focus, full keyboard order, programmatic labels (US-006/007). **Batch upload + results table + CSV export** with progressive results (US-013, stretch). |
+| **Marcus** — IT | The **outbound firewall blocks many domains and killed the last vendor's external ML endpoints**; the prototype must stay standalone with **no PII** and deploy to **Azure** | Extraction sits behind a swappable **`VisionProvider`** interface, and the real providers are **Azure-native / in-tenant** — `llm` → **Azure OpenAI** (multimodal), `ocr` → **Azure AI Document Intelligence** (OCR). Running extraction *inside the Azure tenant* is the firewall-survival story: it isn't an external endpoint the outbound firewall blocks. **No auth, no PII persisted, no COLA** integration. **Deploy target is Azure** (App Service or Container Apps), and the app still runs fully in mock mode with **zero keys** (US-009/010/014). |
+| **Dave** — 28-year agent | Obvious-equivalent brand strings keep getting flagged — `STONE'S THROW` vs `Stone's Throw` is plainly the same product | **Fuzzy brand check**: normalize case, whitespace, punctuation, and smart quotes (U+2019), then compare. Exact-after-normalization = **pass**; high similarity = **review** (shows the discrepancy); low = **fail** (US-004). |
+| **Jenny** — junior agent | The warning must match **word-for-word**; `GOVERNMENT WARNING:` must be **caps and bold**; a title-case prefix should be **rejected** | **Strict warning check** against the verbatim statutory text (27 CFR Part 16), reading the extractor's `warningPrefixIsAllCaps` / `warningPrefixIsBold` flags rather than re-deriving format from raw text. Title-case (`Government Warning`), reworded, or missing = **fail**. Bold is tri-state: undetectable (`null`) is treated as "cannot assert," not a violation (US-004). Bad photos fail **gracefully** with a re-upload prompt instead of asserting a verdict (US-008). |
+
+The unifying thesis (see `AGENTS.md` and `specs/PROJECT_SPEC.md`): be **superhuman on the
+axes where machines win** — consistency, throughput, tireless recall of routine checks —
+while **routing ambiguity to a human**. Thresholds are **asymmetric**: the system optimizes
+to minimize **false approvals**, preferring an unnecessary review to a missed violation. The
+`eval/` harness proves this with numbers (per-field precision/recall + latency p50/p95) and
+**fails CI if approve-precision drops below 0.98** (US-012).
+
+## Trade-offs & limitations
+Honest accounting of the choices and what they cost:
+
+- **Mock provider is the default, by design.** The app and the entire test suite run with
+  **no network and no API keys**. This keeps the build hermetic, deterministic, and CI-safe,
+  but it means out-of-the-box runs exercise the *pipeline and verdict logic*, not a real
+  model's reading accuracy. Real extraction is opt-in via `VISION_PROVIDER=llm|ocr` + Azure
+  env vars. **Trade-off:** reviewers see the deterministic comparator working end-to-end
+  immediately; judging real OCR/vision accuracy requires supplying Azure credentials.
+- **Test fixtures are hermetic and key off the image *filename*, not pixels.** The mock
+  returns a fixture's extracted fields based on its filename, so the suite needs **no real
+  images** (`eval/fixtures/cases.json` is the labeled manifest). **Trade-off / action
+  required:** the six images in `eval/fixtures/images/` are **`.svg` placeholders**, not real
+  label photos. Real label images are **user-supplied later** — drop them at the exact paths
+  in `eval/fixtures/images/MANIFEST.md` before exercising a real provider (`llm`/`ocr`) or a
+  live demo. The offline test + eval suite passes without them.
+- **Azure is the chosen cloud, not a multi-cloud abstraction.** The reference providers and
+  deploy steps are Azure-specific *on purpose* — it's the in-tenant answer to Marcus's
+  outbound-firewall constraint. The `VisionProvider` interface itself stays generic, so a
+  different backend (AWS Textract, GCP Vision, a local OCR engine) could be added later, but
+  only Azure is implemented and documented here. **Trade-off:** tight fit to the stated
+  firewall problem at the cost of portability work that wasn't in scope.
+- **Domain tolerances encode the full beverage matrix, with a couple of items flagged.** The
+  alcohol check selects its CFR tolerance from the beverage class — distilled spirits ±0.3pp
+  (27 CFR 5.65(c)); wine ≤14% ±1.5pp and wine >14% ±1.0pp (27 CFR 4.36(b)(1), with the
+  4.36(c) 14% tax-class boundary recorded as a clamp, not folded into the number); malt
+  beverages/beer ±0.3pp (27 CFR 7.65, with the 0.5% floor and 2.5% low/reduced-alcohol cap
+  noted). Two resolutions are **flagged "VERIFY before production"** in `src/domain/`:
+  - **Cider** has no standalone tolerance — it's classified by *production method*. We default
+    it to **wine ≤14% (±1.5pp)** (the common apple/pear fruit-cider case); malt-based ciders
+    should be classified `maltBeverage` upstream. The 8.5% ABV figure for cider is a
+    hard-cider **tax-rate** boundary, *not* a labeling tolerance, and is intentionally not
+    encoded.
+  - **`unknown` class** falls back to the **tightest band (±0.3pp)** as a conservative
+    *product* default (not a CFR value) to avoid false approvals; unknown-class labels are
+    better routed to human review.
+  - The asymmetric **boundary constraints** (wine 14% clamp; malt 0.5%/2.5% limits) currently
+    travel as documented metadata on each tolerance rule; **enforcing** them is the
+    comparator's job (US-004). The CFR tolerance *values* were web-verified against eCFR /
+    Cornell LII; some TTB.gov *guidance* pages (cider classification) were corroborated via
+    search summaries.
+- **The government-warning text is statutory and verbatim.** It is **never reworded** to make
+  a check pass; it lives once in `src/domain/warning.ts`, validated byte-for-byte against the
+  canonical text in `AGENTS.md`.
+- **Scope is deliberately narrow.** No COLA integration, no auth, no PII storage, and no image
+  deskewing/glare correction — bad photos are handled by asking for a re-upload, not by
+  trying to out-read a human on a glare-y image.
+
 ## How the autonomous build works
 Ralph runs Claude Code in a loop. Each iteration is a **fresh** Claude Code instance with
 clean context; the only memory between iterations is git history, `scripts/ralph/progress.txt`,
@@ -65,6 +136,90 @@ npm run build      # production build
 ```
 Real extraction providers are opt-in via env vars (see `.env.example` once generated);
 with no keys set, the app runs end-to-end on the mock provider.
+
+### Enabling real (Azure-native) extraction — optional
+The default `mock` provider needs nothing. To switch to a real, **in-tenant** extractor, set
+`VISION_PROVIDER` and the matching Azure vars (these live in `.env.example`; never commit real
+secrets):
+
+```bash
+# Option A — fast multimodal model: Azure OpenAI (US-009)
+VISION_PROVIDER=llm
+AZURE_OPENAI_ENDPOINT=https://<your-resource>.openai.azure.com
+AZURE_OPENAI_API_KEY=<key>
+AZURE_OPENAI_DEPLOYMENT=<your-vision-capable-deployment>
+# AZURE_OPENAI_API_VERSION=2024-06-01   # optional
+
+# Option B — dedicated OCR: Azure AI Document Intelligence (US-010)
+VISION_PROVIDER=ocr
+AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT=https://<your-resource>.cognitiveservices.azure.com
+AZURE_DOCUMENT_INTELLIGENCE_KEY=<key>
+```
+
+If a selected provider's required vars are unset, it fails with an actionable message — and
+the absence of Azure keys never affects the default (mock) dev/test path. Running both
+extractors reconciles them in parallel within the ~5s budget (US-010).
+
+## Deploying to Azure
+Azure is the deploy target on purpose: the real extractors run **inside the Azure tenant**, so
+they survive the outbound firewall that blocked the previous vendor (Marcus's constraint). The
+app still runs **end-to-end in mock mode with zero keys**, so you can deploy first and add
+Azure extraction later. Pick **one** of the two paths below. Both assume the
+[Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) is installed and you've
+run `az login`.
+
+```bash
+# Shared: a resource group (one-time)
+az group create --name ttb-label-verifier-rg --location eastus
+```
+
+**Path A — Azure App Service (simplest):**
+```bash
+# Build, then deploy the Node app straight from this directory.
+npm install && npm run build
+
+az webapp up \
+  --name ttb-label-verifier \
+  --resource-group ttb-label-verifier-rg \
+  --runtime "NODE:20-lts" \
+  --sku B1
+
+# (optional) enable real extraction by setting env vars on the running app:
+az webapp config appsettings set \
+  --name ttb-label-verifier \
+  --resource-group ttb-label-verifier-rg \
+  --settings VISION_PROVIDER=llm \
+             AZURE_OPENAI_ENDPOINT="https://<res>.openai.azure.com" \
+             AZURE_OPENAI_API_KEY="<key>" \
+             AZURE_OPENAI_DEPLOYMENT="<deployment>"
+# → public URL: https://ttb-label-verifier.azurewebsites.net
+```
+
+**Path B — Azure Container Apps (containerized):**
+```bash
+# Build and push the image to Azure Container Registry, then deploy it.
+az acr create --resource-group ttb-label-verifier-rg --name ttblabelverifieracr --sku Basic
+az acr build --registry ttblabelverifieracr --image ttb-label-verifier:latest .
+
+az containerapp up \
+  --name ttb-label-verifier \
+  --resource-group ttb-label-verifier-rg \
+  --image ttblabelverifieracr.azurecr.io/ttb-label-verifier:latest \
+  --target-port 3000 \
+  --ingress external
+
+# (optional) set env vars for real extraction (mock is the default if you skip this):
+az containerapp update \
+  --name ttb-label-verifier \
+  --resource-group ttb-label-verifier-rg \
+  --set-env-vars VISION_PROVIDER=ocr \
+                 AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT="https://<res>.cognitiveservices.azure.com" \
+                 AZURE_DOCUMENT_INTELLIGENCE_KEY="<key>"
+```
+
+> The exact runtime/SKU names and any Dockerfile are finalized when US-014 lands; see
+> `.env.example` (generated by US-014) for the authoritative, copy-pasteable list of every env
+> var. With **none** of them set, the deployed app serves the full UI on the mock provider.
 
 ## File map
 | Path | Purpose |

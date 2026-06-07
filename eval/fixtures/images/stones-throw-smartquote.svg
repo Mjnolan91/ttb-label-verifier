@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="800" viewBox="0 0 600 800" font-family="Georgia, 'Times New Roman', serif">
+  <rect width="600" height="800" fill="#eef2f6" stroke="#34495e" stroke-width="6"/>
+  <rect x="14" y="14" width="572" height="772" fill="none" stroke="#34495e" stroke-width="1.5"/>
+
+  <rect x="0" y="0" width="600" height="34" fill="#1f7a4d"/>
+  <text x="300" y="23" text-anchor="middle" fill="#ffffff" font-size="15" font-weight="bold" letter-spacing="1">PLACEHOLDER — benign brand PASS (case + smart-quote only)</text>
+
+  <!-- Label shows brand in ALL CAPS with a smart apostrophe; application claims 'Stone’s Throw' -->
+  <text x="300" y="170" text-anchor="middle" fill="#1c2c3a" font-size="44" font-weight="bold" letter-spacing="3">STONE&#8217;S THROW</text>
+
+  <text x="300" y="240" text-anchor="middle" fill="#34495e" font-size="22" font-style="italic">Kentucky Straight</text>
+  <text x="300" y="270" text-anchor="middle" fill="#34495e" font-size="22" font-style="italic">Bourbon Whiskey</text>
+
+  <line x1="120" y1="320" x2="480" y2="320" stroke="#34495e" stroke-width="1"/>
+
+  <text x="300" y="365" text-anchor="middle" fill="#1c2c3a" font-size="24" font-weight="bold">40% Alc./Vol. (80 Proof)</text>
+  <text x="300" y="400" text-anchor="middle" fill="#1c2c3a" font-size="20">750 mL</text>
+
+  <line x1="120" y1="435" x2="480" y2="435" stroke="#34495e" stroke-width="1"/>
+
+  <text x="60" y="500" fill="#1a1a1a" font-size="15" font-family="Arial, Helvetica, sans-serif">
+    <tspan font-weight="bold">GOVERNMENT WARNING:</tspan><tspan font-weight="normal"> (1) According to the</tspan>
+  </text>
+  <text x="60" y="524" fill="#1a1a1a" font-size="15" font-weight="normal" font-family="Arial, Helvetica, sans-serif">Surgeon General, women should not drink alcoholic</text>
+  <text x="60" y="548" fill="#1a1a1a" font-size="15" font-weight="normal" font-family="Arial, Helvetica, sans-serif">beverages during pregnancy because of the risk of</text>
+  <text x="60" y="572" fill="#1a1a1a" font-size="15" font-weight="normal" font-family="Arial, Helvetica, sans-serif">birth defects. (2) Consumption of alcoholic beverages</text>
+  <text x="60" y="596" fill="#1a1a1a" font-size="15" font-weight="normal" font-family="Arial, Helvetica, sans-serif">impairs your ability to drive a car or operate machinery,</text>
+  <text x="60" y="620" fill="#1a1a1a" font-size="15" font-weight="normal" font-family="Arial, Helvetica, sans-serif">and may cause health problems.</text>
+
+  <text x="300" y="690" text-anchor="middle" fill="#1f7a4d" font-size="13" font-weight="bold">EXPECT PASS: claimed "Stone&#8217;s Throw" == label "STONE&#8217;S THROW" after normalization</text>
+  <text x="300" y="745" text-anchor="middle" fill="#34495e" font-size="12">imageFilename: stones-throw-smartquote.svg — replace with a real image per MANIFEST.md</text>
+</svg>

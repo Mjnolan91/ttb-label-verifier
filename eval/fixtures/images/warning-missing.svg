@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="800" viewBox="0 0 600 800" font-family="Georgia, 'Times New Roman', serif">
+  <rect width="600" height="800" fill="#f6efe2" stroke="#8a6d3b" stroke-width="6"/>
+  <rect x="14" y="14" width="572" height="772" fill="none" stroke="#8a6d3b" stroke-width="1.5"/>
+
+  <rect x="0" y="0" width="600" height="34" fill="#b03a2e"/>
+  <text x="300" y="23" text-anchor="middle" fill="#ffffff" font-size="15" font-weight="bold" letter-spacing="1">PLACEHOLDER — BROKEN ON PURPOSE — warning FAIL (no warning at all)</text>
+
+  <text x="300" y="170" text-anchor="middle" fill="#3a2c12" font-size="46" font-weight="bold" letter-spacing="3">OLD TOM</text>
+  <text x="300" y="220" text-anchor="middle" fill="#3a2c12" font-size="40" font-weight="bold" letter-spacing="6">DISTILLERY</text>
+
+  <text x="300" y="295" text-anchor="middle" fill="#5a4423" font-size="22" font-style="italic">Kentucky Straight</text>
+  <text x="300" y="325" text-anchor="middle" fill="#5a4423" font-size="22" font-style="italic">Bourbon Whiskey</text>
+
+  <line x1="120" y1="370" x2="480" y2="370" stroke="#8a6d3b" stroke-width="1"/>
+
+  <text x="300" y="420" text-anchor="middle" fill="#3a2c12" font-size="24" font-weight="bold">45% Alc./Vol. (90 Proof)</text>
+  <text x="300" y="455" text-anchor="middle" fill="#3a2c12" font-size="20">750 mL</text>
+
+  <line x1="120" y1="495" x2="480" y2="495" stroke="#8a6d3b" stroke-width="1"/>
+
+  <!-- DEFECT: the mandatory government health warning block is entirely absent. -->
+  <rect x="60" y="525" width="480" height="120" fill="none" stroke="#b03a2e" stroke-width="2" stroke-dasharray="6 5"/>
+  <text x="300" y="580" text-anchor="middle" fill="#b03a2e" font-size="18" font-weight="bold">[ NO GOVERNMENT WARNING PRESENT ]</text>
+  <text x="300" y="610" text-anchor="middle" fill="#b03a2e" font-size="14">Required at 0.5% ABV or above — ABLA 1988 / 27 CFR Part 16</text>
+
+  <text x="300" y="700" text-anchor="middle" fill="#b03a2e" font-size="13" font-weight="bold">EXPECT FAIL: warning is mandatory on 45% ABV spirits and is missing</text>
+  <text x="300" y="745" text-anchor="middle" fill="#8a6d3b" font-size="12">imageFilename: warning-missing.svg — replace with a real image per MANIFEST.md</text>
+</svg>
