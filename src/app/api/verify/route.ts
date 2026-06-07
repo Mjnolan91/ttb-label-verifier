@@ -86,16 +86,26 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  // Unreadable / low-confidence image: surface the re-upload prompt, never a fabricated verdict.
+  // Unreadable / low-confidence image: surface the right prompt, never a fabricated verdict.
   if (!outcome.readable || !outcome.result) {
+    // Distinguish "demo mock recognized nothing" (all-zero confidence) from a genuine
+    // low-confidence read, so the message is honest rather than misleadingly "blurry".
+    const usingMock = providers.every((p) => p.name === "mock");
+    const confidences = Object.values(outcome.extracted.confidence).filter(
+      (c): c is number => typeof c === "number",
+    );
+    const nothingRead = confidences.length === 0 || Math.max(...confidences) === 0;
+    const message =
+      usingMock && nothingRead
+        ? "Demo (mock) mode only recognizes the bundled sample labels — with no API keys there is no real model reading the image. Try a sample on the form, or set VISION_PROVIDER + Azure credentials to read your own photos."
+        : "We couldn't read this label clearly — please re-upload a clearer, well-lit photo with the label flat and in focus.";
     const payload: VerifyApiResponse = {
       provider: providerName,
       readable: false,
       claimed,
       extracted: outcome.extracted,
       result: null,
-      message:
-        "We couldn't read this label clearly. Please re-upload a clearer, well-lit photo with the label flat and in focus.",
+      message,
     };
     return Response.json(payload);
   }

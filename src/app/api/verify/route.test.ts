@@ -61,12 +61,14 @@ describe("POST /api/verify — unreadable / low-confidence (re-upload, no verdic
     expect(json.message).toMatch(/re-upload|clearer/i);
   });
 
-  it("returns readable=false for an unrecognized filename (mock read nothing)", async () => {
+  it("returns readable=false for an unrecognized filename with an honest demo-mode message", async () => {
     const res = await postForm(cleanClaim, stubImage("some-random-unknown-image.png"));
     expect(res.status).toBe(200);
     const json = await res.json();
     expect(json.readable).toBe(false);
     expect(json.result).toBeNull();
+    // Explains WHY (demo mode), rather than misleadingly claiming the photo was blurry.
+    expect(json.message).toMatch(/demo|sample labels/i);
   });
 });
 

@@ -143,3 +143,14 @@ US-014 (deploy config): next.config.ts now `output: "standalone"` (emits .next/s
   copy-paste steps already present; removed the "US-014 will finalize" caveat, linked Dockerfile/.env.example).
   Added src/app/icon.svg favicon -> browser console is now 0 errors. `npm run build` OK (standalone present),
   typecheck/lint/test (18 files / 146) + eval all green. ALL 14 STORIES PASS.
+POST-LOOP FIX (user feedback: "uploaded a file, image didn't pop up; verify didn't pull info"):
+  Two real UX gaps fixed in src/app/VerifyForm.tsx + the route. (1) IMAGE PREVIEW: the chosen file now
+  renders as an <img> (object URL, revoked on change) — the drop zone previously showed only the filename.
+  (2) ONE-CLICK SAMPLE LABELS: bundled sample images copied to public/samples/ (served); sample buttons
+  fetch the image, prefill the claimed values, and auto-verify — so a reviewer gets a real verdict in one
+  click with NO keys (the offline mock keys off filename). (3) HONEST MESSAGING: route.ts now distinguishes
+  "mock recognized nothing" (all-zero confidence) from a genuine low-confidence read, so an arbitrary upload
+  says "Demo mode only recognizes bundled samples — set Azure creds to read your own images" instead of the
+  misleading "re-upload a clearer photo". Gates green (146 tests). OPEN DECISION: how should arbitrary
+  user images be read on the deployed demo — keyless in-browser OCR (Tesseract) vs deploy with Azure llm
+  vs samples-only. Awaiting user.
