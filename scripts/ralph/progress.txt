@@ -37,3 +37,15 @@ US-003 (extraction): src/extraction/ = VisionProvider interface + ImageInput ({f
   parses it (extraction stays raw). US-004 must add ClaimedFields.alcoholContentText + the parser.
   Empty warningText is preserved verbatim: "" at HIGH confidence = confidently-absent (US-004 fail);
   "" / all-low confidence = unreadable (review/re-upload) — the mock keeps these two paths distinct.
+US-004 (comparator): src/compare/ = compareBrand/compareAlcohol/compareWarning (pure, return
+  {status,claimed,extracted,reason}) + helpers (text normalize/Levenshtein similarity; parseAlcoholText;
+  resolveBeverageClass class-text->enum; isLowOrReducedAlcoholClaim). `npm test` = 10 files / 90 tests.
+  DESIGN: comparators are VALUE-BASED and confidence-AGNOSTIC on purpose — low-confidence->review is a
+  SEPARATE gate (US-011) applied over these verdicts in the verify orchestration. Brand: exact-after-
+  normalize=pass, >=0.8 similar=review, else fail. Warning: wording compared case-insensitively, prefix
+  caps/bold read from the EXTRACTED FLAGS (not re-derived), <0.5% ABV exempt via isWarningRequired.
+  Alcohol: class SELECTS tolerance via selectToleranceFor; boundary clamps enforced HERE (wine 14% per
+  4.36(c); malt 0.5% floor & 2.5% low/reduced cap per 7.65) — constants MALT_ABV_FLOOR/CAP live in the
+  comparator, NOT domain. For US-005: build verifyLabel = getVisionProvider().extract -> the 3 compares
+  -> overall (reject if any fail; else review if any review; else approve). compareAlcohol takes
+  claimedClass text (resolve to enum) or an explicit beverageClass.
