@@ -16,9 +16,9 @@ export default function Home() {
         </p>
         <h1 className="mt-1 text-4xl font-bold tracking-tight text-ink">{APP_TITLE}</h1>
         <p className="mt-3 max-w-2xl text-lg text-ink-muted">
-          Drop in a product&apos;s label images — front, back, neck — and the AI reads them together
-          into the full set of TTB-required fields, then checks the label for completeness against
-          TTB&apos;s requirements for its beverage type. Export as JSON or CSV. No typing.
+          Check a label against its application — brand, alcohol content, and the government warning →
+          Approve, Needs&nbsp;review, or Reject. The AI also reads the full set of TTB-required fields
+          and checks completeness for the beverage type. Export as JSON or CSV. No typing required to read.
         </p>
         <p className="mt-3">
           <Link href="/batch" className={linkClass}>
