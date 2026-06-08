@@ -11,16 +11,16 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { VerifyApiResponse, VerifyApiError } from "./api/verify/contract";
 import type { LabelPosition } from "@/extraction";
-import { combinedVerdict, type CombinedVerdict, type VerifyResult } from "@/compare";
+import { confirmVerdict, type ConfirmVerdict, type FieldConfirmation } from "@/compare";
+import type { RequirementKey } from "@/domain";
 import { ExtractedFieldsView } from "./ui/ExtractedFieldsView";
 import { CompletenessView } from "./ui/CompletenessView";
-import { ResultView } from "./ResultView";
-import { FormField } from "./ui/FormField";
+import { ConfirmPanel } from "./ui/ConfirmPanel";
 import { downscaleForUpload } from "./imageDownscale";
 import { DropZone } from "./ui/DropZone";
 import { ErrorAlert } from "./ui/ErrorAlert";
 import { ResultSkeleton } from "./ui/ResultSkeleton";
-import { inputClass, primaryButtonClass, secondaryButtonClass } from "./ui/fieldStyles";
+import { secondaryButtonClass } from "./ui/fieldStyles";
 import { downloadJson, downloadCsv } from "./ui/download";
 import { analysisToCsv } from "@/batch/csv";
 import { ImageLightbox } from "./ui/ImageLightbox";
@@ -47,10 +47,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
   const [state, setState] = useState<SubmitState>("idle");
   const [formError, setFormError] = useState<string | null>(null);
   const [response, setResponse] = useState<VerifyApiResponse | null>(null);
-  // The "verify against the application" values. The deterministic verdict is DERIVED from these +
-  // the reading (useMemo below), so the application-match outcome is front-and-center — it appears the
-  // moment a reading and the application values both exist, with no extra read and no extra state.
-  const [claimed, setClaimed] = useState({ brand: "", alcohol: "", classType: "" });
+  const [confirmations, setConfirmations] = useState<Partial<Record<RequirementKey, FieldConfirmation>>>({});
   // The image currently shown full-size in the lightbox, if any.
   const [zoom, setZoom] = useState<{ src: string; alt: string } | null>(null);
 
@@ -59,23 +56,18 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
     imageHelp: useId(),
     err: useId(),
     heading: useId(),
-    verifyHeading: useId(),
-    vBrand: useId(),
-    vAlcohol: useId(),
-    vClass: useId(),
   };
   const resultHeadingRef = useRef<HTMLHeadingElement>(null);
   const completenessHeadingRef = useRef<HTMLHeadingElement>(null);
   const verdictHeadingRef = useRef<HTMLHeadingElement>(null);
-  const justVerified = useRef(false);
   // Monotonic token so an in-flight read whose image set has since changed is ignored.
   const readToken = useRef(0);
 
   // When a read completes, move focus to the TOPMOST result heading so a keyboard/screen-reader user
   // lands on the headline outcome the verify-first page leads with — not the third section. Each
   // heading ref is populated ONLY while its section is mounted, so the priority order falls out of
-  // which ref exists: verdict (application values supplied) > completeness > extracted / re-upload.
-  // Keyed on `state` only so live recompute (typing application values) never steals focus.
+  // which ref exists: verdict (confirm panel) > completeness > extracted / re-upload.
+  // Keyed on `state` only so live recompute (confirming fields) never steals focus.
   useEffect(() => {
     if (state !== "done") return;
     const target =
@@ -83,43 +75,16 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
     target?.focus();
   }, [state]);
 
-  // Derive the application-match verdict from the reading + the application values (no effect, no
-  // extra state). It exists the moment a readable extraction and brand+alcohol are present, so
-  // verification is the headline outcome with no button to hunt for.
-  const combined: CombinedVerdict | null = useMemo(() => {
-    if (state !== "done" || !response?.readable) return null;
-    if (claimed.brand.trim() === "" || claimed.alcohol.trim() === "") return null;
-    return combinedVerdict(
-      {
-        brand: claimed.brand.trim(),
-        alcoholContentText: claimed.alcohol.trim(),
-        classType: claimed.classType.trim() || undefined,
-      },
-      response.extracted,
-    );
-  }, [state, response, claimed.brand, claimed.alcohol, claimed.classType]);
-  // The per-field comparison (for the cards) and the gated headline verdict.
-  const verdict: VerifyResult | null = combined?.verify ?? null;
+  // Derive the confirm verdict from the reading + the human confirmations (no effect, no extra
+  // state). Exists the moment a readable extraction is present; each confirmation action updates it.
+  const verdict: ConfirmVerdict | null = useMemo(
+    () => (state === "done" && response?.readable ? confirmVerdict(response.extracted, confirmations) : null),
+    [state, response, confirmations],
+  );
 
-  // Move focus to the verdict only when the agent explicitly pressed Verify (not on live recompute).
-  useEffect(() => {
-    if (verdict && justVerified.current) {
-      justVerified.current = false;
-      verdictHeadingRef.current?.focus();
-    }
-  }, [verdict]);
-
-  const canVerify =
-    state === "done" &&
-    Boolean(response?.readable) &&
-    claimed.brand.trim() !== "" &&
-    claimed.alcohol.trim() !== "";
-
-  // The verdict is computed reactively; pressing Verify just announces/jumps to it.
-  function onVerifyClick() {
-    justVerified.current = true;
-    if (verdict) verdictHeadingRef.current?.focus();
-  }
+  const accept = (key: RequirementKey) => setConfirmations((p) => ({ ...p, [key]: { state: "accepted" } }));
+  const edit = (key: RequirementKey, value: string) => setConfirmations((p) => ({ ...p, [key]: { state: "edited", editedValue: value } }));
+  const markMissing = (key: RequirementKey) => setConfirmations((p) => ({ ...p, [key]: { state: "missing" } }));
 
   // Read the current image set (front/back/...) together. Triggered from the handlers, not an
   // effect, so the AI reads automatically the moment images change — with no manual "go" button.
@@ -142,6 +107,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
         setState("error");
         return;
       }
+      setConfirmations({});
       setResponse(json as VerifyApiResponse);
       setState("done");
     } catch {
@@ -190,31 +156,22 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
   const exportBase = (orderedImages[0]?.file.name ?? "label").replace(/\.[^.]+$/, "");
   function onDownloadJson() {
     if (!response) return;
-    const result = verdict ?? response.result;
     downloadJson(`${exportBase}.json`, {
       images: orderedImages.map((i) => ({ filename: i.file.name, position: i.position })),
       provider: response.provider,
       extracted: response.extracted,
       completeness: response.completeness,
-      ...(result ? { result } : {}),
+      ...(verdict
+        ? { confirm: { overall: verdict.overall, awaitingConfirmation: verdict.awaitingConfirmation,
+            fields: verdict.fields.map((f) => ({ key: f.key, value: f.value, status: f.status, state: f.state })) } }
+        : {}),
     });
   }
   function onDownloadCsv() {
     if (!response) return;
-    downloadCsv(
-      `${exportBase}.csv`,
-      analysisToCsv([
-        {
-          filename: exportBase,
-          extracted: response.extracted,
-          result: verdict ?? response.result,
-          completeness: response.completeness,
-          // Export the GATED headline (matches the on-screen verdict + the batch CSV), not the
-          // ungated 3-check overall — otherwise a label shown as "Needs review" would export approve.
-          overall: combined?.overall ?? undefined,
-        },
-      ]),
-    );
+    downloadCsv(`${exportBase}.csv`, analysisToCsv([
+      { filename: exportBase, extracted: response.extracted, completeness: response.completeness, overall: verdict?.overall ?? undefined },
+    ]));
   }
 
   const readable = state === "done" && response?.readable;
@@ -230,8 +187,8 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
       </h2>
       <p className="mt-1 text-ink-muted">
         Upload the product&apos;s front label (and the back, if you have it) and the AI reads them
-        together. Add the application values to check the label matches; or just read the label and
-        export the data. No typing required to read.
+        together, fills in every field TTB requires for the beverage type, and asks you to confirm or
+        correct each. No typing required to read.
       </p>
 
       {mockMode && (
@@ -296,79 +253,14 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
         </div>
       </div>
 
-      {/* Step 2 — the application values to verify against (always visible; this IS the check) */}
-      <form
-        className="mt-6"
-        onSubmit={(e) => {
-          e.preventDefault();
-          onVerifyClick();
-        }}
-      >
-        <h3 id={ids.verifyHeading} className="font-medium text-ink">
-          2. What does the application say?{" "}
-          <span className="font-normal text-ink-muted">
-            (the COLA application — optional, but this is the match check)
-          </span>
-        </h3>
-        <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <FormField label="Brand name" htmlFor={ids.vBrand}>
-            <input
-              id={ids.vBrand}
-              className={inputClass}
-              value={claimed.brand}
-              onChange={(e) => setClaimed((c) => ({ ...c, brand: e.target.value }))}
-              placeholder="e.g. Old Tom Distillery"
-              autoComplete="off"
-            />
-          </FormField>
-          <FormField label="Alcohol content" htmlFor={ids.vAlcohol}>
-            <input
-              id={ids.vAlcohol}
-              className={inputClass}
-              value={claimed.alcohol}
-              onChange={(e) => setClaimed((c) => ({ ...c, alcohol: e.target.value }))}
-              placeholder="e.g. 45% Alc./Vol. (90 Proof)"
-              autoComplete="off"
-            />
-          </FormField>
-          <div className="sm:col-span-2">
-            <FormField
-              label="Class / type"
-              htmlFor={ids.vClass}
-              hint="Optional — helps select the right ABV tolerance (e.g. Bourbon, Table Wine, IPA)."
-            >
-              <input
-                id={ids.vClass}
-                className={inputClass}
-                value={claimed.classType}
-                onChange={(e) => setClaimed((c) => ({ ...c, classType: e.target.value }))}
-                placeholder="e.g. Kentucky Straight Bourbon Whiskey"
-                autoComplete="off"
-              />
-            </FormField>
-          </div>
-        </div>
-        <div className="mt-4 flex flex-wrap items-center gap-3">
-          <button type="submit" className={primaryButtonClass} disabled={!canVerify}>
-            Verify against the application
-          </button>
-          <span className="text-sm text-ink-muted">
-            {canVerify
-              ? "Brand, alcohol content, and the government warning are checked against the label."
-              : "Add the brand name and alcohol content from the application to run the match — or skip this and just read the label below."}
-          </span>
-        </div>
-      </form>
-
-      {/* Persistent live region: the verdict can appear/refresh reactively as the agent types the
-          application values AFTER the read (no `state` change), so the focus-move announcement never
-          fires on that — the dominant — path. This polite region announces the headline outcome
-          whenever it appears or changes, so a screen-reader/keyboard user is never left in silence. */}
+      {/* Persistent live region: the verdict can appear/refresh reactively as the agent confirms
+          fields (no `state` change), so the focus-move announcement never fires on that path. This
+          polite region announces the headline outcome whenever it appears or changes. */}
       <p role="status" aria-live="polite" className="sr-only">
-        {combined?.overall
-          ? `Verification result: ${VERDICT_LABEL[combined.overall]}.${
-              combined.gatedByCompleteness ? " A field this beverage type requires needs review." : ""
-            }`
+        {verdict
+          ? verdict.awaitingConfirmation
+            ? `${verdict.fields.filter((f) => f.needsConfirmation).length} fields need your confirmation.`
+            : `Verdict: ${VERDICT_LABEL[verdict.overall]}.`
           : ""}
       </p>
 
@@ -391,14 +283,15 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
         </>
       )}
 
-      {/* Results — lead with the application-match verdict, then completeness, then the full reading. */}
+      {/* Results — lead with the confirm panel (verdict + field confirmations), then completeness, then the full reading. */}
       {readable && response && (
         <>
           {verdict && (
-            <ResultView
-              result={verdict}
-              overall={combined?.overall ?? undefined}
-              gatedByCompleteness={combined?.gatedByCompleteness ?? false}
+            <ConfirmPanel
+              verdict={verdict}
+              onAccept={accept}
+              onEdit={edit}
+              onMarkMissing={markMissing}
               headingRef={verdictHeadingRef}
             />
           )}
