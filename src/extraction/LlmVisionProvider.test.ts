@@ -13,7 +13,7 @@ import {
   type AzureOpenAIConfig,
   type FetchLike,
 } from "./index";
-import { parseModelJson } from "./LlmVisionProvider";
+import { parseModelJson, USER_PROMPT, EXTRACTION_RESPONSE_FORMAT } from "./LlmVisionProvider";
 
 /** A FetchLike that returns one canned Azure chat-completions payload (no network). */
 function fetchReturning(payload: unknown, ok = true, status = 200): FetchLike {
@@ -305,5 +305,17 @@ describe("LlmVisionProvider.extract — error/refusal handling (HTTP mocked)", (
       fetchImpl: fetchReturning({ choices: [{ finish_reason: "length", message: { content: "{" } }] }),
     });
     await expect(p.extract(img)).rejects.toThrow(/truncated/i);
+  });
+});
+
+describe("prompt + schema restructure (A3)", () => {
+  it("USER_PROMPT no longer duplicates the JSON object shape", () => {
+    expect(USER_PROMPT).not.toMatch(/"brand"\s*:\s*\{/);
+    expect(USER_PROMPT).not.toMatch(/"confidence"\s*:\s*number/);
+  });
+  it("every catalog field carries a schema description (per-field instruction)", () => {
+    const props = EXTRACTION_RESPONSE_FORMAT.json_schema.schema.properties as Record<string, { description?: string }>;
+    expect(props.brand.description).toMatch(/transcribe/i);
+    expect(props.warningText.description).toMatch(/verbatim/i);
   });
 });

@@ -6,9 +6,10 @@
  * new field meant editing all of them and the CSV silently drifted from the JSON. Every one of those
  * layers now derives from this ordered catalog — edit a field HERE and the plumbing follows.
  *
- * (The LLM json_schema + prose prompt in LlmVisionProvider.ts intentionally stay hand-written: each
- * field needs human-tuned extraction guidance, and over-generating the prompt would hurt accuracy.
- * They reference the same keys, so they stay in step by convention, not by generation.)
+ * Per-field extraction instructions live as `description` on each descriptor and are promoted into
+ * the structured-output schema (json_schema / responseSchema) so the model reads them as field-level
+ * guidance. Google research shows duplicating the schema shape in the prompt LOWERS output quality,
+ * so the prose USER_PROMPT is now a short framing paragraph only.
  */
 import type { ExtractedFields, FieldConfidence } from "@/domain";
 
@@ -45,6 +46,12 @@ export interface FieldDescriptor {
   csvColumn: string;
   /** Progressive-disclosure grouping: the few fields an agent reads first vs the long tail. */
   group: "headline" | "detail";
+  /**
+   * Per-field extraction instruction. Becomes the schema property `description` (the model reads
+   * it as a field-level rule). Port guidance from the prose prompt here so it travels with the
+   * schema and never drifts from the field definition.
+   */
+  description: string;
 }
 
 /**
@@ -53,21 +60,93 @@ export interface FieldDescriptor {
  * (behind a "show everything" disclosure). Adding a field is a one-line edit here.
  */
 export const FIELD_CATALOG: readonly FieldDescriptor[] = [
-  { key: "brand", rawKey: "brand", confKey: "brand", label: "Brand name", csvColumn: "brand", group: "headline" },
-  { key: "classType", rawKey: "classType", confKey: "classType", label: "Class / type", csvColumn: "type", group: "headline" },
-  { key: "alcoholContentText", rawKey: "alcoholContent", confKey: "alcoholContent", label: "Alcohol content", csvColumn: "alcohol", group: "headline" },
-  { key: "netContents", rawKey: "netContents", confKey: "netContents", label: "Net contents", csvColumn: "net_contents", group: "headline" },
-  { key: "warningText", rawKey: "warningText", confKey: "warningText", label: "Government warning", csvColumn: "warning_text", group: "headline" },
-  { key: "class", rawKey: "class", confKey: "class", label: "Broad category", csvColumn: "class", group: "detail" },
-  { key: "name", rawKey: "name", confKey: "name", label: "Producer / bottler name", csvColumn: "name", group: "detail" },
-  { key: "address", rawKey: "address", confKey: "address", label: "Producer / bottler address", csvColumn: "address", group: "detail" },
-  { key: "countryOfOrigin", rawKey: "countryOfOrigin", confKey: "countryOfOrigin", label: "Country of origin", csvColumn: "country_of_origin", group: "detail" },
-  { key: "appellation", rawKey: "appellation", confKey: "appellation", label: "Appellation", csvColumn: "appellation", group: "detail" },
-  { key: "vintage", rawKey: "vintage", confKey: "vintage", label: "Vintage", csvColumn: "vintage", group: "detail" },
-  { key: "varietal", rawKey: "varietal", confKey: "varietal", label: "Varietal", csvColumn: "varietal", group: "detail" },
-  { key: "sulfiteDeclaration", rawKey: "sulfiteDeclaration", confKey: "sulfiteDeclaration", label: "Sulfite declaration", csvColumn: "sulfites", group: "detail" },
-  { key: "ageStatement", rawKey: "ageStatement", confKey: "ageStatement", label: "Age statement", csvColumn: "age_statement", group: "detail" },
-  { key: "commodityStatement", rawKey: "commodityStatement", confKey: "commodityStatement", label: "Commodity statement", csvColumn: "commodity_statement", group: "detail" },
+  {
+    key: "brand", rawKey: "brand", confKey: "brand", label: "Brand name", csvColumn: "brand", group: "headline",
+    description:
+      "The fanciful product/brand mark — usually the largest text or a logo wordmark (e.g. \"Single Barrel\", \"Stone's Throw\"). " +
+      "This is NOT automatically the bottling company: the legally responsible company belongs in `name`. " +
+      "Two decisive cases: (a) if the label shows a SHORT mark AND a longer producer name that CONTAINS it " +
+      "(mark \"ABC\" + producer \"ABC Distillery\"), `brand` is the SHORT mark (\"ABC\") and `name` is the producer " +
+      "(\"ABC Distillery\") — never put the producer in `brand`; (b) if the SAME words are the ONLY prominent name " +
+      "(a label whose only large text is \"OLD TOM DISTILLERY\"), populate BOTH `brand` and `name` with them. " +
+      "Transcribe verbatim; do not normalize.",
+  },
+  {
+    key: "classType", rawKey: "classType", confKey: "classType", label: "Class / type", csvColumn: "type", group: "headline",
+    description:
+      "The full specific class/type designation (standard of identity) exactly as printed, e.g. " +
+      "\"Kentucky Straight Bourbon Whiskey\", \"India Pale Ale\", \"Cabernet Sauvignon\". Transcribe verbatim.",
+  },
+  {
+    key: "alcoholContentText", rawKey: "alcoholContent", confKey: "alcoholContent", label: "Alcohol content", csvColumn: "alcohol", group: "headline",
+    description:
+      "The alcohol statement verbatim, e.g. \"45% Alc./Vol. (90 Proof)\", \"45% ALC/VOL\". Do not convert units or compute proof.",
+  },
+  {
+    key: "netContents", rawKey: "netContents", confKey: "netContents", label: "Net contents", csvColumn: "net_contents", group: "headline",
+    description: "Net contents as printed, e.g. \"750 mL\", \"750 ML\". Transcribe verbatim.",
+  },
+  {
+    key: "warningText", rawKey: "warningText", confKey: "warningText", label: "Government warning", csvColumn: "warning_text", group: "headline",
+    description:
+      "The FULL government warning, verbatim from GOVERNMENT/Government through \"...health problems.\", " +
+      "preserving \"(1) ... (2) ...\". \"\" if absent.",
+  },
+  {
+    key: "class", rawKey: "class", confKey: "class", label: "Broad category", csvColumn: "class", group: "detail",
+    description:
+      "The BROAD beverage category. This is the ONE field you may DERIVE rather than transcribe verbatim " +
+      "(an explicit exception to the transcribe-only rule): infer it from the printed designation, e.g. " +
+      "classType \"Kentucky Straight Bourbon Whiskey\" → class \"Whisky\", \"India Pale Ale\" → \"Malt beverage\", " +
+      "\"Cabernet Sauvignon\" → \"Wine\".",
+  },
+  {
+    key: "name", rawKey: "name", confKey: "name", label: "Producer / bottler name", csvColumn: "name", group: "detail",
+    description:
+      "The responsible-party COMPANY NAME only. It usually follows a verb like \"DISTILLED & BOTTLED BY:\", " +
+      "\"PRODUCED BY\", \"IMPORTED BY\" — e.g. from \"DISTILLED AND BOTTLED BY: ABC DISTILLERY, FREDERICK, MD\" " +
+      "the name is \"ABC Distillery\". Do NOT include the verb or the address. " +
+      "NOTE: `name`, `address`, and `commodityStatement` are all parsed from the SAME printed responsibility " +
+      "line — populate all three from it; do NOT leave name/address empty just because commodityStatement is filled.",
+  },
+  {
+    key: "address", rawKey: "address", confKey: "address", label: "Producer / bottler address", csvColumn: "address", group: "detail",
+    description:
+      "The responsible-party ADDRESS only (street/city/state), e.g. \"Frederick, MD\". Separate from name. " +
+      "NOTE: `name`, `address`, and `commodityStatement` are all parsed from the SAME printed responsibility " +
+      "line — populate all three from it; do NOT leave address empty just because commodityStatement is filled.",
+  },
+  {
+    key: "countryOfOrigin", rawKey: "countryOfOrigin", confKey: "countryOfOrigin", label: "Country of origin", csvColumn: "country_of_origin", group: "detail",
+    description: "Country of origin as printed, e.g. \"Product of Scotland\" (imports). \"\" if none.",
+  },
+  {
+    key: "appellation", rawKey: "appellation", confKey: "appellation", label: "Appellation", csvColumn: "appellation", group: "detail",
+    description: "Wine appellation of origin as printed, e.g. \"Napa Valley\". \"\" if none.",
+  },
+  {
+    key: "vintage", rawKey: "vintage", confKey: "vintage", label: "Vintage", csvColumn: "vintage", group: "detail",
+    description: "Wine vintage year as printed, e.g. \"2019\". \"\" if none.",
+  },
+  {
+    key: "varietal", rawKey: "varietal", confKey: "varietal", label: "Varietal", csvColumn: "varietal", group: "detail",
+    description: "Grape variety as printed, e.g. \"Cabernet Sauvignon\". \"\" if none.",
+  },
+  {
+    key: "sulfiteDeclaration", rawKey: "sulfiteDeclaration", confKey: "sulfiteDeclaration", label: "Sulfite declaration", csvColumn: "sulfites", group: "detail",
+    description: "Sulfite declaration as printed, e.g. \"Contains Sulfites\". \"\" if none.",
+  },
+  {
+    key: "ageStatement", rawKey: "ageStatement", confKey: "ageStatement", label: "Age statement", csvColumn: "age_statement", group: "detail",
+    description: "Age statement as printed, e.g. \"Aged 4 Years\". \"\" if none.",
+  },
+  {
+    key: "commodityStatement", rawKey: "commodityStatement", confKey: "commodityStatement", label: "Commodity statement", csvColumn: "commodity_statement", group: "detail",
+    description:
+      "The full responsibility/commodity statement including the verb, e.g. " +
+      "\"Distilled and bottled by ABC Distillery, Frederick, MD\". " +
+      "NOTE: also populate `name` and `address` separately from this same line.",
+  },
 ];
 
 /** Catalog entries in the "headline" group (shown first in the UI). */

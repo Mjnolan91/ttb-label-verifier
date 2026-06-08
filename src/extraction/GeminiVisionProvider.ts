@@ -57,22 +57,34 @@ export function readGeminiConfig(
 
 // Gemini's structured-output schema is an OpenAPI subset: UPPERCASE type names, `nullable` instead
 // of a union type, no `additionalProperties`. (Same 15 confidenced fields + two warning flags.)
-const CONFIDENCED_VALUE = {
+// Each field carries its catalog description so the model reads per-field rules from the schema.
+const confidencedValue = (description: string) => ({
   type: "OBJECT",
-  properties: { value: { type: "STRING" }, confidence: { type: "NUMBER" } },
+  description,
+  properties: { value: { type: "STRING", nullable: true }, confidence: { type: "NUMBER" } },
   required: ["value", "confidence"],
-} as const;
+}) as const;
 
 // Derived from the single source of truth (fieldCatalog) so this response schema can never drift from
-// the field set the rest of the pipeline uses.
+// the field set the rest of the pipeline uses. Per-field descriptions travel with the schema.
 const CONFIDENCED_FIELDS: readonly string[] = FIELD_CATALOG.map((d) => d.rawKey);
 
 const RESPONSE_SCHEMA = {
   type: "OBJECT",
   properties: {
-    ...Object.fromEntries(CONFIDENCED_FIELDS.map((f) => [f, CONFIDENCED_VALUE])),
-    warningPrefixIsAllCaps: { type: "BOOLEAN" },
-    warningPrefixIsBold: { type: "BOOLEAN", nullable: true },
+    ...Object.fromEntries(FIELD_CATALOG.map((d) => [d.rawKey, confidencedValue(d.description)])),
+    warningPrefixIsAllCaps: {
+      type: "BOOLEAN",
+      description: "true ONLY if the \"GOVERNMENT WARNING:\" prefix is ALL CAPITAL LETTERS; false if title/mixed case.",
+    },
+    warningPrefixIsBold: {
+      type: "BOOLEAN",
+      nullable: true,
+      description:
+        "true if the \"GOVERNMENT WARNING:\" prefix is clearly bolder than the body text; false ONLY if it is " +
+        "clearly the SAME weight as the body (a real violation); null if you cannot tell. When unsure, return " +
+        "null — never guess true OR false (a wrong false rejects a compliant label).",
+    },
   },
   required: [...CONFIDENCED_FIELDS, "warningPrefixIsAllCaps", "warningPrefixIsBold"],
 } as const;

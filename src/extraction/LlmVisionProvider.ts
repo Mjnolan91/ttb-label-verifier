@@ -44,24 +44,41 @@ const MAX_OUTPUT_TOKENS = 1500;
  * class of silent malformed-output bugs that loose json_object mode allows. parseModelJson remains a
  * thin defensive guard for any provider/api-version that doesn't honor the constraint. Supported on
  * the default Azure api-version (2024-10-21) and on gpt-4o-2024-08-06+ / gpt-4.1 / gpt-5.x.
+ *
+ * Each field's schema object carries the catalog `description` so the model reads per-field rules
+ * directly from the schema rather than from duplicated prose in the USER_PROMPT (Google research
+ * shows duplicating the shape in the prompt lowers output quality). Value is nullable so the model
+ * can signal "not present" without returning an empty string with low confidence.
  */
-const CONFIDENCED_VALUE = {
-  type: "object",
-  properties: { value: { type: "string" }, confidence: { type: "number" } },
-  required: ["value", "confidence"],
-  additionalProperties: false,
-} as const;
+function confidencedValueSchema(description: string) {
+  return {
+    type: "object",
+    description,
+    properties: { value: { type: ["string", "null"] }, confidence: { type: "number" } },
+    required: ["value", "confidence"],
+    additionalProperties: false,
+  } as const;
+}
 
 // Derived from the single source of truth (fieldCatalog) so the strict-output schema can never drift
-// from the field set the mapper/merge/UI/CSV use. (The prose USER_PROMPT stays hand-tuned per field.)
+// from the field set the mapper/merge/UI/CSV use. Per-field descriptions travel with the schema.
 const CONFIDENCED_FIELDS: readonly string[] = FIELD_CATALOG.map((d) => d.rawKey);
 
 const EXTRACTION_JSON_SCHEMA = {
   type: "object",
   properties: {
-    ...Object.fromEntries(CONFIDENCED_FIELDS.map((f) => [f, CONFIDENCED_VALUE])),
-    warningPrefixIsAllCaps: { type: "boolean" },
-    warningPrefixIsBold: { type: ["boolean", "null"] },
+    ...Object.fromEntries(FIELD_CATALOG.map((d) => [d.rawKey, confidencedValueSchema(d.description)])),
+    warningPrefixIsAllCaps: {
+      type: "boolean",
+      description: "true ONLY if the \"GOVERNMENT WARNING:\" prefix is ALL CAPITAL LETTERS; false if title/mixed case.",
+    },
+    warningPrefixIsBold: {
+      type: ["boolean", "null"],
+      description:
+        "true if the \"GOVERNMENT WARNING:\" prefix is clearly bolder than the body text; false ONLY if it is " +
+        "clearly the SAME weight as the body (a real violation); null if you cannot tell. When unsure, return " +
+        "null — never guess true OR false (a wrong false rejects a compliant label).",
+    },
   },
   required: [...CONFIDENCED_FIELDS, "warningPrefixIsAllCaps", "warningPrefixIsBold"],
   additionalProperties: false,
@@ -110,61 +127,11 @@ export const SYSTEM_PROMPT =
   'only what is visible on THIS image and leave the rest "" with low confidence.';
 
 export const USER_PROMPT =
-  "Read EVERY piece of text on this label — top, bottom, sides, and small/fine print — and fill every " +
-  'field that appears ANYWHERE on the image. Only use "" (with low confidence) when the text is truly ' +
-  "not present. Return STRICT JSON with EXACTLY this shape:\n" +
-  '{"brand":{"value":string,"confidence":number},' +
-  '"class":{"value":string,"confidence":number},' +
-  '"classType":{"value":string,"confidence":number},' +
-  '"alcoholContent":{"value":string,"confidence":number},' +
-  '"netContents":{"value":string,"confidence":number},' +
-  '"name":{"value":string,"confidence":number},' +
-  '"address":{"value":string,"confidence":number},' +
-  '"countryOfOrigin":{"value":string,"confidence":number},' +
-  '"appellation":{"value":string,"confidence":number},' +
-  '"vintage":{"value":string,"confidence":number},' +
-  '"varietal":{"value":string,"confidence":number},' +
-  '"sulfiteDeclaration":{"value":string,"confidence":number},' +
-  '"ageStatement":{"value":string,"confidence":number},' +
-  '"commodityStatement":{"value":string,"confidence":number},' +
-  '"warningText":{"value":string,"confidence":number},' +
-  '"warningPrefixIsAllCaps":boolean,"warningPrefixIsBold":boolean|null}\n\n' +
-  "Transcribe verbatim. Field rules:\n" +
-  "- brand: the FANCIFUL product/brand mark — usually the largest text or a logo wordmark (e.g. " +
-  '"Single Barrel", "Stone\'s Throw"). This is NOT automatically the bottling company: the legally ' +
-  "responsible company belongs in `name`. Two decisive cases: (a) if the label shows a SHORT mark AND " +
-  'a longer producer name that CONTAINS it (mark "ABC" + producer "ABC Distillery"), `brand` is the ' +
-  'SHORT mark ("ABC") and `name` is the producer ("ABC Distillery") — never put the producer in ' +
-  "`brand`; (b) if the SAME words are the ONLY prominent name (a label whose only large text is " +
-  '"OLD TOM DISTILLERY"), populate BOTH `brand` and `name` with them.\n' +
-  "- class: the BROAD category. This is the ONE field you may DERIVE rather than transcribe verbatim " +
-  '(an explicit exception to Hard Rule #2): infer it from the printed designation, e.g. classType ' +
-  '"Kentucky Straight Bourbon Whiskey" -> class "Whisky", "India Pale Ale" -> "Malt beverage", ' +
-  '"Cabernet Sauvignon" -> "Wine".\n' +
-  '- classType: the FULL specific designation / standard of identity, VERBATIM as printed (e.g. ' +
-  '"Straight Rye Whisky", "Kentucky Straight Bourbon Whiskey", "Cabernet Sauvignon", "India Pale Ale").\n' +
-  '- alcoholContent: VERBATIM alcohol statement (e.g. "45% Alc./Vol. (90 Proof)", "45% ALC/VOL"); do NOT convert units or compute proof.\n' +
-  '- netContents: net contents as printed (e.g. "750 mL", "750 ML").\n' +
-  "- name: the responsible-party COMPANY NAME only. It usually follows a verb like \"DISTILLED & " +
-  'BOTTLED BY:", "PRODUCED BY", "IMPORTED BY" — e.g. from "DISTILLED AND BOTTLED BY: ABC DISTILLERY, ' +
-  'FREDERICK, MD" the name is "ABC Distillery". Do NOT include the verb or the address.\n' +
-  '- address: the responsible-party ADDRESS only (street/city/state), e.g. "Frederick, MD". Separate from name.\n' +
-  "  NOTE: `name`, `address`, and `commodityStatement` are all PARSED FROM THE SAME printed " +
-  "responsibility line — populate all three from it; do NOT leave name/address empty just because " +
-  "commodityStatement is filled.\n" +
-  '- countryOfOrigin: e.g. "Product of Scotland" (imports); "" if none.\n' +
-  '- appellation: wine appellation of origin, e.g. "Napa Valley".\n' +
-  '- vintage: wine vintage year, e.g. "2019".\n' +
-  '- varietal: grape variety, e.g. "Cabernet Sauvignon".\n' +
-  '- sulfiteDeclaration: e.g. "Contains Sulfites"; "" if none.\n' +
-  '- ageStatement: e.g. "Aged 4 Years"; "" if none.\n' +
-  '- commodityStatement: the full responsibility/commodity statement incl. the verb (e.g. "Distilled and bottled by ABC Distillery, Frederick, MD").\n' +
-  '- warningText: the FULL government warning, verbatim from GOVERNMENT/Government through "...health problems.", preserving "(1) ... (2) ...". "" if absent.\n' +
-  '- warningPrefixIsAllCaps: true ONLY if the "GOVERNMENT WARNING:" prefix is ALL CAPITAL LETTERS; false if title/mixed case.\n' +
-  '- warningPrefixIsBold: true if that prefix is clearly bolder than the body; false ONLY if it is ' +
-  "clearly the SAME weight as the body (a real violation); null if you cannot tell. When unsure, " +
-  "return null — never guess true OR false (a wrong false rejects a compliant label).\n" +
-  "- confidence: per-field legibility confidence in [0,1]; empty/illegible <= 0.3.";
+  "Read EVERY piece of text on this label — top, bottom, sides, and small/fine print. Transcribe each " +
+  "field exactly as printed, preserving capitalization, digits, punctuation, and symbols; do not " +
+  "interpret, normalize, translate, autocomplete, or correct. For multi-column layouts read left to " +
+  'right. Use "" with low confidence ONLY when the text is truly not present. Each field\'s specific ' +
+  "rule is given in its schema description.";
 
 function coerceConfidenced(v: unknown): RawConfidencedValue | undefined {
   if (typeof v === "object" && v !== null && "value" in v) {
