@@ -5,7 +5,7 @@
  * These lock the wiring the rest of the suite can't: that a readable extraction is shown, that the
  * optional "verify against an application" panel renders the deterministic verdict, and that the
  * unreadable path shows the re-upload prompt rather than a fabricated result. Fetch + object-URL are
- * mocked; the verdict itself is computed by the real pure comparator (verifyLabel).
+ * mocked; the verdict itself is computed by the real pure comparator (combinedVerdict).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, within } from "@testing-library/react";

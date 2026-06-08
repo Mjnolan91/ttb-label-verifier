@@ -64,6 +64,10 @@ pipeline and the "why". As built, the load-bearing pieces are:
   beverage type) + `thresholds.ts`. Two DISTINCT thresholds, easy to confuse:
   `MIN_READABLE_CONFIDENCE` (0.5 — is the image readable at all → re-upload path) vs
   `FIELD_REVIEW_CONFIDENCE` (0.7 — trust this field's verdict, else downgrade to `review`).
+  `combinedVerdict` (`reviewVerdict.ts`) is the HEADLINE verdict: it takes the worse of the
+  claimed-vs-label comparison (`verifyLabel`) and the per-type completeness check, so a label missing
+  a TTB-required field for its beverage type can't be Approved (a missing/malformed mandatory element
+  → `review`; the warning keeps its hard fail). The UI + eval read this combined verdict.
 - **`src/app/`** — verify-first single screen (`VerifyForm`: always-visible application form +
   auto-read on upload; results LEAD with the `ResultView` verdict from the pure `verifyLabel`
   comparator, then `CompletenessView`, then `ExtractedFieldsView`; thumbnails open the accessible

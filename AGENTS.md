@@ -70,6 +70,12 @@ fieldCatalog.ts` — that the mapper, merge, field table, and CSV all derive fro
   context the answer to "why was this rejected?" must be rules-based and reproducible.
 
 ## The three checks
+The overall verdict additionally gates on **per-type completeness**: even when all three checks below
+pass, a label missing a field TTB requires for its beverage class cannot be Approved (it routes to
+review). The three checks are the claimed-vs-application comparison; completeness is the
+label-carries-every-required-element check (`src/compare/completeness.ts`). `combinedVerdict`
+(`src/compare/reviewVerdict.ts`) takes the worse of the two.
+
 - **Brand name — fuzzy.** Normalize case, whitespace, punctuation, and smart quotes, then
   compare. Exact-after-normalization = pass; high similarity = review (show the
   discrepancy); low = fail. "STONE'S THROW" vs "Stone's Throw" must pass.

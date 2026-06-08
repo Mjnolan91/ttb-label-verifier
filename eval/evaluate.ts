@@ -116,6 +116,8 @@ export async function runEval(): Promise<EvalReport> {
       // The PRODUCTION headline verdict gates the 3-check result on per-type completeness.
       const combined = combinedVerdict(claimed, outcome.extracted);
       actualOverall = combined.overall ?? "review";
+      // Per-field metrics stay on the 3-check comparison (brand/alcohol/warning); the completeness
+      // gate is reflected only in the OVERALL headline, not in these three field statuses.
       actualFields = {
         brand: outcome.result.brand.status,
         alcohol: outcome.result.alcohol.status,
