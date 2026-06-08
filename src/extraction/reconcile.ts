@@ -85,6 +85,14 @@ const VALUE_FIELDS = [
   "alcoholContentText",
   "netContents",
   "warningText",
+  "nameAndAddress",
+  "countryOfOrigin",
+  "appellation",
+  "vintage",
+  "varietal",
+  "sulfiteDeclaration",
+  "ageStatement",
+  "commodityStatement",
 ] as const;
 type ValueField = (typeof VALUE_FIELDS)[number];
 
@@ -95,6 +103,14 @@ const CONF_KEY: Record<ValueField, keyof FieldConfidence> = {
   alcoholContentText: "alcoholContent",
   netContents: "netContents",
   warningText: "warningText",
+  nameAndAddress: "nameAndAddress",
+  countryOfOrigin: "countryOfOrigin",
+  appellation: "appellation",
+  vintage: "vintage",
+  varietal: "varietal",
+  sulfiteDeclaration: "sulfiteDeclaration",
+  ageStatement: "ageStatement",
+  commodityStatement: "commodityStatement",
 };
 
 function norm(s: string | undefined): string {

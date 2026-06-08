@@ -62,7 +62,9 @@ export const SYSTEM_PROMPT =
   "2. NEVER guess, infer, autocomplete, translate, or correct text. If a field is not legibly " +
   'present, return "" for its value and a LOW confidence (<= 0.3).\n' +
   "3. Report per-field confidence in [0,1] honestly, reflecting how legible the text is.\n" +
-  "4. Return exactly ONE JSON object and nothing else — no prose, no markdown, no code fences.";
+  "4. Return exactly ONE JSON object and nothing else — no prose, no markdown, no code fences.\n" +
+  "5. A product may have several label images (front/back/neck). You are shown ONE of them — extract " +
+  'only what is visible on THIS image and leave the rest "" with low confidence.';
 
 export const USER_PROMPT =
   "Extract these fields from the alcohol label image and return STRICT JSON with EXACTLY this shape:\n" +
@@ -70,22 +72,33 @@ export const USER_PROMPT =
   '"classType":{"value":string,"confidence":number},' +
   '"alcoholContent":{"value":string,"confidence":number},' +
   '"netContents":{"value":string,"confidence":number},' +
+  '"nameAndAddress":{"value":string,"confidence":number},' +
+  '"countryOfOrigin":{"value":string,"confidence":number},' +
+  '"appellation":{"value":string,"confidence":number},' +
+  '"vintage":{"value":string,"confidence":number},' +
+  '"varietal":{"value":string,"confidence":number},' +
+  '"sulfiteDeclaration":{"value":string,"confidence":number},' +
+  '"ageStatement":{"value":string,"confidence":number},' +
+  '"commodityStatement":{"value":string,"confidence":number},' +
   '"warningText":{"value":string,"confidence":number},' +
   '"warningPrefixIsAllCaps":boolean,"warningPrefixIsBold":boolean|null}\n\n' +
-  "Field rules:\n" +
-  "- brand: the brand name exactly as printed (e.g. \"OLD TOM DISTILLERY\").\n" +
-  "- classType: the class/type designation (e.g. \"Kentucky Straight Bourbon Whiskey\").\n" +
-  "- alcoholContent: the VERBATIM alcohol statement exactly as printed, e.g. " +
-  '"45% Alc./Vol. (90 Proof)" or "13.5% ALC BY VOL". Do NOT convert units or compute proof — copy the text.\n' +
-  '- netContents: the net contents exactly as printed (e.g. "750 mL").\n' +
-  "- warningText: the FULL government warning, verbatim from the word GOVERNMENT/Government through the " +
-  'final "...health problems.", preserving the "(1) ... (2) ..." numbering. Use "" if no warning is present.\n' +
-  "- warningPrefixIsAllCaps: true ONLY if the \"GOVERNMENT WARNING:\" prefix is printed in ALL CAPITAL " +
-  'LETTERS; false if it is title-case or mixed-case (e.g. "Government Warning:").\n' +
-  "- warningPrefixIsBold: true if that prefix is clearly heavier/bolder than the warning body text; " +
-  "false if clearly the same weight; null if you cannot reliably judge stroke weight from the image. " +
-  "When unsure, return null — never guess true.\n" +
-  "- confidence: your per-field legibility confidence in [0,1]; empty or illegible fields must use <= 0.3.";
+  'Transcribe verbatim; use "" + low confidence for anything not on this image. Field rules:\n' +
+  '- brand: brand name as printed (e.g. "OLD TOM DISTILLERY").\n' +
+  '- classType: class/type designation (e.g. "Kentucky Straight Bourbon Whiskey", "Cabernet Sauvignon", "India Pale Ale").\n' +
+  '- alcoholContent: VERBATIM alcohol statement (e.g. "45% Alc./Vol. (90 Proof)"); do NOT convert units or compute proof.\n' +
+  '- netContents: net contents as printed (e.g. "750 mL").\n' +
+  '- nameAndAddress: responsible-party name & address WITH its verb ("Bottled by", "Distilled by", "Imported by", "Produced by").\n' +
+  '- countryOfOrigin: e.g. "Product of Scotland" (imports); "" if none.\n' +
+  '- appellation: wine appellation of origin, e.g. "Napa Valley".\n' +
+  '- vintage: wine vintage year, e.g. "2019".\n' +
+  '- varietal: grape variety, e.g. "Cabernet Sauvignon".\n' +
+  '- sulfiteDeclaration: e.g. "Contains Sulfites"; "" if none.\n' +
+  '- ageStatement: e.g. "Aged 4 Years"; "" if none.\n' +
+  '- commodityStatement: any commodity statement distinct from name/address.\n' +
+  '- warningText: the FULL government warning, verbatim from GOVERNMENT/Government through "...health problems.", preserving "(1) ... (2) ...". "" if absent.\n' +
+  '- warningPrefixIsAllCaps: true ONLY if the "GOVERNMENT WARNING:" prefix is ALL CAPITAL LETTERS; false if title/mixed case.\n' +
+  '- warningPrefixIsBold: true if that prefix is clearly bolder than the body; false if clearly same weight; null if unsure (never guess true).\n' +
+  "- confidence: per-field legibility confidence in [0,1]; empty/illegible <= 0.3.";
 
 function coerceConfidenced(v: unknown): RawConfidencedValue | undefined {
   if (typeof v === "object" && v !== null && "value" in v) {
@@ -137,6 +150,14 @@ export function parseModelJson(content: string): ExtractedFields {
     alcoholContent: coerceConfidenced(p.alcoholContent),
     netContents: coerceConfidenced(p.netContents),
     warningText: coerceConfidenced(p.warningText),
+    nameAndAddress: coerceConfidenced(p.nameAndAddress),
+    countryOfOrigin: coerceConfidenced(p.countryOfOrigin),
+    appellation: coerceConfidenced(p.appellation),
+    vintage: coerceConfidenced(p.vintage),
+    varietal: coerceConfidenced(p.varietal),
+    sulfiteDeclaration: coerceConfidenced(p.sulfiteDeclaration),
+    ageStatement: coerceConfidenced(p.ageStatement),
+    commodityStatement: coerceConfidenced(p.commodityStatement),
     warningPrefixIsAllCaps: p.warningPrefixIsAllCaps === true,
     warningPrefixIsBold:
       p.warningPrefixIsBold === true ? true : p.warningPrefixIsBold === false ? false : null,
@@ -204,6 +225,9 @@ export class LlmVisionProvider implements VisionProvider {
           {
             role: "user",
             content: [
+              ...(image.position
+                ? [{ type: "text", text: `This image is the ${image.position} label of the product.` }]
+                : []),
               { type: "text", text: USER_PROMPT },
               { type: "image_url", image_url: { url: dataUrl } },
             ],

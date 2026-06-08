@@ -102,7 +102,7 @@ export async function runEval(): Promise<EvalReport> {
   for (const c of CASES) {
     const claimed = buildClaimed(c);
     const start = performance.now();
-    const outcome = await runVerification([provider], claimed, { filename: c.imageFilename });
+    const outcome = await runVerification([provider], claimed, [{ filename: c.imageFilename }]);
     const latencyMs = performance.now() - start;
 
     let actualOverall: OverallVerdict;

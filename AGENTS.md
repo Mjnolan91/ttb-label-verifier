@@ -5,13 +5,14 @@ for what we are building and how. Read it fully before writing code. Append dura
 learnings to the bottom.
 
 ## Mission
-A standalone prototype that **reads an alcohol label image into structured data** with AI
-(brand, class/type, alcohol content, net contents, and the government health warning),
-exportable as **JSON or CSV** with no manual data entry. It can **optionally verify** that
-reading against the values claimed in an application, for three TTB checks — **brand name**,
-**alcohol content**, and the **government health warning** — returning a fast, clear, per-field
-verdict a human agent can trust or override. **Extraction is the primary path; verification is
-opt-in** (it runs only when claimed/application values are supplied).
+A standalone prototype that **reads a product's label images (front/back/neck) together into the
+full set of TTB-required fields** with AI, **checks the label for completeness** against TTB's
+mandatory-information requirements for its beverage type (each element flagged present / missing /
+malformed; see `src/domain/labelRequirements.ts` + `src/compare/completeness.ts`), and exports the
+result as **JSON or CSV** with no manual data entry. A deterministic claimed-vs-label comparator —
+**brand name**, **alcohol content**, **government health warning** — is also implemented + evaluated
+and exposed via the API. **Extraction + completeness is the primary path** a human agent can trust
+or override.
 
 The product goal is NOT to replace human judgment. It is to be **superhuman on the axes
 where machines win** — consistency, throughput, and tireless recall of routine checks —

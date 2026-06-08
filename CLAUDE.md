@@ -15,9 +15,9 @@ thin pointer to it — don't copy architecture or CFR rules in here, or the two 
 - The task backlog with completion status: `scripts/ralph/prd.json`
 - Per-story learnings from the build (gotchas, decisions): `scripts/ralph/progress.txt`
 
-When working interactively (not via the loop), still follow the architecture and non-goals
-in `AGENTS.md`: AI extracts (primary) and code optionally compares; offline by default; no PII,
-no auth, no COLA.
+When working interactively (not via the loop), still follow the architecture and non-goals in
+`AGENTS.md`: AI extracts the full TTB field set (primary) and code checks completeness vs TTB
+requirements (+ an optional claimed comparison); offline by default; no PII, no auth, no COLA.
 
 ## Commands
 - `npm run dev` — app at http://localhost:3000 (mock provider, no keys needed)
@@ -37,10 +37,12 @@ provider — no keys, no network.
 AGENTS.md describes the `image → VisionProvider(s) → reconciler → (optional) comparator → UI`
 pipeline and the "why". The app is **extraction-first**: it always reads the label; verification
 runs only when claimed/application values are supplied. As built, the load-bearing pieces are:
-- **`src/pipeline.ts`** — `runExtraction()` (reconcile → readability gate) is the PRIMARY path;
-  `runVerification()` adds the deterministic compare when claimed values are present. `/api/verify`
-  extracts always and verifies only when `brand`+`alcoholContent` are posted; the eval harness drives
-  the verify path. Change the flow here, not in two places.
+- **`src/pipeline.ts`** — `runExtraction()` reads EACH of a product's images (front/back/neck) and
+  MERGES them (`mergeExtracted`) → readability gate; the PRIMARY path. `runVerification()` adds the
+  claimed comparison only when claimed values are posted. `/api/verify` always extracts + runs the
+  TTB **completeness** check (`src/compare/completeness.ts` over `src/domain/labelRequirements.ts`),
+  and verifies only when `brand`+`alcoholContent` are posted. Batch pairs front/back by filename
+  (`src/batch/pairing.ts`). Change the flow here, not in two places.
 - **`src/domain/`** — pre-seeded, CFR-verified, the one hand-written human-trusted module
   (canonical warning, tolerance matrix, proof helper). Treat its constants as statutory:
   extend/integrate, never reword or retune them to make a test pass. See `src/domain/README.md`.
@@ -48,10 +50,11 @@ runs only when claimed/application values are supplied. As built, the load-beari
   off the image FILENAME, not bytes) + `Llm`/`Ocr` Azure providers + `OpenAI`-direct provider
   (all env-gated via `VISION_PROVIDER`, opt-in) + `reconcile.ts` (runs providers in PARALLEL with a
   per-call timeout — ~3s mock / ~8s real, `VISION_TIMEOUT_MS`; disagreement → review).
-- **`src/compare/`** — pure, deterministic comparators + `verifyLabel` + `thresholds.ts`. Two
-  DISTINCT thresholds, easy to confuse: `MIN_READABLE_CONFIDENCE` (0.5 — is the image readable
-  at all → re-upload path) vs `FIELD_REVIEW_CONFIDENCE` (0.7 — trust this field's verdict, else
-  downgrade to `review`).
+- **`src/compare/`** — pure, deterministic comparators + `verifyLabel` (claimed comparison) +
+  `completeness.ts` (the extraction-first verification: each TTB-required element present / missing /
+  malformed, per beverage type) + `thresholds.ts`. Two DISTINCT thresholds, easy to confuse:
+  `MIN_READABLE_CONFIDENCE` (0.5 — is the image readable at all → re-upload path) vs
+  `FIELD_REVIEW_CONFIDENCE` (0.7 — trust this field's verdict, else downgrade to `review`).
 - **`src/app/`** — extraction-first single screen (auto-read on upload → JSON/CSV download, with an
   optional "verify against an application" section) + `/api/verify` route (extract always, verify when
   claimed posted) + `/batch`; `src/app/ui/` holds the shared primitives. **`eval/`** — the harness and

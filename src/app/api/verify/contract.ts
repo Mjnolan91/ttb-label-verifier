@@ -5,7 +5,7 @@
  * (no runtime), safe to import into client components.
  */
 import type { ClaimedFields, ExtractedFields } from "@/domain";
-import type { VerifyResult } from "@/compare";
+import type { VerifyResult, CompletenessResult } from "@/compare";
 
 /** Successful analyze response (extraction, plus an optional verdict). */
 export interface VerifyApiResponse {
@@ -18,6 +18,8 @@ export interface VerifyApiResponse {
   readable: boolean;
   /** What the AI read off the label. Always present on a readable response. */
   extracted: ExtractedFields;
+  /** TTB completeness check (per beverage type) — present on a readable response. */
+  completeness?: CompletenessResult;
   /** The claimed application values — present only when verification was requested. */
   claimed?: ClaimedFields;
   /** The verdict — present only when claimed values were supplied AND the image was readable. */

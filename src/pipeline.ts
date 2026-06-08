@@ -1,15 +1,16 @@
 /**
- * pipeline.ts — the shared orchestration. `runExtraction` reads a label (reconcile the configured
- * provider(s) in parallel, gate on readability) and is the PRIMARY path; `runVerification` adds the
- * deterministic comparison when claimed application values are supplied (optional). Used by BOTH the
- * /api/verify route and the eval harness so the evaluation measures the exact production pipeline.
+ * pipeline.ts — the shared orchestration. `runExtraction` reads EVERY image of a product
+ * (front/back/neck) in parallel and MERGES them into one record (a back-label field fills in the
+ * front), then gates readability — this is the PRIMARY path. `runVerification` adds the optional
+ * claimed-comparison verdict. Used by BOTH the /api/verify route and the eval harness so the
+ * evaluation measures the exact production pipeline.
  */
 import type { ClaimedFields, ExtractedFields } from "@/domain";
-import { reconcileExtract, type ImageInput, type VisionProvider } from "@/extraction";
+import { reconcileExtract, mergeExtracted, type ImageInput, type VisionProvider } from "@/extraction";
 import { verifyLabel, isExtractionReadable, type VerifyResult } from "@/compare";
 
 export interface ExtractionOutcome {
-  /** false => the image was unreadable/low-confidence: re-upload path, no trustworthy fields. */
+  /** false => the merged read was unreadable/low-confidence: re-upload path, no trustworthy fields. */
   readable: boolean;
   extracted: ExtractedFields;
 }
@@ -19,30 +20,51 @@ export interface VerificationOutcome extends ExtractionOutcome {
   result: VerifyResult | null;
 }
 
+function isTimeoutLike(e: unknown): boolean {
+  return e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
+}
+
 /**
- * Extraction-first path: reconcile all providers in parallel (per-call timeout), then report whether
- * the read is trustworthy. No comparison — this is what the AI-reads-the-label flow uses.
+ * Read each of a product's images in parallel (each through the provider reconciler with its per-call
+ * timeout), then merge them into one ExtractedFields. A product is usually one image; front+back is
+ * common. An image whose read fails drops out; only if NONE read do we surface a timeout/error.
  */
 export async function runExtraction(
   providers: VisionProvider[],
-  image: ImageInput,
+  images: ImageInput[],
   timeoutMs?: number,
 ): Promise<ExtractionOutcome> {
-  const extracted = await reconcileExtract(providers, image, timeoutMs);
+  if (images.length === 0) throw new Error("At least one image is required.");
+  const settled = await Promise.allSettled(
+    images.map((img) => reconcileExtract(providers, img, timeoutMs)),
+  );
+  const reads = settled
+    .filter((s): s is PromiseFulfilledResult<ExtractedFields> => s.status === "fulfilled")
+    .map((s) => s.value);
+
+  if (reads.length === 0) {
+    const reasons = settled.map((s) => (s.status === "rejected" ? (s.reason as unknown) : undefined));
+    if (reasons.every((r) => isTimeoutLike(r))) {
+      throw new DOMException("All label images timed out.", "TimeoutError");
+    }
+    throw reasons.find((r): r is Error => r instanceof Error) ?? new Error("Failed to read the label images.");
+  }
+
+  const extracted = reads.reduce((acc, cur) => mergeExtracted(acc, cur));
   return { readable: isExtractionReadable(extracted), extracted };
 }
 
 /**
- * Extract, then (when readable) compare against the claimed application values. Returns the
- * reconciled extraction plus the verdict (null when unreadable).
+ * Extract, then (when readable) compare against the claimed application values. Returns the merged
+ * extraction plus the verdict (null when unreadable).
  */
 export async function runVerification(
   providers: VisionProvider[],
   claimed: ClaimedFields,
-  image: ImageInput,
+  images: ImageInput[],
   timeoutMs?: number,
 ): Promise<VerificationOutcome> {
-  const { readable, extracted } = await runExtraction(providers, image, timeoutMs);
+  const { readable, extracted } = await runExtraction(providers, images, timeoutMs);
   if (!readable) {
     return { readable, extracted, result: null };
   }

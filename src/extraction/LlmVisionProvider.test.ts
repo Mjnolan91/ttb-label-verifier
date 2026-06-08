@@ -114,6 +114,13 @@ describe("LlmVisionProvider.extract — request shape + parsing (HTTP mocked)", 
     expect(result.confidence.brand).toBeCloseTo(0.97, 5);
   });
 
+  it("includes a label-position hint in the request when the image has a position", async () => {
+    const { fetchImpl, calls } = mockFetch();
+    const provider = new LlmVisionProvider({ config: CONFIG, fetchImpl });
+    await provider.extract({ filename: "back.jpg", data: new Uint8Array([1]), position: "back" });
+    expect(calls[0].init.body).toContain("back label");
+  });
+
   it("requires image bytes", async () => {
     const { fetchImpl } = mockFetch();
     const provider = new LlmVisionProvider({ config: CONFIG, fetchImpl });

@@ -102,6 +102,30 @@ describe("POST /api/verify — extraction-first (no claimed values → read only
   });
 });
 
+describe("POST /api/verify — completeness + multi-image", () => {
+  it("returns a TTB completeness result for a readable extraction", async () => {
+    const res = await postForm({}, stubImage("old-tom-bourbon-clean.svg"));
+    const json = await res.json();
+    expect(json.readable).toBe(true);
+    expect(json.completeness).toBeDefined();
+    expect(json.completeness.beverageClass).toBe("distilledSpirits");
+    expect(Array.isArray(json.completeness.elements)).toBe(true);
+    expect(["complete", "incomplete", "review"]).toContain(json.completeness.overall);
+  });
+
+  it("accepts multiple images for one product and merges them", async () => {
+    const form = new FormData();
+    form.append("image", stubImage("old-tom-bourbon-clean.svg"));
+    form.append("image", stubImage("old-tom-bourbon-clean.svg"));
+    const res = await POST(new Request("http://localhost/api/verify", { method: "POST", body: form }));
+    expect(res.status).toBe(200);
+    const json = await res.json();
+    expect(json.readable).toBe(true);
+    expect(json.extracted.brand).toBe("OLD TOM DISTILLERY");
+    expect(json.completeness).toBeDefined();
+  });
+});
+
 describe("POST /api/verify — misconfigured real provider (fail loud, no silent mock fallback)", () => {
   async function withEnv(
     vars: Record<string, string | undefined>,

@@ -21,6 +21,14 @@ export interface RawExtractedFields {
   alcoholContent?: RawConfidencedValue;
   netContents?: RawConfidencedValue;
   warningText?: RawConfidencedValue;
+  nameAndAddress?: RawConfidencedValue;
+  countryOfOrigin?: RawConfidencedValue;
+  appellation?: RawConfidencedValue;
+  vintage?: RawConfidencedValue;
+  varietal?: RawConfidencedValue;
+  sulfiteDeclaration?: RawConfidencedValue;
+  ageStatement?: RawConfidencedValue;
+  commodityStatement?: RawConfidencedValue;
   warningPrefixIsAllCaps: boolean;
   warningPrefixIsBold: boolean | null;
 }
@@ -38,6 +46,14 @@ export function mapRawExtracted(raw: RawExtractedFields): ExtractedFields {
   if (raw.alcoholContent) confidence.alcoholContent = raw.alcoholContent.confidence;
   if (raw.netContents) confidence.netContents = raw.netContents.confidence;
   if (raw.warningText) confidence.warningText = raw.warningText.confidence;
+  if (raw.nameAndAddress) confidence.nameAndAddress = raw.nameAndAddress.confidence;
+  if (raw.countryOfOrigin) confidence.countryOfOrigin = raw.countryOfOrigin.confidence;
+  if (raw.appellation) confidence.appellation = raw.appellation.confidence;
+  if (raw.vintage) confidence.vintage = raw.vintage.confidence;
+  if (raw.varietal) confidence.varietal = raw.varietal.confidence;
+  if (raw.sulfiteDeclaration) confidence.sulfiteDeclaration = raw.sulfiteDeclaration.confidence;
+  if (raw.ageStatement) confidence.ageStatement = raw.ageStatement.confidence;
+  if (raw.commodityStatement) confidence.commodityStatement = raw.commodityStatement.confidence;
 
   return {
     brand: raw.brand?.value,
@@ -45,6 +61,14 @@ export function mapRawExtracted(raw: RawExtractedFields): ExtractedFields {
     alcoholContentText: raw.alcoholContent?.value,
     netContents: raw.netContents?.value,
     warningText: raw.warningText?.value,
+    nameAndAddress: raw.nameAndAddress?.value,
+    countryOfOrigin: raw.countryOfOrigin?.value,
+    appellation: raw.appellation?.value,
+    vintage: raw.vintage?.value,
+    varietal: raw.varietal?.value,
+    sulfiteDeclaration: raw.sulfiteDeclaration?.value,
+    ageStatement: raw.ageStatement?.value,
+    commodityStatement: raw.commodityStatement?.value,
     warningPrefixIsAllCaps: raw.warningPrefixIsAllCaps,
     warningPrefixIsBold: raw.warningPrefixIsBold,
     confidence,

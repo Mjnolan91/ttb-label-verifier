@@ -3,7 +3,7 @@
  * (filename -> claimed) and serializing results to CSV. No DOM, fully unit-testable.
  */
 import type { ExtractedFields } from "@/domain";
-import type { VerifyResult } from "@/compare";
+import type { VerifyResult, CompletenessResult } from "@/compare";
 
 /** Claimed values for one label, keyed by its image filename. */
 export interface ClaimedRow {
@@ -104,6 +104,7 @@ export interface AnalysisRow {
   filename: string;
   extracted: ExtractedFields;
   result?: VerifyResult | null;
+  completeness?: CompletenessResult;
 }
 
 const fmtConf = (n: number | undefined): string => (typeof n === "number" ? n.toFixed(2) : "");
@@ -129,6 +130,7 @@ export function analysisToCsv(rows: AnalysisRow[]): string {
     "brand_conf",
     "alcohol_conf",
     "warning_conf",
+    "completeness",
   ];
   const verdictCols = ["brand_status", "alcohol_status", "warning_status", "overall"];
   const header = hasVerdict ? [...base, ...verdictCols] : base;
@@ -147,6 +149,7 @@ export function analysisToCsv(rows: AnalysisRow[]): string {
       fmtConf(e.confidence.brand),
       fmtConf(e.confidence.alcoholContent),
       fmtConf(e.confidence.warningText),
+      r.completeness ? r.completeness.overall : "",
     ];
     if (hasVerdict) {
       const v = r.result;

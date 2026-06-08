@@ -81,6 +81,24 @@ export function ExtractedFieldsView({
           <Row label="Class / type" value={extracted.classType} confidence={c.classType} />
           <Row label="Alcohol" value={extracted.alcoholContentText} confidence={c.alcoholContent} />
           <Row label="Net contents" value={extracted.netContents} confidence={c.netContents} />
+          <Row label="Name & address" value={extracted.nameAndAddress} confidence={c.nameAndAddress} />
+          {extracted.countryOfOrigin ? (
+            <Row label="Country of origin" value={extracted.countryOfOrigin} confidence={c.countryOfOrigin} />
+          ) : null}
+          {extracted.appellation ? (
+            <Row label="Appellation" value={extracted.appellation} confidence={c.appellation} />
+          ) : null}
+          {extracted.vintage ? <Row label="Vintage" value={extracted.vintage} confidence={c.vintage} /> : null}
+          {extracted.varietal ? <Row label="Varietal" value={extracted.varietal} confidence={c.varietal} /> : null}
+          {extracted.sulfiteDeclaration ? (
+            <Row label="Sulfites" value={extracted.sulfiteDeclaration} confidence={c.sulfiteDeclaration} />
+          ) : null}
+          {extracted.ageStatement ? (
+            <Row label="Age statement" value={extracted.ageStatement} confidence={c.ageStatement} />
+          ) : null}
+          {extracted.commodityStatement ? (
+            <Row label="Commodity" value={extracted.commodityStatement} confidence={c.commodityStatement} />
+          ) : null}
           <Row label="Gov. warning" value={extracted.warningText} confidence={c.warningText} />
         </dl>
         <div className="mt-3 flex flex-wrap gap-2 border-t border-border pt-3">

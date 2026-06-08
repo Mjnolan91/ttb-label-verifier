@@ -25,6 +25,9 @@ export type VisionProviderName = "mock" | "llm" | "ocr" | "openai";
  * fixtures), so it is always required. Real providers additionally use the raw bytes; those are
  * optional here precisely so the mock/test path never needs real image data.
  */
+/** Which label of a product this image is (TTB COLA image types). A product may have several. */
+export type LabelPosition = "front" | "back" | "neck" | "other";
+
 export interface ImageInput {
   /** Original filename, e.g. "old-tom-bourbon-clean.svg". The mock's lookup key. */
   filename: string;
@@ -32,6 +35,8 @@ export interface ImageInput {
   data?: Uint8Array;
   /** MIME type, e.g. "image/jpeg" — used by real providers when present. */
   contentType?: string;
+  /** Which label this is (front/back/neck/other). A hint passed to real providers; optional. */
+  position?: LabelPosition;
 }
 
 /**

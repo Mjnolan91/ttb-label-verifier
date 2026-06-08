@@ -70,6 +70,15 @@ export interface FieldConfidence {
   warningPrefixIsAllCaps?: number;
   /** Confidence that the prefix bold determination is correct. */
   warningPrefixIsBold?: number;
+  // Extended TTB label elements (see ExtractedFields + labelRequirements.ts).
+  nameAndAddress?: number;
+  countryOfOrigin?: number;
+  appellation?: number;
+  vintage?: number;
+  varietal?: number;
+  sulfiteDeclaration?: number;
+  ageStatement?: number;
+  commodityStatement?: number;
 }
 
 /**
@@ -153,6 +162,26 @@ export interface ExtractedFields {
    *             violation — absence of evidence is not evidence of a violation.
    */
   warningPrefixIsBold: boolean | null;
+  /**
+   * Name and address of the responsible party as printed, e.g. "Bottled by Old Tom Distillery,
+   * Louisville, KY". The verb prefix ("Distilled by", "Produced by", "Imported by") is part of the
+   * commodity statement for spirits; we capture the full statement here.
+   */
+  nameAndAddress?: string;
+  /** Country of origin, required for imported products, e.g. "Product of Scotland". */
+  countryOfOrigin?: string;
+  /** Appellation of origin (wine), e.g. "Napa Valley". */
+  appellation?: string;
+  /** Vintage year (wine), e.g. "2019". */
+  vintage?: string;
+  /** Grape varietal (wine), e.g. "Cabernet Sauvignon". */
+  varietal?: string;
+  /** Sulfite declaration (wine), e.g. "Contains Sulfites". "" at high confidence = none present. */
+  sulfiteDeclaration?: string;
+  /** Age statement (distilled spirits), e.g. "Aged 4 Years". */
+  ageStatement?: string;
+  /** Commodity statement (distilled spirits) when distinct from name/address. */
+  commodityStatement?: string;
   /** Per-field confidence scores in [0, 1]. */
   confidence: FieldConfidence;
 }

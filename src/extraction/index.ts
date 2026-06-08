@@ -6,7 +6,7 @@
  * reconciler — one for mock/llm/ocr, or both Azure providers for the "ensemble" mode. Selecting a
  * real provider without its env config errors cleanly and never touches the mock/test path.
  */
-export type { ImageInput, VisionProvider, VisionProviderName } from "./VisionProvider";
+export type { ImageInput, VisionProvider, VisionProviderName, LabelPosition } from "./VisionProvider";
 export type { FetchLike } from "./http";
 export { MockVisionProvider } from "./MockVisionProvider";
 export {

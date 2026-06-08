@@ -1,19 +1,21 @@
 /**
- * POST /api/verify — read a label with the configured VisionProvider, and OPTIONALLY verify it
- * against claimed application values.
+ * POST /api/verify — read a product's label image(s) with the configured VisionProvider, run the TTB
+ * completeness check, and OPTIONALLY verify against claimed application values.
  *
- * Accepts multipart/form-data: an `image` file (REQUIRED) plus OPTIONAL claimed fields (`brand`,
- * `alcoholContent`, `classType`, `netContents`). It ALWAYS extracts the label into structured
- * fields (the extraction-first path); when BOTH `brand` and `alcoholContent` are supplied it also
- * runs the deterministic comparator and returns a per-field verdict. The default provider is the
- * offline mock. Uses the web-standard Request/Response so it is offline-testable.
+ * Accepts multipart/form-data: one or MORE `image` files (a product may have front/back/neck labels),
+ * optional matching `position` values, plus OPTIONAL claimed fields (`brand`, `alcoholContent`,
+ * `classType`, `netContents`). It ALWAYS extracts the merged label data and computes a per-beverage
+ * `completeness` result; when BOTH `brand` and `alcoholContent` are supplied it ALSO returns a
+ * claimed-comparison verdict. The default provider is the offline mock. Web-standard Request/Response.
  */
 import type { ClaimedFields } from "@/domain";
-import { getActiveProviders, resolveTimeoutMs } from "@/extraction";
+import { getActiveProviders, resolveTimeoutMs, type ImageInput, type LabelPosition } from "@/extraction";
 import { runExtraction, runVerification, type VerificationOutcome } from "@/pipeline";
+import { checkCompleteness } from "@/compare";
 import type { VerifyApiResponse } from "./contract";
 
-/** Recognize the abort/timeout error the reconciler raises, so we can surface it. */
+const POSITIONS: readonly LabelPosition[] = ["front", "back", "neck", "other"];
+
 function isTimeoutError(err: unknown): boolean {
   return err instanceof Error && (err.name === "AbortError" || err.name === "TimeoutError");
 }
@@ -23,30 +25,36 @@ function field(form: FormData, name: string): string {
   return typeof v === "string" ? v.trim() : "";
 }
 
+function toPosition(v: FormDataEntryValue | undefined): LabelPosition | undefined {
+  return typeof v === "string" && (POSITIONS as readonly string[]).includes(v)
+    ? (v as LabelPosition)
+    : undefined;
+}
+
 export async function POST(request: Request): Promise<Response> {
   let form: FormData;
   try {
     form = await request.formData();
   } catch {
     return Response.json(
-      { error: "Expected multipart/form-data with an image (and optional claimed field values)." },
+      { error: "Expected multipart/form-data with one or more image files." },
       { status: 400 },
     );
   }
 
-  const image = form.get("image");
+  const imageFiles = form.getAll("image").filter((f): f is File => f instanceof File && f.size > 0);
+  const positions = form.getAll("position");
   const brand = field(form, "brand");
   const alcoholContent = field(form, "alcoholContent");
   const classType = field(form, "classType");
   const netContents = field(form, "netContents");
 
-  // Only the image is required — extraction is the primary path.
-  if (!(image instanceof File) || image.size === 0) {
-    return Response.json({ error: "An image file is required." }, { status: 400 });
+  // At least one image is required — extraction is the primary path.
+  if (imageFiles.length === 0) {
+    return Response.json({ error: "At least one image file is required." }, { status: 400 });
   }
 
   // Verification is OPTIONAL: it runs only when the application's brand AND alcohol are supplied.
-  // With neither (the default, extraction-first path) we just read the label and return its fields.
   const wantVerify = Boolean(brand && alcoholContent);
   const claimed: ClaimedFields | undefined = wantVerify
     ? {
@@ -57,9 +65,8 @@ export async function POST(request: Request): Promise<Response> {
       }
     : undefined;
 
-  // Resolve the configured provider(s) up front. A misconfigured REAL provider (e.g.
-  // VISION_PROVIDER=llm with no Azure keys) is an operator error — fail loud with an actionable
-  // 500 rather than silently falling back to the mock and pretending to read the image.
+  // Resolve provider(s) up front. A misconfigured REAL provider (e.g. VISION_PROVIDER=llm with no
+  // keys) is an operator error — fail loud with an actionable 500 rather than faking a read.
   let providers;
   try {
     providers = getActiveProviders();
@@ -73,18 +80,23 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
   const providerName = providers.map((p) => p.name).join("+");
-  const bytes = new Uint8Array(await image.arrayBuffer());
-  const imageInput = { filename: image.name, data: bytes, contentType: image.type || undefined };
   const timeoutMs = resolveTimeoutMs(providers);
+
+  const images: ImageInput[] = await Promise.all(
+    imageFiles.map(async (f, i) => ({
+      filename: f.name,
+      data: new Uint8Array(await f.arrayBuffer()),
+      contentType: f.type || undefined,
+      position: toPosition(positions[i]),
+    })),
+  );
 
   let outcome: VerificationOutcome;
   try {
-    // Reconciles the configured provider(s) in parallel and gates readability; the per-call timeout
-    // is sized to the active providers (~3s mock / ~8s real, overridable via VISION_TIMEOUT_MS) so a
-    // real vision call isn't aborted prematurely. Compare only when claimed values were supplied.
+    // Each image is read (with its per-call timeout) and merged; compare only when claimed supplied.
     outcome = claimed
-      ? await runVerification(providers, claimed, imageInput, timeoutMs)
-      : { ...(await runExtraction(providers, imageInput, timeoutMs)), result: null };
+      ? await runVerification(providers, claimed, images, timeoutMs)
+      : { ...(await runExtraction(providers, images, timeoutMs)), result: null };
   } catch (err) {
     if (isTimeoutError(err)) {
       return Response.json(
@@ -98,11 +110,8 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  // Unreadable / low-confidence image: surface the right prompt, never fabricated data.
+  // Unreadable / low-confidence: surface the right prompt, never fabricated data.
   if (!outcome.readable) {
-    // Distinguish "demo mock recognized nothing" (all-zero confidence) from a genuine low-confidence
-    // read, so the message is honest rather than misleadingly "blurry". INVARIANT: usingMock is false
-    // under VISION_PROVIDER=llm/ocr/ensemble, so the demo-only message can NEVER appear for a real read.
     const usingMock = providers.every((p) => p.name === "mock");
     const confidences = Object.values(outcome.extracted.confidence).filter(
       (c): c is number => typeof c === "number",
@@ -110,7 +119,7 @@ export async function POST(request: Request): Promise<Response> {
     const nothingRead = confidences.length === 0 || Math.max(...confidences) === 0;
     const message =
       usingMock && nothingRead
-        ? "Demo (mock) mode only recognizes the bundled sample labels — with no API keys there is no real model reading the image. Try a sample on the form, or set VISION_PROVIDER + an API key to read your own photos."
+        ? "Demo (mock) mode only recognizes the bundled sample labels — with no API keys there is no real model reading the image. Set VISION_PROVIDER + an API key to read your own photos."
         : "We couldn't read this label clearly — please re-upload a clearer, well-lit photo with the label flat and in focus.";
     const payload: VerifyApiResponse = {
       provider: providerName,
@@ -127,6 +136,7 @@ export async function POST(request: Request): Promise<Response> {
     provider: providerName,
     readable: true,
     extracted: outcome.extracted,
+    completeness: checkCompleteness(outcome.extracted),
     result: outcome.result,
     ...(claimed ? { claimed } : {}),
   };

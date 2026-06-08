@@ -1,32 +1,35 @@
 "use client";
 
 /**
- * DropZone — drag-and-drop wrapping a real (keyboard-focusable) file input, with an upload icon and
- * live preview. A11y: the real <input> stays the focusable element (sr-only but present), the
- * wrapper shows a visible focus-within ring, the <label htmlFor> association keeps click+keyboard
- * working, and aria-describedby is forwarded. Drag is a progressive enhancement over the picker.
+ * DropZone — drag-and-drop / file-picker for one or more label images (a product may have front,
+ * back, neck images). A11y: a real keyboard-focusable <input> (sr-only) wrapped in a <label>, a
+ * visible focus-within ring, and forwarded aria-describedby. The selected images are rendered by the
+ * caller (so it can show thumbnails + per-image position). The input value is reset after each pick
+ * so re-selecting the same file still fires.
  */
 import { useState, type ChangeEvent, type DragEvent, type Ref } from "react";
 import { IconUpload } from "./icons";
 
 export function DropZone({
   id,
-  file,
-  preview,
-  onFile,
+  onFiles,
   inputRef,
   describedById,
   accept = "image/*",
+  multiple = true,
 }: {
   id: string;
-  file: File | null;
-  preview: string | null;
-  onFile: (f: File | undefined) => void;
+  onFiles: (files: File[]) => void;
   inputRef?: Ref<HTMLInputElement>;
   describedById?: string;
   accept?: string;
+  multiple?: boolean;
 }) {
   const [dragOver, setDragOver] = useState(false);
+  const handle = (list: FileList | null | undefined) => {
+    const files = Array.from(list ?? []);
+    if (files.length > 0) onFiles(files);
+  };
   return (
     <div
       onDragOver={(e: DragEvent<HTMLDivElement>) => {
@@ -40,7 +43,7 @@ export function DropZone({
       onDrop={(e: DragEvent<HTMLDivElement>) => {
         e.preventDefault();
         setDragOver(false);
-        onFile(e.dataTransfer.files?.[0]);
+        handle(e.dataTransfer.files);
       }}
       className={
         "rounded-card border-2 border-dashed p-6 text-center transition-colors focus-within:outline-none " +
@@ -51,26 +54,18 @@ export function DropZone({
       }
     >
       <label htmlFor={id} className="flex cursor-pointer flex-col items-center gap-2">
-        {preview ? (
-          // eslint-disable-next-line @next/next/no-img-element -- local object URL preview, not a remote asset
-          <img
-            src={preview}
-            alt={file ? `Preview of ${file.name}` : "Selected label preview"}
-            className="mx-auto mb-1 max-h-60 w-auto rounded-lg border border-border bg-white object-contain shadow-sm"
-          />
-        ) : (
-          <span
-            aria-hidden="true"
-            className="flex h-14 w-14 items-center justify-center rounded-full bg-brand-50 text-2xl text-brand-600"
-          >
-            <IconUpload />
-          </span>
-        )}
+        <span
+          aria-hidden="true"
+          className="flex h-14 w-14 items-center justify-center rounded-full bg-brand-50 text-2xl text-brand-600"
+        >
+          <IconUpload />
+        </span>
         <span className="font-semibold text-ink">
-          {file ? `Selected: ${file.name}` : "Drag & drop a label image"}
+          Drag &amp; drop label image{multiple ? "s" : ""}
         </span>
         <span className="text-sm text-ink-muted">
-          or <span className="font-semibold text-brand-700 underline underline-offset-2">browse for a file</span>
+          or <span className="font-semibold text-brand-700 underline underline-offset-2">browse</span>
+          {multiple ? " — add a front, back, neck…" : ""}
         </span>
         <input
           ref={inputRef}
@@ -78,7 +73,11 @@ export function DropZone({
           name="image"
           type="file"
           accept={accept}
-          onChange={(e: ChangeEvent<HTMLInputElement>) => onFile(e.target.files?.[0])}
+          multiple={multiple}
+          onChange={(e: ChangeEvent<HTMLInputElement>) => {
+            handle(e.target.files);
+            e.target.value = "";
+          }}
           aria-required="true"
           aria-describedby={describedById}
           className="sr-only"

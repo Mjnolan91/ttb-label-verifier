@@ -39,3 +39,7 @@ export {
   isWarningRequired,
   WARNING_REQUIRED_ABV_THRESHOLD,
 } from "./alcohol";
+
+// TTB mandatory label-element matrix per beverage class (drives the completeness check).
+export { mandatoryElementsFor } from "./labelRequirements";
+export type { RequirementKey, RequirementSpec } from "./labelRequirements";

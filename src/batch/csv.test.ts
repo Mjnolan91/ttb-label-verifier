@@ -72,10 +72,10 @@ describe("analysisToCsv (extraction-first export)", () => {
     const csv = analysisToCsv([{ filename: "x.png", extracted: EXTRACTED }]);
     const lines = csv.split("\n");
     expect(lines[0]).toBe(
-      "filename,brand,class_type,alcohol,net_contents,warning_present,warning_all_caps,warning_bold,brand_conf,alcohol_conf,warning_conf",
+      "filename,brand,class_type,alcohol,net_contents,warning_present,warning_all_caps,warning_bold,brand_conf,alcohol_conf,warning_conf,completeness",
     );
     expect(lines[1]).toBe(
-      "x.png,OLD TOM DISTILLERY,Kentucky Straight Bourbon Whiskey,45% Alc./Vol. (90 Proof),750 mL,yes,yes,yes,0.98,0.97,0.96",
+      "x.png,OLD TOM DISTILLERY,Kentucky Straight Bourbon Whiskey,45% Alc./Vol. (90 Proof),750 mL,yes,yes,yes,0.98,0.97,0.96,",
     );
   });
 
@@ -103,6 +103,6 @@ describe("analysisToCsv (extraction-first export)", () => {
       confidence: {},
     };
     const line = analysisToCsv([{ filename: "weird,name.png", extracted: sparse }]).split("\n")[1];
-    expect(line).toBe('"weird,name.png",,,,,no,no,,,,');
+    expect(line).toBe('"weird,name.png",,,,,no,no,,,,,');
   });
 });
