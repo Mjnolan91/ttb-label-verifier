@@ -20,7 +20,7 @@ import type { VerifyApiResponse, VerifyApiError } from "../api/verify/contract";
 import { downscaleForUpload } from "../imageDownscale";
 import { ErrorAlert } from "../ui/ErrorAlert";
 import { StatusBadge } from "../ui/StatusBadge";
-import { toneForStatus, type Tone } from "../ui/status";
+import { toneForStatus, VERDICT_LABEL, COMPLETENESS_LABEL, type Tone } from "../ui/status";
 import { CLASS_DISPLAY_LABEL } from "../ui/beverageClass";
 import { inputClass, primaryButtonClass, secondaryButtonClass } from "../ui/fieldStyles";
 import { downloadJson, downloadCsv } from "../ui/download";
@@ -163,6 +163,10 @@ export function BatchVerify() {
   }
 
   const completedRows = rows.filter((r) => r.status === "done" && r.extracted);
+  // An application CSV was loaded but matched no product — almost always a filename-column mismatch.
+  // Surface it instead of silently showing "no application row" on every row.
+  const noneMatched =
+    !running && rows.length > 0 && claimed.size > 0 && rows.every((r) => !r.result);
   function exportJson() {
     downloadJson(
       "ttb-extractions.json",
@@ -302,6 +306,14 @@ export function BatchVerify() {
             Read {done} / {rows.length}
           </p>
         )}
+
+        {noneMatched && (
+          <p className="rounded-card border-l-4 border-review-500 bg-review-50 p-3 text-sm text-review-900">
+            Loaded {claimed.size} application row{claimed.size === 1 ? "" : "s"}, but none matched your
+            files. Check that the CSV <code>filename</code> column matches your image filenames exactly
+            (e.g. <code>acme-ipa-front.jpg</code>), or use the product name.
+          </p>
+        )}
       </div>
 
       {rows.length > 0 && (
@@ -340,14 +352,17 @@ export function BatchVerify() {
                   <td className="px-3 py-2.5 text-ink">{cell(r, (e) => e.alcoholContentText)}</td>
                   <td className="px-3 py-2.5">
                     {r.completeness ? (
-                      <StatusBadge tone={COMPLETENESS_TONE[r.completeness.overall]} label={r.completeness.overall} />
+                      <StatusBadge
+                        tone={COMPLETENESS_TONE[r.completeness.overall]}
+                        label={COMPLETENESS_LABEL[r.completeness.overall]}
+                      />
                     ) : (
                       <span className="text-ink-muted">{r.status === "pending" ? "…" : "—"}</span>
                     )}
                   </td>
                   <td className="px-3 py-2.5">
                     {r.result ? (
-                      <StatusBadge tone={toneForStatus(r.result.overall)} label={r.result.overall} />
+                      <StatusBadge tone={toneForStatus(r.result.overall)} label={VERDICT_LABEL[r.result.overall]} />
                     ) : (
                       <span className="text-ink-muted">{claimed.size > 0 ? "no application row" : "—"}</span>
                     )}

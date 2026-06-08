@@ -1,7 +1,7 @@
 import type { Ref } from "react";
 import type { CompletenessResult, ElementStatus } from "@/compare";
 import { StatusBadge } from "./StatusBadge";
-import { TONE_TINT, TONE_ICON, type Tone } from "./status";
+import { TONE_TINT, TONE_ICON, COMPLETENESS_LABEL, type Tone } from "./status";
 import { CLASS_DISPLAY_LABEL } from "./beverageClass";
 
 /**
@@ -19,13 +19,13 @@ const STATUS_TONE: Record<ElementStatus, Tone> = {
 const STATUS_LABEL: Record<ElementStatus, string> = {
   present: "PRESENT",
   missing: "MISSING",
-  malformed: "MALFORMED",
+  malformed: "WRONG FORMAT",
   unverifiable: "NOT APPLICABLE",
 };
-const OVERALL: Record<CompletenessResult["overall"], { tone: Tone; label: string }> = {
-  complete: { tone: "pass", label: "Complete" },
-  incomplete: { tone: "fail", label: "Incomplete" },
-  review: { tone: "review", label: "Needs review" },
+const OVERALL_TONE: Record<CompletenessResult["overall"], Tone> = {
+  complete: "pass",
+  incomplete: "fail",
+  review: "review",
 };
 
 export function CompletenessView({
@@ -35,8 +35,8 @@ export function CompletenessView({
   completeness: CompletenessResult;
   headingRef?: Ref<HTMLHeadingElement>;
 }) {
-  const o = OVERALL[completeness.overall];
-  const OverallIcon = TONE_ICON[o.tone];
+  const tone = OVERALL_TONE[completeness.overall];
+  const OverallIcon = TONE_ICON[tone];
   return (
     <section aria-label="TTB completeness check" className="mt-6 flex flex-col gap-4">
       <h2
@@ -47,13 +47,13 @@ export function CompletenessView({
         TTB completeness check
       </h2>
 
-      <div className={`flex items-center gap-4 rounded-card border-l-8 p-5 shadow-card ${TONE_TINT[o.tone]}`}>
+      <div className={`flex items-center gap-4 rounded-card border-l-8 p-5 shadow-card ${TONE_TINT[tone]}`}>
         {OverallIcon && <OverallIcon className="h-9 w-9 shrink-0" />}
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide opacity-80">
             {CLASS_DISPLAY_LABEL[completeness.beverageClass]}
           </p>
-          <p className="text-2xl font-bold">{o.label}</p>
+          <p className="text-2xl font-bold">{COMPLETENESS_LABEL[completeness.overall]}</p>
         </div>
       </div>
 

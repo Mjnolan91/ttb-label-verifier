@@ -1,7 +1,7 @@
 import type { Ref } from "react";
 import type { VerifyResult, FieldResult } from "@/compare";
 import { StatusBadge } from "./ui/StatusBadge";
-import { toneForStatus, TONE_TINT, TONE_ICON } from "./ui/status";
+import { toneForStatus, TONE_TINT, TONE_ICON, VERDICT_LABEL } from "./ui/status";
 
 /**
  * ResultView — at-a-glance claimed-vs-label verdict.
@@ -12,10 +12,14 @@ import { toneForStatus, TONE_TINT, TONE_ICON } from "./ui/status";
  * heading — so a single announcement channel (focus) is used, with no overlapping aria-live region.
  */
 
-const OVERALL_LABEL: Record<VerifyResult["overall"], string> = {
-  approve: "Approve",
-  review: "Needs review",
-  reject: "Reject",
+/** A plain next-action line under the verdict, so a non-technical agent knows what to DO, not just
+ *  the status. Keyed off the same overall verdict — pure presentation, no new logic. */
+const NEXT_STEP: Record<VerifyResult["overall"], string> = {
+  approve: "Everything matched the application — this label can be approved.",
+  review:
+    "Some items need a person to confirm. Open the label image and check the highlighted fields below.",
+  reject:
+    "A required check failed. Review the item(s) marked FAIL below before sending this back to the applicant.",
 };
 
 const FIELDS: { key: "brand" | "alcohol" | "warning"; name: string }[] = [
@@ -72,12 +76,13 @@ export function ResultView({
       </h2>
 
       <div
-        className={`flex items-center gap-4 rounded-card border-l-8 p-5 shadow-card motion-safe:animate-reveal ${TONE_TINT[tone]}`}
+        className={`flex items-start gap-4 rounded-card border-l-8 p-5 shadow-card motion-safe:animate-reveal ${TONE_TINT[tone]}`}
       >
         {OverallIcon && <OverallIcon className="h-9 w-9 shrink-0" />}
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide opacity-80">Overall verdict</p>
-          <p className="text-2xl font-bold">{OVERALL_LABEL[result.overall]}</p>
+          <p className="text-2xl font-bold">{VERDICT_LABEL[result.overall]}</p>
+          <p className="mt-1 text-sm">{NEXT_STEP[result.overall]}</p>
         </div>
       </div>
 

@@ -59,8 +59,8 @@ describe("BatchVerify — verify against an application CSV", () => {
     await q.findByText(/application row\(s\) loaded/i);
     fireEvent.click(q.getByRole("button", { name: /Read all labels/i }));
 
-    // The product matches a claimed row, so verifyLabel runs and a verdict badge appears.
-    expect(await q.findByText("approve")).toBeTruthy();
+    // The product matches a claimed row, so verifyLabel runs and a verdict badge appears (human label).
+    expect(await q.findByText("Approve")).toBeTruthy();
   });
 
   async function run(csv: string, fetchImpl?: typeof fetch): Promise<ReturnType<typeof within>> {
@@ -81,7 +81,7 @@ describe("BatchVerify — verify against an application CSV", () => {
 
   it("shows a reject verdict when the claimed brand does not match the label", { retry: 2 }, async () => {
     const q = await run("filename,brand,alcohol\nacme-front.png,Totally Different Co,40% Alc./Vol.");
-    expect(await q.findByText("reject")).toBeTruthy();
+    expect(await q.findByText("Reject")).toBeTruthy();
   });
 
   it("shows 'no application row' for a product the CSV does not cover", { retry: 2 }, async () => {

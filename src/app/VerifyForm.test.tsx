@@ -94,6 +94,22 @@ describe("VerifyForm — claimed-vs-application verification", () => {
     expect(q.getByText("Approve")).toBeTruthy();
   });
 
+  it("moves focus to the headline verdict on an auto-read (not the 3rd extracted-fields section)", ASYNC, async () => {
+    mockFetch({ provider: "mock", readable: true, extracted: extractedBourbon(), result: null });
+    const { container } = render(<VerifyForm />);
+    const q = within(container);
+    // Fill the application values BEFORE uploading, so a verdict exists the instant the read settles.
+    fireEvent.change(q.getByLabelText(/Brand name/i), { target: { value: "Old Tom Distillery" } });
+    fireEvent.change(q.getByLabelText(/Alcohol content/i), {
+      target: { value: "45% Alc./Vol. (90 Proof)" },
+    });
+    dropLabelImage(container);
+
+    const verdictHeading = await q.findByText("Verification result");
+    // Focus lands on the verify-first headline outcome, not the "Extracted from the label" section.
+    expect(document.activeElement).toBe(verdictHeading);
+  });
+
   it("rejects a title-case 'Government Warning' — the strict warning check is visible end-to-end", ASYNC, async () => {
     // Jenny's scenario: a title-case prefix (not ALL CAPS) must be rejected.
     mockFetch({

@@ -9,6 +9,21 @@ import { IconPass, IconReview, IconFail, type IconProps } from "./icons";
 
 export type Tone = "pass" | "review" | "fail" | "neutral";
 
+/**
+ * Human-facing labels for the overall outcomes — the SINGLE source so the single-label screen and
+ * the batch table read identically (no raw "approve"/"incomplete" enum tokens leaking to the user).
+ */
+export const VERDICT_LABEL: Record<"approve" | "review" | "reject", string> = {
+  approve: "Approve",
+  review: "Needs review",
+  reject: "Reject",
+};
+export const COMPLETENESS_LABEL: Record<"complete" | "incomplete" | "review", string> = {
+  complete: "Complete",
+  incomplete: "Incomplete",
+  review: "Needs review",
+};
+
 /** Map any per-field or overall status string to a tone. Unknowns ("…", "—", "pending") -> neutral. */
 export function toneForStatus(value: string): Tone {
   switch (value) {

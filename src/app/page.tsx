@@ -8,6 +8,11 @@ import { CANONICAL_GOVERNMENT_WARNING, GOVERNMENT_WARNING_PREFIX } from "@/domai
 const WARNING_REMAINDER = CANONICAL_GOVERNMENT_WARNING.slice(GOVERNMENT_WARNING_PREFIX.length);
 
 export default function Home() {
+  // Server-side: is the offline mock the active reader? (VISION_PROVIDER unset or "mock"). Used to
+  // show a calm "demo mode" hint so a first-time user isn't surprised that their own photo can't be
+  // read. A configured real provider (the deployed demo) hides it. Env check avoids constructing a
+  // provider here (which would throw if a real provider is selected but unconfigured).
+  const mockMode = (process.env.VISION_PROVIDER ?? "mock").toLowerCase() === "mock";
   return (
     <main id="main-content" tabIndex={-1} className="mx-auto flex min-h-screen max-w-3xl flex-col gap-8 px-4 py-10 sm:py-14 focus:outline-none">
       <header>
@@ -27,7 +32,7 @@ export default function Home() {
         </p>
       </header>
 
-      <VerifyForm />
+      <VerifyForm mockMode={mockMode} />
 
       <details className={`${cardClass} p-5 text-sm`}>
         <summary className="cursor-pointer font-semibold text-ink">

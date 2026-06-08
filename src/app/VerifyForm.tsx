@@ -39,7 +39,7 @@ type SlotKey = "front" | "back";
 const orderedImagesOf = (s: { front?: LabelImage; back?: LabelImage }): LabelImage[] =>
   [s.front, s.back].filter(Boolean) as LabelImage[];
 
-export function VerifyForm() {
+export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
   // The label is uploaded into two explicit slots — Front (required) and Back (optional) — so the
   // agent says what each image is; position is fixed by the slot (no order-guessing, no dropdown).
   const [slots, setSlots] = useState<{ front?: LabelImage; back?: LabelImage }>({});
@@ -64,14 +64,22 @@ export function VerifyForm() {
     vClass: useId(),
   };
   const resultHeadingRef = useRef<HTMLHeadingElement>(null);
+  const completenessHeadingRef = useRef<HTMLHeadingElement>(null);
   const verdictHeadingRef = useRef<HTMLHeadingElement>(null);
   const justVerified = useRef(false);
   // Monotonic token so an in-flight read whose image set has since changed is ignored.
   const readToken = useRef(0);
 
-  // Move focus to the result heading once a read completes.
+  // When a read completes, move focus to the TOPMOST result heading so a keyboard/screen-reader user
+  // lands on the headline outcome the verify-first page leads with — not the third section. Each
+  // heading ref is populated ONLY while its section is mounted, so the priority order falls out of
+  // which ref exists: verdict (application values supplied) > completeness > extracted / re-upload.
+  // Keyed on `state` only so live recompute (typing application values) never steals focus.
   useEffect(() => {
-    if (state === "done") resultHeadingRef.current?.focus();
+    if (state !== "done") return;
+    const target =
+      verdictHeadingRef.current || completenessHeadingRef.current || resultHeadingRef.current;
+    target?.focus();
   }, [state]);
 
   // Derive the application-match verdict from the reading + the application values (no effect, no
@@ -220,9 +228,17 @@ export function VerifyForm() {
         export the data. No typing required to read.
       </p>
 
+      {mockMode && (
+        <p className="mt-3 rounded-field border border-border bg-surface-muted px-3 py-2.5 text-sm text-ink-muted">
+          <strong className="font-semibold text-ink">Demo mode.</strong> This preview recognizes the
+          built-in sample labels only. To read your own photos, a vision provider must be configured —
+          see the README.
+        </p>
+      )}
+
       {/* Step 1 — upload into explicit Front / Back slots */}
       <div className="mt-6">
-        <span className="mb-1.5 block font-medium text-ink">1. Label images</span>
+        <h3 className="mb-1.5 block font-medium text-ink">1. Label images</h3>
         <p id={ids.imageHelp} className="sr-only">
           Upload the front label (required) and optionally the back label. Click a thumbnail to enlarge it.
         </p>
@@ -331,7 +347,9 @@ export function VerifyForm() {
             Verify against the application
           </button>
           <span className="text-sm text-ink-muted">
-            Brand, alcohol content, and the government warning are checked against the label.
+            {canVerify
+              ? "Brand, alcohol content, and the government warning are checked against the label."
+              : "Add the brand name and alcohol content from the application to run the match — or skip this and just read the label below."}
           </span>
         </div>
       </form>
@@ -348,7 +366,8 @@ export function VerifyForm() {
             Reading the label…
           </p>
           <div className="mt-4 flex items-center gap-2 text-ink-muted">
-            <IconSpinner className="h-5 w-5 motion-safe:animate-spin" /> Reading the label…
+            <IconSpinner className="h-5 w-5 motion-safe:animate-spin" /> Reading the label… this takes a
+            few seconds.
           </div>
           <ResultSkeleton />
         </>
@@ -358,7 +377,9 @@ export function VerifyForm() {
       {readable && response && (
         <>
           {verdict && <ResultView result={verdict} headingRef={verdictHeadingRef} />}
-          {response.completeness && <CompletenessView completeness={response.completeness} />}
+          {response.completeness && (
+            <CompletenessView completeness={response.completeness} headingRef={completenessHeadingRef} />
+          )}
           <ExtractedFieldsView extracted={response.extracted} headingRef={resultHeadingRef} />
           <div className="mt-4 flex flex-wrap gap-3">
             <button type="button" onClick={onDownloadJson} className={secondaryButtonClass}>
