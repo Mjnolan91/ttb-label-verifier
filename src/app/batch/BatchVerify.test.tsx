@@ -62,4 +62,40 @@ describe("BatchVerify — verify against an application CSV", () => {
     // The product matches a claimed row, so verifyLabel runs and a verdict badge appears.
     expect(await q.findByText("approve")).toBeTruthy();
   });
+
+  async function run(csv: string, fetchImpl?: typeof fetch): Promise<ReturnType<typeof within>> {
+    globalThis.fetch = (fetchImpl ??
+      (vi.fn(async () => ({ ok: true, json: async () => RESPONSE })) as unknown as typeof fetch));
+    const { container } = render(<BatchVerify />);
+    const q = within(container);
+    fireEvent.change(container.querySelector('input[accept="image/*"]') as HTMLInputElement, {
+      target: { files: [new File(["x"], "acme-front.png", { type: "image/png" })] },
+    });
+    const csvFile = new File([csv], "claims.csv", { type: "text/csv" });
+    Object.defineProperty(csvFile, "text", { value: () => Promise.resolve(csv) });
+    fireEvent.change(q.getByLabelText(/Application values CSV/i) as HTMLInputElement, { target: { files: [csvFile] } });
+    await q.findByText(/application row\(s\) loaded/i);
+    fireEvent.click(q.getByRole("button", { name: /Read all labels/i }));
+    return q;
+  }
+
+  it("shows a reject verdict when the claimed brand does not match the label", { retry: 2 }, async () => {
+    const q = await run("filename,brand,alcohol\nacme-front.png,Totally Different Co,40% Alc./Vol.");
+    expect(await q.findByText("reject")).toBeTruthy();
+  });
+
+  it("shows 'no application row' for a product the CSV does not cover", { retry: 2 }, async () => {
+    const q = await run("filename,brand,alcohol\nsomething-else.png,X,40% Alc./Vol.");
+    expect(await q.findByText(/no application row/i)).toBeTruthy();
+  });
+
+  it("surfaces a request failure as an error note, not a fabricated verdict", { retry: 2 }, async () => {
+    const q = await run(
+      "filename,brand,alcohol\nacme-front.png,Acme,40% Alc./Vol.",
+      vi.fn(async () => {
+        throw new Error("network down");
+      }) as unknown as typeof fetch,
+    );
+    expect(await q.findByText(/Request failed/i)).toBeTruthy();
+  });
 });
