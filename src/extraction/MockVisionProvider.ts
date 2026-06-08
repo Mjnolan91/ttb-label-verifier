@@ -13,7 +13,7 @@
  * Both drive the "re-upload a clearer photo" path. Neither ever auto-approves.
  */
 import type { ExtractedFields } from "@/domain";
-import type { ImageInput, VisionProvider } from "./VisionProvider";
+import type { ExtractOptions, ImageInput, VisionProvider } from "./VisionProvider";
 import { mapRawExtracted, type RawExtractedFields } from "./extractedShape";
 // Imported at build time (resolveJsonModule) — no filesystem read or network at runtime.
 import casesJson from "../../eval/fixtures/cases.json";
@@ -47,7 +47,7 @@ export class MockVisionProvider implements VisionProvider {
   readonly name = "mock" as const;
 
   // Not `async` (no I/O to await) but returns a Promise to satisfy the interface.
-  extract(image: ImageInput): Promise<ExtractedFields> {
+  extract(image: ImageInput, _signal?: AbortSignal, _options?: ExtractOptions): Promise<ExtractedFields> {
     const raw = EXTRACTED_BY_FILENAME.get(image.filename);
     return Promise.resolve(raw ? mapRawExtracted(raw) : unreadableResult());
   }

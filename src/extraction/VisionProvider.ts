@@ -20,6 +20,12 @@
  */
 import type { ExtractedFields } from "@/domain";
 
+/** Per-call extraction options. `sample: true` asks the provider to read with sampling variance
+ *  (for self-consistency); absent/false is the normal best-effort read. */
+export interface ExtractOptions {
+  sample?: boolean;
+}
+
 /** The set of provider names selectable via the `VISION_PROVIDER` env var. */
 export type VisionProviderName = "mock" | "llm" | "ocr" | "openai" | "gemini";
 
@@ -57,5 +63,11 @@ export interface VisionProvider {
    * The optional `signal` lets the parallel reconciler abort a straggler at the
    * per-call timeout; providers that perform I/O should forward it to their request.
    */
-  extract(image: ImageInput, signal?: AbortSignal): Promise<ExtractedFields>;
+  extract(image: ImageInput, signal?: AbortSignal, options?: ExtractOptions): Promise<ExtractedFields>;
+  /**
+   * OPTIONAL second pass: judge ONLY whether the "GOVERNMENT WARNING:" prefix is rendered bolder than
+   * the warning body. Returns true (bolder) / false (same weight) / null (cannot tell or no warning).
+   * Real providers implement this; the mock omits it (the pipeline skips the pass when absent).
+   */
+  judgeWarningBold?(image: ImageInput, signal?: AbortSignal): Promise<boolean | null>;
 }
