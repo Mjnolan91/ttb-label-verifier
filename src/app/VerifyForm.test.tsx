@@ -17,7 +17,6 @@ function extractedBourbon(overrides: Partial<ExtractedFields> = {}): ExtractedFi
   return {
     brand: "Old Tom Distillery",
     classType: "Kentucky Straight Bourbon Whiskey",
-    beverageClass: "distilledSpirits",
     alcoholContentText: "45% Alc./Vol. (90 Proof)",
     netContents: "750 mL",
     name: "Old Tom Distillery",

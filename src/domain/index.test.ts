@@ -43,21 +43,22 @@ describe("domain public surface (barrel re-exports)", () => {
 
 describe("domain types are usable as documented", () => {
   it("ClaimedFields has no confidence; ExtractedFields carries per-field confidence", () => {
+    const abv: AlcoholContent = { abv: 45, proof: 90 };
+
     const claimed: ClaimedFields = {
       brand: "Stone's Throw",
       classType: "Kentucky Straight Bourbon",
       beverageClass: "distilledSpirits",
-      alcoholContent: { abv: 45, proof: 90 },
+      alcoholContent: abv,
       netContents: "750 mL",
       warningText: CANONICAL_GOVERNMENT_WARNING,
     };
 
     const confidence: FieldConfidence = { brand: 0.99, alcoholContent: 0.97 };
-    const abv: AlcoholContent = { abv: 45, proof: 90 };
 
     const extracted: ExtractedFields = {
       brand: "STONE'S THROW",
-      alcoholContent: abv,
+      alcoholContentText: "45% Alc./Vol. (90 Proof)",
       warningText: CANONICAL_GOVERNMENT_WARNING,
       warningPrefixIsAllCaps: true,
       warningPrefixIsBold: null, // tri-state: undetectable for this extractor

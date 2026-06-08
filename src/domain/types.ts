@@ -62,7 +62,6 @@ export interface AlcoholContent {
 export interface FieldConfidence {
   brand?: number;
   classType?: number;
-  beverageClass?: number;
   alcoholContent?: number;
   netContents?: number;
   warningText?: number;
@@ -133,17 +132,13 @@ export interface ExtractedFields {
   class?: string;
   /** Specific class/type DESIGNATION (standard of identity), e.g. "Straight Rye Whisky". */
   classType?: string;
-  /** Normalized beverage class inferred from the label, if determinable. */
-  beverageClass?: BeverageClass;
-  /** Alcohol content read off the label (ABV, optional proof) — optional pre-parsed form. */
-  alcoholContent?: AlcoholContent;
   /**
    * Raw, AS-WRITTEN alcohol statement read off the label, e.g. "45% Alc./Vol. (90 Proof)" or
-   * "45% Alc./Vol." (proof absent). Added for the extraction->comparison pipeline: extraction
-   * stays raw/probabilistic and the deterministic comparator PARSES this into ABV +
-   * proof and cross-checks proof = 2 x ABV ("AI extracts, code compares"). The structured
-   * `alcoholContent` above is an optional already-parsed convenience; providers populate this
-   * text field and leave parsing/interpretation to the comparator.
+   * "45% Alc./Vol." (proof absent). Extraction stays raw/probabilistic: providers populate this
+   * single text field and leave parsing/interpretation to the deterministic comparator/completeness
+   * checker, which PARSE it into ABV + proof (via parseAlcoholText) and cross-check proof = 2 x ABV
+   * ("AI extracts, code compares"). There is deliberately no pre-parsed structured form here — a
+   * single text source avoids the text-vs-struct drift across the front/back merge.
    */
   alcoholContentText?: string;
   /** Net contents read off the label, e.g. "750 mL". */

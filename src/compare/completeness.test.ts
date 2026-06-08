@@ -10,7 +10,6 @@ function ds(overrides: Partial<ExtractedFields> = {}): ExtractedFields {
   return {
     brand: "OLD TOM DISTILLERY",
     classType: "Kentucky Straight Bourbon Whiskey",
-    beverageClass: "distilledSpirits",
     alcoholContentText: "45% Alc./Vol. (90 Proof)",
     netContents: "750 mL",
     name: "Old Tom Distillery",
@@ -60,8 +59,8 @@ describe("checkCompleteness", () => {
 
   it("requires a sulfite declaration for wine; missing -> incomplete", () => {
     const wine = ds({
-      classType: "Cabernet Sauvignon Red Wine",
-      beverageClass: undefined, // force derivation from classType text
+      classType: "Cabernet Sauvignon Red Wine", // class derived from this text + ABV
+      alcoholContentText: "13.5% Alc./Vol.", // <=14% -> wineUnder14
     });
     const r = checkCompleteness(wine);
     expect(r.beverageClass).toBe("wineUnder14");
@@ -72,8 +71,8 @@ describe("checkCompleteness", () => {
   it("a wine WITH a sulfite declaration is complete", () => {
     const r = checkCompleteness(
       ds({
-        classType: "Cabernet Sauvignon",
-        beverageClass: "wineUnder14",
+        classType: "Cabernet Sauvignon Red Wine",
+        alcoholContentText: "13.5% Alc./Vol.",
         sulfiteDeclaration: "Contains Sulfites",
         confidence: { ...ds().confidence, sulfiteDeclaration: 0.95 },
       }),
@@ -91,7 +90,6 @@ describe("checkCompleteness", () => {
   it("a malt beverage may omit alcohol content (optional by default, 27 CFR 7.63(a)(3)) -> not incomplete", () => {
     const r = checkCompleteness(
       ds({
-        beverageClass: "maltBeverage",
         classType: "India Pale Ale",
         alcoholContentText: undefined,
         confidence: { ...ds().confidence, alcoholContent: undefined },
@@ -105,7 +103,6 @@ describe("checkCompleteness", () => {
   it("a <=14% table wine may omit numeric ABV when a 'table wine' designation is present (27 CFR 4.36(a))", () => {
     const r = checkCompleteness(
       ds({
-        beverageClass: "wineUnder14",
         classType: "California Table Wine",
         alcoholContentText: undefined,
         sulfiteDeclaration: "Contains Sulfites",
@@ -119,8 +116,7 @@ describe("checkCompleteness", () => {
   it("a <=14% wine with neither ABV nor a table-wine designation is incomplete", () => {
     const r = checkCompleteness(
       ds({
-        beverageClass: "wineUnder14",
-        classType: "Cabernet Sauvignon",
+        classType: "Cabernet Sauvignon Red Wine",
         alcoholContentText: undefined,
         sulfiteDeclaration: "Contains Sulfites",
         confidence: { ...ds().confidence, alcoholContent: undefined, sulfiteDeclaration: 0.95 },
@@ -131,12 +127,12 @@ describe("checkCompleteness", () => {
   });
 
   it("a sub-0.5% ABV product is exempt from the government warning (27 CFR 16.10); absent warning -> not incomplete", () => {
+    // Regression for F1: the exemption must read the ABV PARSED from alcoholContentText (there is no
+    // pre-parsed struct), so a text-only "0.3% Alc./Vol." still proves sub-0.5% and exempts the warning.
     const r = checkCompleteness(
       ds({
-        beverageClass: "maltBeverage",
         classType: "Non-Alcoholic Malt Beverage",
         alcoholContentText: "0.3% Alc./Vol.",
-        alcoholContent: { abv: 0.3 },
         warningText: undefined,
         warningPrefixIsAllCaps: false,
         warningPrefixIsBold: null,
@@ -145,5 +141,20 @@ describe("checkCompleteness", () => {
     );
     expect(statusOf(r, "governmentWarning")).toBe("unverifiable");
     expect(r.overall).not.toBe("incomplete");
+  });
+
+  it("keeps the government warning REQUIRED (missing) when ABV is unknown and the warning is absent", () => {
+    const r = checkCompleteness(
+      ds({
+        classType: "Vodka",
+        alcoholContentText: undefined,
+        warningText: undefined,
+        warningPrefixIsAllCaps: false,
+        warningPrefixIsBold: null,
+        confidence: { ...ds().confidence, alcoholContent: undefined, warningText: undefined },
+      }),
+    );
+    expect(statusOf(r, "governmentWarning")).toBe("missing");
+    expect(r.overall).toBe("incomplete");
   });
 });

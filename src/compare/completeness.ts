@@ -9,8 +9,15 @@
  */
 import type { BeverageClass, ExtractedFields, RequirementKey, RequirementSpec } from "@/domain";
 import { mandatoryElementsFor, isWarningRequired } from "@/domain";
-import { resolveBeverageClass } from "./alcohol";
+import { parseAlcoholText, resolveBeverageClass } from "./alcohol";
 import { FIELD_REVIEW_CONFIDENCE } from "./thresholds";
+
+/** The ABV parsed from the as-written alcohol statement, or undefined if absent/unparseable.
+ *  Extraction carries alcohol as text only (no pre-parsed struct); parsing lives here, next to
+ *  the comparator's parser, so the 0.5% exemption and the wine 14% split read a real number. */
+function abvFromText(e: ExtractedFields): number | undefined {
+  return parseAlcoholText(e.alcoholContentText).abv;
+}
 
 /** A "table wine"/"light wine" class designation can stand in for a numeric ABV on wine <= 14% ABV
  *  (27 CFR 4.36(a)). */
@@ -71,7 +78,7 @@ function evalWarning(spec: RequirementSpec, e: ExtractedFields): CompletenessEle
     // Products below 0.5% ABV are outside the Part 16 definition of "alcoholic beverage" and are
     // exempt (27 CFR 16.10) — an absent warning there is not a violation. Only treat it as exempt
     // when we actually have a numeric ABV proving sub-0.5%; an unknown ABV stays conservatively required.
-    const abv = e.alcoholContent?.abv;
+    const abv = abvFromText(e);
     if (typeof abv === "number" && !isWarningRequired(abv)) {
       return {
         ...base(spec),
@@ -135,8 +142,10 @@ function evalAbsentAlcohol(spec: RequirementSpec, e: ExtractedFields, cls: Bever
  * extracted `beverageClass`, falling back to resolving it from the class/type text.
  */
 export function checkCompleteness(extracted: ExtractedFields): CompletenessResult {
-  const beverageClass: BeverageClass =
-    extracted.beverageClass ?? resolveBeverageClass(extracted.classType, extracted.alcoholContent?.abv);
+  const beverageClass: BeverageClass = resolveBeverageClass(
+    extracted.classType,
+    abvFromText(extracted),
+  );
 
   let lowConfidencePresent = false;
   const elements = mandatoryElementsFor(beverageClass).map((spec): CompletenessElement => {
