@@ -14,11 +14,14 @@ unverifiable** for the detected beverage type, and exports the result as **JSON 
 When an agent enters the application's brand and alcohol content, the deterministic comparator
 produces an at-a-glance **Approve / Needs review / Reject** verdict for the three statutory checks.
 
+**Live demo:** https://ttb-label-verifier-matthew-nolan-s-projects.vercel.app — hosted on Vercel,
+auto-deployed from `main`.
+
 > **Runs with zero keys.** The app and the *entire* test suite run offline on a mock
-> provider — `npm install && npm run dev`, no API keys, no network. Real extractors (OpenAI-direct
-> for the live demo, Azure OpenAI / Azure AI Document Intelligence for production) are opt-in via
-> environment variables only. See [Enabling real extraction](#enabling-real-azure-native-extraction--optional)
-> and [Deploying to Azure](#deploying-to-azure).
+> provider — `npm install && npm run dev`, no API keys, no network. Real extractors (Gemini- or
+> OpenAI-direct for the hosted demo, Azure OpenAI / Azure AI Document Intelligence for in-tenant
+> production) are opt-in via environment variables only. See [Enabling real extraction](#enabling-real-azure-native-extraction--optional)
+> and [Deploying](#deploying).
 
 ## Run it
 ```bash
@@ -196,12 +199,18 @@ If a selected provider's required vars are unset, the request **fails loud** wit
 it never silently falls back to the mock and pretends to read the image. Tune the per-call timeout
 with `VISION_TIMEOUT_MS` (default ~8s for real providers).
 
-## Deploying to Azure
-Azure is the deploy target on purpose: the real extractors run **inside the Azure tenant**, so they
-survive the outbound firewall that blocked the previous vendor (Marcus's constraint). The app still
-runs **end-to-end in mock mode with zero keys**, so you can deploy first and add Azure extraction
-later. Both paths assume the [Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) is
-installed and you've run `az login`.
+## Deploying
+**Live demo — Vercel.** The public demo is hosted on **Vercel**, which auto-builds and redeploys on
+every push to `main` (zero config — Vercel detects Next.js). Set `VISION_PROVIDER` + the provider key
+(e.g. `gemini` / `GEMINI_API_KEY`) in the project's **Settings → Environment Variables (Production)**
+so the hosted app reads real uploads; with none set it runs in mock mode. Production URL:
+**https://ttb-label-verifier-matthew-nolan-s-projects.vercel.app**
+
+**Azure — the in-tenant production target.** Azure is the documented production path on purpose: the
+real extractors run **inside the Azure tenant**, so they survive the outbound firewall that blocked
+the previous vendor (Marcus's constraint). The app still runs **end-to-end in mock mode with zero
+keys**, so you can deploy first and add Azure extraction later. Both Azure paths assume the
+[Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) is installed and you've run `az login`.
 
 ```bash
 # Shared: a resource group (one-time)
