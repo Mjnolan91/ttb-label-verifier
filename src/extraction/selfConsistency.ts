@@ -9,6 +9,8 @@
 import type { ExtractedFields, FieldConfidence } from "@/domain";
 import { FIELD_CATALOG } from "./fieldCatalog";
 import { normalizeText } from "@/compare";
+import { reconcileExtract } from "./reconcile";
+import type { ImageInput, VisionProvider } from "./VisionProvider";
 
 type ValueKey = (typeof FIELD_CATALOG)[number]["key"];
 
@@ -55,4 +57,19 @@ export function aggregateSamples(samples: ExtractedFields[]): ExtractedFields {
   out.warningPrefixIsAllCaps = voteBool(samples.map((s) => s.warningPrefixIsAllCaps));
   out.warningPrefixIsBold = voteBool(samples.map((s) => s.warningPrefixIsBold));
   return out;
+}
+
+/** Read the image `samples` times in PARALLEL (sampling mode) through the reconciler, then aggregate
+ *  to agreement-based confidence. samples<=1 is a single normal read (preserves provider confidence). */
+export async function selfConsistentExtract(
+  providers: VisionProvider[],
+  image: ImageInput,
+  timeoutMs: number | undefined,
+  samples: number,
+): Promise<ExtractedFields> {
+  if (samples <= 1) return reconcileExtract(providers, image, timeoutMs);
+  const reads = await Promise.all(
+    Array.from({ length: samples }, () => reconcileExtract(providers, image, timeoutMs, { sample: true })),
+  );
+  return aggregateSamples(reads);
 }

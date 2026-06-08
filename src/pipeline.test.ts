@@ -106,3 +106,76 @@ describe("runVerification", () => {
     expect(out.result?.overall).toBe("approve");
   });
 });
+
+describe("runExtraction — self-consistency + bold-pass", () => {
+  it("self-consistency over the deterministic mock is a no-op (fixture confidences intact)", async () => {
+    // The mock provider (name='mock') forces samples=1, so aggregateSamples is never called and
+    // the provider's own confidence values are preserved exactly.
+    const provider = providerByFilename({
+      "front.jpg": () =>
+        Promise.resolve(
+          fields({
+            brand: "ABC",
+            warningText: CANONICAL_GOVERNMENT_WARNING,
+            warningPrefixIsAllCaps: true,
+            warningPrefixIsBold: true,
+            confidence: { brand: 0.88, warningText: 0.92 },
+          }),
+        ),
+    });
+    // provider.name is already "mock" (set by providerByFilename)
+    const { readable, extracted } = await runExtraction([provider], [img("front.jpg")]);
+    expect(readable).toBe(true);
+    expect(extracted.brand).toBe("ABC");
+    // Fixture confidence values must be preserved exactly (no aggregateSamples overwriting them).
+    expect(extracted.confidence.brand).toBe(0.88);
+    expect(extracted.confidence.warningText).toBe(0.92);
+  });
+
+  it("bold-pass overrides warningPrefixIsBold when provider has judgeWarningBold and warning is present", async () => {
+    const extracted = fields({
+      brand: "XYZ",
+      warningText: CANONICAL_GOVERNMENT_WARNING,
+      warningPrefixIsAllCaps: true,
+      warningPrefixIsBold: null,
+      confidence: { brand: 0.95, warningText: 0.95 },
+    });
+    const boldProvider: VisionProvider = {
+      name: "mock",
+      extract: (_img: ImageInput) => Promise.resolve(extracted),
+      judgeWarningBold: async (_img: ImageInput) => true,
+    };
+    const { extracted: out } = await runExtraction([boldProvider], [img("front.jpg")]);
+    expect(out.warningPrefixIsBold).toBe(true);
+  });
+
+  it("bold-pass is skipped when no warning is present — flag left as-is", async () => {
+    const noWarn = fields({ brand: "XYZ", warningPrefixIsBold: null, confidence: { brand: 0.95 } });
+    let boldCalled = false;
+    const boldProvider: VisionProvider = {
+      name: "mock",
+      extract: (_img: ImageInput) => Promise.resolve(noWarn),
+      judgeWarningBold: async (_img: ImageInput) => { boldCalled = true; return true; },
+    };
+    const { extracted: out } = await runExtraction([boldProvider], [img("front.jpg")]);
+    expect(boldCalled).toBe(false);
+    expect(out.warningPrefixIsBold).toBeNull();
+  });
+
+  it("bold-pass is skipped when provider lacks judgeWarningBold — flag left as-is", async () => {
+    const withWarn = fields({
+      brand: "XYZ",
+      warningText: CANONICAL_GOVERNMENT_WARNING,
+      warningPrefixIsAllCaps: true,
+      warningPrefixIsBold: null,
+      confidence: { brand: 0.95, warningText: 0.95 },
+    });
+    const plainProvider: VisionProvider = {
+      name: "mock",
+      extract: (_img: ImageInput) => Promise.resolve(withWarn),
+      // no judgeWarningBold
+    };
+    const { extracted: out } = await runExtraction([plainProvider], [img("front.jpg")]);
+    expect(out.warningPrefixIsBold).toBeNull();
+  });
+});

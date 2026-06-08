@@ -12,7 +12,7 @@ import type { ExtractedFields, FieldConfidence } from "@/domain";
 import { similarity } from "@/compare";
 import { FIELD_CATALOG, type ExtractedValueKey } from "./fieldCatalog";
 import { isAbortOrTimeout } from "./http";
-import type { ImageInput, VisionProvider } from "./VisionProvider";
+import type { ExtractOptions, ImageInput, VisionProvider } from "./VisionProvider";
 
 /** Per-call extraction timeout (~3s) — the mock/offline default; keeps tests fast and deterministic. */
 export const DEFAULT_PER_CALL_TIMEOUT_MS = 3000;
@@ -57,6 +57,7 @@ export function extractWithTimeout(
   provider: VisionProvider,
   image: ImageInput,
   timeoutMs: number,
+  options?: ExtractOptions,
 ): Promise<ExtractedFields> {
   const controller = new AbortController();
   return new Promise<ExtractedFields>((resolve, reject) => {
@@ -66,7 +67,7 @@ export function extractWithTimeout(
         new DOMException(`Provider '${provider.name}' timed out after ${timeoutMs}ms`, "TimeoutError"),
       );
     }, timeoutMs);
-    provider.extract(image, controller.signal).then(
+    provider.extract(image, controller.signal, options).then(
       (r) => {
         clearTimeout(timer);
         resolve(r);
@@ -218,11 +219,12 @@ export async function reconcileExtract(
   providers: VisionProvider[],
   image: ImageInput,
   timeoutMs: number = DEFAULT_PER_CALL_TIMEOUT_MS,
+  options?: ExtractOptions,
 ): Promise<ExtractedFields> {
   if (providers.length === 0) throw new Error("No vision providers are configured.");
 
   const settled = await Promise.allSettled(
-    providers.map((p) => extractWithTimeout(p, image, timeoutMs)),
+    providers.map((p) => extractWithTimeout(p, image, timeoutMs, options)),
   );
   const fulfilled = settled
     .filter((s): s is PromiseFulfilledResult<ExtractedFields> => s.status === "fulfilled")

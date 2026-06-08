@@ -40,6 +40,8 @@ export {
   REAL_PROVIDER_TIMEOUT_MS,
   DISAGREEMENT_CONFIDENCE,
 } from "./reconcile";
+export { aggregateSamples, selfConsistentExtract } from "./selfConsistency";
+export { resolveSelfConsistencySamples } from "./config";
 
 import type { VisionProvider } from "./VisionProvider";
 import { MockVisionProvider } from "./MockVisionProvider";
