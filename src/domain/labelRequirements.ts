@@ -123,7 +123,9 @@ const REQUIREMENTS: Record<BeverageClass, RequirementSpec[]> = {
   wineOver14: WINE_OVER14,
   cider: WINE_UNDER14, // resolves to wine <= 14% by default (see tolerances.ts)
   maltBeverage: [...COMMON_HEAD, ALC_MALT, ...COMMON_TAIL, COUNTRY_OF_ORIGIN],
-  unknown: [...COMMON_HEAD, ALC_MANDATORY, ...COMMON_TAIL], // can't assert class-specific elements
+  // Conservative default: ABV mandatory + country-of-origin (conditional) like every concrete class;
+  // class-specific elements (sulfites/appellation/age) can't be asserted without a known class.
+  unknown: [...COMMON_HEAD, ALC_MANDATORY, ...COMMON_TAIL, COUNTRY_OF_ORIGIN],
 };
 
 /** The label elements TTB requires for a beverage class (mandatory + conditional). */
