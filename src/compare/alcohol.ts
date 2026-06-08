@@ -13,19 +13,39 @@ export interface ParsedAlcohol {
 
 /**
  * Parse a free-text alcohol statement like "45% Alc./Vol. (90 Proof)", "45% Alc./Vol." or
- * "13.5% ABV" into { abv, proof }. ABV = the first percentage; proof = a number before "proof".
+ * "13.5% ABV" into { abv, proof }.
+ *
+ * ABV is anchored to an alcohol CUE rather than "the first percentage", so a non-alcohol percentage
+ * elsewhere on the label can't be mistaken for the alcohol content. This matters because real labels
+ * routinely print other percentages — "100% Agave" on tequila, "100% Juice" on a flavored malt — and
+ * a first-percentage parse would read 100% as the ABV and (claimed 100% vs labeled 100%) falsely
+ * APPROVE a wildly wrong alcohol statement. Resolution order:
+ *   1. "<n>% <cue>"     — "40% Alc./Vol.", "13.5% ABV"  (the canonical US form)
+ *   2. "<cue> … <n>%"   — "ABV: 5.5%", "Alcohol 5.5% by volume"  (cue before the number)
+ *   3. "<n> <cue>"      — "40 ABV"  (percent sign omitted)
+ *   4. the first bare "<n>%"  — last resort, only when no alcohol cue is present at all
+ * Both decimal separators are accepted ("13.5%" and the European "13,5%") so a comma decimal is not
+ * truncated. A leading minus is captured (then rejected by the range guard below) so "-5%" can't be
+ * silently read as 5.
  */
 export function parseAlcoholText(text: string | undefined): ParsedAlcohol {
   if (!text) return {};
-  // Accept both decimal separators ("13.5%" and the European "13,5%") so a comma decimal is not
-  // truncated to a wrong integer (e.g. "13,5%" must parse to 13.5, not 5).
-  const abvMatch =
-    text.match(/(\d+(?:[.,]\d+)?)\s*%/) ?? text.match(/(\d+(?:[.,]\d+)?)\s*(?:abv|alc)/i);
-  const proofMatch = text.match(/(\d+(?:[.,]\d+)?)\s*proof/i);
   const num = (s: string): number => Number(s.replace(",", "."));
+  const abvMatch =
+    text.match(/(-?\d+(?:[.,]\d+)?)\s*%\s*(?:alc|abv|alcohol)/i) ??
+    text.match(/(?:alc(?:ohol)?|abv)[^\d%]{0,8}(-?\d+(?:[.,]\d+)?)\s*%/i) ??
+    text.match(/(-?\d+(?:[.,]\d+)?)\s*(?:abv|alc)/i) ??
+    text.match(/(-?\d+(?:[.,]\d+)?)\s*%/);
+  const proofMatch = text.match(/(-?\d+(?:[.,]\d+)?)\s*proof/i);
+  // Discard physically-impossible values so a malformed number can't be treated as a real reading: an
+  // ABV must be in [0, 100] (0 is allowed — non-alcoholic products legitimately read "0.0% Alc./Vol.",
+  // and the <0.5% warning exemption needs a real 0); proof in [0, 200]. Out-of-range -> undefined,
+  // which routes the field to "couldn't read"/review rather than a fabricated comparison.
+  const abv = abvMatch ? num(abvMatch[1]) : undefined;
+  const proof = proofMatch ? num(proofMatch[1]) : undefined;
   return {
-    abv: abvMatch ? num(abvMatch[1]) : undefined,
-    proof: proofMatch ? num(proofMatch[1]) : undefined,
+    abv: abv !== undefined && abv >= 0 && abv <= 100 ? abv : undefined,
+    proof: proof !== undefined && proof >= 0 && proof <= 200 ? proof : undefined,
   };
 }
 

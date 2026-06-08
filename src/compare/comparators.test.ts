@@ -128,6 +128,16 @@ describe("compareAlcohol — fixture-grounded", () => {
     });
     expect(r.status).toBe("review");
   });
+  it("FAIL (false-approval guard): a misleading '100% Agave' is not read as the ABV", () => {
+    // Both sides print "100% Agave" before the real ABV (40 vs 38). Anchoring to the alcohol cue
+    // compares 40 vs 38 (out of the ±0.3 band -> fail), not 100 vs 100 (which would falsely approve).
+    const r = compareAlcohol({
+      claimedText: "100% Agave. 40% Alc./Vol. (80 Proof)",
+      extractedText: "100% Agave. 38% Alc./Vol. (76 Proof)",
+      claimedClass: "Tequila",
+    });
+    expect(r.status).toBe("fail");
+  });
 });
 
 describe("compareAlcohol — the class SELECTS the tolerance (one case per class)", () => {
@@ -205,6 +215,13 @@ describe("compareAlcohol — the class SELECTS the tolerance (one case per class
     expect(
       compareAlcohol({ claimedText: "6%", extractedText: "7.6%", claimedClass: "Hard Cider" }).status,
     ).toBe("fail");
+  });
+  it("cider boundary: tolerance may not carry actual ABV above 14% (4.36(c)), like wine ≤14%", () => {
+    // Cider resolves to the wine (≤14%) tolerance, so it inherits the 4.36(c) clamp: a claimed 13%
+    // cider reading 14.4% is within ±1.5 numerically but crosses the 14% tax-class boundary -> fail.
+    const r = compareAlcohol({ claimedText: "13%", extractedText: "14.4%", claimedClass: "Hard Cider" });
+    expect(r.status).toBe("fail");
+    expect(r.reason).toContain("4.36(c)");
   });
   it("unknown class uses the tightest band ±0.3: 40.2 passes, 40.4 fails", () => {
     expect(

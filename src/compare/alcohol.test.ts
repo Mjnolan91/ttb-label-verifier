@@ -32,6 +32,27 @@ describe("parseAlcoholText", () => {
     expect(parseAlcoholText("")).toEqual({});
     expect(parseAlcoholText(undefined)).toEqual({});
   });
+
+  it("anchors to the alcohol cue, ignoring a non-alcohol percentage that appears first", () => {
+    // The false-approval class: a tequila label prints "100% Agave" before the real ABV. A
+    // first-percentage parse would read 100 and (claimed 100 vs labeled 100) approve a wrong value.
+    expect(parseAlcoholText("100% Agave. 40% Alc./Vol. (80 Proof)")).toEqual({ abv: 40, proof: 80 });
+    expect(parseAlcoholText("100% Blue Agave 40% Alc./Vol.").abv).toBe(40);
+  });
+  it("anchors when the cue comes BEFORE the number (ABV: 5.5%) even with a leading 100% juice", () => {
+    expect(parseAlcoholText("100% Juice. ABV: 5.5%").abv).toBe(5.5);
+    expect(parseAlcoholText("Alcohol 5.5% by volume").abv).toBe(5.5);
+  });
+  it("uses a bare percentage only when no alcohol cue is present", () => {
+    expect(parseAlcoholText("40%").abv).toBe(40);
+  });
+  it("treats 0% as a real value (non-alcoholic / <0.5% warning exemption needs a real 0)", () => {
+    expect(parseAlcoholText("0.0% Alc./Vol.").abv).toBe(0);
+  });
+  it("discards physically-impossible values so garbage cannot pose as an ABV", () => {
+    expect(parseAlcoholText("-5% ABV").abv).toBeUndefined(); // negative -> not a real reading
+    expect(parseAlcoholText("999999% ABV").abv).toBeUndefined(); // > 100 -> not a real reading
+  });
 });
 
 describe("resolveBeverageClass (class text -> BeverageClass enum)", () => {

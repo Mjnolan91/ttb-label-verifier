@@ -184,7 +184,9 @@ export function compareAlcohol(args: {
   const label = CLASS_LABEL[cls];
 
   // Hard absolute limits the tolerance may NOT cross (carried as boundaryNote in src/domain).
-  if (cls === "wineUnder14" && extracted.abv > WINE_TAX_CLASS_BOUNDARY + EPS) {
+  // `cider` resolves to the wine (≤14%) tolerance by default, so the 4.36(c) clamp its own
+  // boundaryNote promises applies to it too — without this it would ride its ±1.5 pp band across 14%.
+  if ((cls === "wineUnder14" || cls === "cider") && extracted.abv > WINE_TAX_CLASS_BOUNDARY + EPS) {
     return result(
       "fail",
       claimedDisplay,
