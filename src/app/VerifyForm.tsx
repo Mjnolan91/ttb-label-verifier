@@ -8,7 +8,7 @@
  * are downloadable as JSON or CSV. No typing. Accessibility (WCAG 2.1 AA): labelled controls,
  * >=44px targets, visible focus, aria-live result regions, focus moved to the result heading.
  */
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { VerifyApiResponse, VerifyApiError } from "./api/verify/contract";
 import type { LabelPosition } from "@/extraction";
 import { verifyLabel, type VerifyResult } from "@/compare";
@@ -23,7 +23,8 @@ import { ResultSkeleton } from "./ui/ResultSkeleton";
 import { inputClass, primaryButtonClass, secondaryButtonClass } from "./ui/fieldStyles";
 import { downloadJson, downloadCsv } from "./ui/download";
 import { analysisToCsv } from "@/batch/csv";
-import { IconReview, IconSpinner } from "./ui/icons";
+import { ImageLightbox } from "./ui/ImageLightbox";
+import { IconReview, IconSpinner, IconZoom } from "./ui/icons";
 
 type SubmitState = "idle" | "loading" | "done" | "error";
 interface LabelImage {
@@ -40,10 +41,12 @@ export function VerifyForm() {
   const [state, setState] = useState<SubmitState>("idle");
   const [formError, setFormError] = useState<string | null>(null);
   const [response, setResponse] = useState<VerifyApiResponse | null>(null);
-  // Optional "verify against an application" values + the deterministic verdict (computed client-side
-  // against the already-read extraction, so it always matches what's shown and costs no extra read).
+  // The "verify against the application" values. The deterministic verdict is DERIVED from these +
+  // the reading (useMemo below), so the application-match outcome is front-and-center — it appears the
+  // moment a reading and the application values both exist, with no extra read and no extra state.
   const [claimed, setClaimed] = useState({ brand: "", alcohol: "", classType: "" });
-  const [verdict, setVerdict] = useState<VerifyResult | null>(null);
+  // The image currently shown full-size in the lightbox, if any.
+  const [zoom, setZoom] = useState<{ src: string; alt: string } | null>(null);
 
   const ids = {
     image: useId(),
@@ -66,7 +69,23 @@ export function VerifyForm() {
     if (state === "done") resultHeadingRef.current?.focus();
   }, [state]);
 
-  // Move focus to the verdict only when the agent explicitly ran a check (not on background recompute).
+  // Derive the application-match verdict from the reading + the application values (no effect, no
+  // extra state). It exists the moment a readable extraction and brand+alcohol are present, so
+  // verification is the headline outcome with no button to hunt for.
+  const verdict: VerifyResult | null = useMemo(() => {
+    if (state !== "done" || !response?.readable) return null;
+    if (claimed.brand.trim() === "" || claimed.alcohol.trim() === "") return null;
+    return verifyLabel(
+      {
+        brand: claimed.brand.trim(),
+        alcoholContentText: claimed.alcohol.trim(),
+        classType: claimed.classType.trim() || undefined,
+      },
+      response.extracted,
+    );
+  }, [state, response, claimed.brand, claimed.alcohol, claimed.classType]);
+
+  // Move focus to the verdict only when the agent explicitly pressed Verify (not on live recompute).
   useEffect(() => {
     if (verdict && justVerified.current) {
       justVerified.current = false;
@@ -74,21 +93,16 @@ export function VerifyForm() {
     }
   }, [verdict]);
 
-  const canVerify = state === "done" && Boolean(response?.readable) && claimed.brand.trim() !== "" && claimed.alcohol.trim() !== "";
+  const canVerify =
+    state === "done" &&
+    Boolean(response?.readable) &&
+    claimed.brand.trim() !== "" &&
+    claimed.alcohol.trim() !== "";
 
-  function runVerify() {
-    if (!response?.readable) return;
+  // The verdict is computed reactively; pressing Verify just announces/jumps to it.
+  function onVerifyClick() {
     justVerified.current = true;
-    setVerdict(
-      verifyLabel(
-        {
-          brand: claimed.brand.trim(),
-          alcoholContentText: claimed.alcohol.trim(),
-          classType: claimed.classType.trim() || undefined,
-        },
-        response.extracted,
-      ),
-    );
+    if (verdict) verdictHeadingRef.current?.focus();
   }
 
   // Read the current image set (front/back/...) together. Triggered from the handlers, not an
@@ -98,7 +112,6 @@ export function VerifyForm() {
     const token = ++readToken.current;
     setState("loading");
     setFormError(null);
-    setVerdict(null); // a fresh extraction invalidates any prior claimed-comparison verdict
     try {
       const body = new FormData();
       for (const img of imgs) {
@@ -142,14 +155,16 @@ export function VerifyForm() {
   }
   function removeImage(index: number) {
     const target = images[index];
-    if (target) URL.revokeObjectURL(target.preview);
+    if (target) {
+      if (zoom?.src === target.preview) setZoom(null); // don't leave the lightbox on a revoked URL
+      URL.revokeObjectURL(target.preview);
+    }
     const next = images.filter((_, i) => i !== index);
     setImages(next);
     if (next.length === 0) {
       readToken.current++; // cancel any in-flight read
       setState("idle");
       setResponse(null);
-      setVerdict(null);
     } else {
       void read(next);
     }
@@ -191,20 +206,23 @@ export function VerifyForm() {
       className="rounded-card border border-border border-t-4 border-t-brand-600 bg-surface p-6 shadow-card sm:p-8"
     >
       <h2 id={ids.heading} className="text-xl font-semibold text-ink">
-        Read a label
+        Read &amp; verify a label
       </h2>
       <p className="mt-1 text-ink-muted">
-        Drop a product&apos;s label image(s) — front, back, neck — and the AI reads them together into
-        structured data, checked against TTB&apos;s required elements. Export as JSON or CSV. No typing.
+        Drop a product&apos;s label image(s) — front, back, neck — and the AI reads them together. Add
+        the application values to check the label matches; or just read the label and export the data.
+        No typing required to read.
       </p>
 
+      {/* Step 1 — upload */}
       <div className="mt-6">
         <span className="mb-1.5 block font-medium text-ink">
-          Label images <span className="font-normal text-ink-muted">(one or more; required)</span>
+          1. Label images <span className="font-normal text-ink-muted">(one or more; required)</span>
         </span>
         <DropZone id={ids.image} onFiles={addFiles} describedById={ids.imageHelp} />
         <p id={ids.imageHelp} className="sr-only">
-          Add the front and any back or neck label images for a single product.
+          Add the front and any back or neck label images for a single product. Click a thumbnail to
+          enlarge it.
         </p>
       </div>
 
@@ -215,12 +233,18 @@ export function VerifyForm() {
               key={`${img.file.name}-${i}`}
               className="flex items-center gap-3 rounded-card border border-border bg-surface-muted p-3"
             >
-              {/* eslint-disable-next-line @next/next/no-img-element -- local object URL preview */}
-              <img
-                src={img.preview}
-                alt={`Preview of ${img.file.name}`}
-                className="h-16 w-16 shrink-0 rounded border border-border bg-white object-contain"
-              />
+              <button
+                type="button"
+                onClick={() => setZoom({ src: img.preview, alt: `${img.position} label — ${img.file.name}` })}
+                aria-label={`Enlarge ${img.file.name}`}
+                className="group relative h-28 w-28 shrink-0 cursor-zoom-in overflow-hidden rounded border border-border bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element -- local object URL preview */}
+                <img src={img.preview} alt="" className="h-full w-full object-contain" />
+                <span className="absolute bottom-1 right-1 inline-flex h-7 w-7 items-center justify-center rounded-full bg-black/65 text-base text-white opacity-90 transition group-hover:opacity-100">
+                  <IconZoom />
+                </span>
+              </button>
               <span className="min-w-0 flex-1 truncate text-sm text-ink">{img.file.name}</span>
               <label className="sr-only" htmlFor={`${ids.image}-pos-${i}`}>
                 Label position for {img.file.name}
@@ -249,6 +273,68 @@ export function VerifyForm() {
         </ul>
       )}
 
+      {/* Step 2 — the application values to verify against (always visible; this IS the check) */}
+      <form
+        className="mt-6"
+        onSubmit={(e) => {
+          e.preventDefault();
+          onVerifyClick();
+        }}
+      >
+        <h3 id={ids.verifyHeading} className="font-medium text-ink">
+          2. What does the application say?{" "}
+          <span className="font-normal text-ink-muted">
+            (the COLA application — optional, but this is the match check)
+          </span>
+        </h3>
+        <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <FormField label="Brand name" htmlFor={ids.vBrand}>
+            <input
+              id={ids.vBrand}
+              className={inputClass}
+              value={claimed.brand}
+              onChange={(e) => setClaimed((c) => ({ ...c, brand: e.target.value }))}
+              placeholder="e.g. Old Tom Distillery"
+              autoComplete="off"
+            />
+          </FormField>
+          <FormField label="Alcohol content" htmlFor={ids.vAlcohol}>
+            <input
+              id={ids.vAlcohol}
+              className={inputClass}
+              value={claimed.alcohol}
+              onChange={(e) => setClaimed((c) => ({ ...c, alcohol: e.target.value }))}
+              placeholder="e.g. 45% Alc./Vol. (90 Proof)"
+              autoComplete="off"
+            />
+          </FormField>
+          <div className="sm:col-span-2">
+            <FormField
+              label="Class / type"
+              htmlFor={ids.vClass}
+              hint="Optional — helps select the right ABV tolerance (e.g. Bourbon, Table Wine, IPA)."
+            >
+              <input
+                id={ids.vClass}
+                className={inputClass}
+                value={claimed.classType}
+                onChange={(e) => setClaimed((c) => ({ ...c, classType: e.target.value }))}
+                placeholder="e.g. Kentucky Straight Bourbon Whiskey"
+                autoComplete="off"
+              />
+            </FormField>
+          </div>
+        </div>
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <button type="submit" className={primaryButtonClass} disabled={!canVerify}>
+            Verify against the application
+          </button>
+          <span className="text-sm text-ink-muted">
+            Brand, alcohol content, and the government warning are checked against the label.
+          </span>
+        </div>
+      </form>
+
       {formError && (
         <div className="mt-5">
           <ErrorAlert id={ids.err}>{formError}</ErrorAlert>
@@ -267,10 +353,12 @@ export function VerifyForm() {
         </>
       )}
 
+      {/* Results — lead with the application-match verdict, then completeness, then the full reading. */}
       {readable && response && (
         <>
-          <ExtractedFieldsView extracted={response.extracted} headingRef={resultHeadingRef} />
+          {verdict && <ResultView result={verdict} headingRef={verdictHeadingRef} />}
           {response.completeness && <CompletenessView completeness={response.completeness} />}
+          <ExtractedFieldsView extracted={response.extracted} headingRef={resultHeadingRef} />
           <div className="mt-4 flex flex-wrap gap-3">
             <button type="button" onClick={onDownloadJson} className={secondaryButtonClass}>
               Download JSON
@@ -278,76 +366,10 @@ export function VerifyForm() {
             <button type="button" onClick={onDownloadCsv} className={secondaryButtonClass}>
               Download CSV
             </button>
+            <button type="button" onClick={() => void read(images)} className={secondaryButtonClass}>
+              Read again
+            </button>
           </div>
-
-          <form
-            className="mt-8 border-t border-border pt-6"
-            onSubmit={(e) => {
-              e.preventDefault();
-              runVerify();
-            }}
-          >
-            <h3 className="text-lg font-semibold text-ink">
-              Verify against an application{" "}
-              <span className="font-normal text-ink-muted">(optional)</span>
-            </h3>
-            <p className="mt-1 text-ink-muted">
-              Enter the values from the COLA application to check the label matches. Brand name, alcohol
-              content, and the government warning are compared against what was read above.
-            </p>
-            <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <FormField label="Brand name" htmlFor={ids.vBrand} required>
-                <input
-                  id={ids.vBrand}
-                  className={inputClass}
-                  value={claimed.brand}
-                  onChange={(e) => setClaimed((c) => ({ ...c, brand: e.target.value }))}
-                  placeholder="e.g. Old Tom Distillery"
-                  autoComplete="off"
-                  aria-required="true"
-                />
-              </FormField>
-              <FormField label="Alcohol content" htmlFor={ids.vAlcohol} required>
-                <input
-                  id={ids.vAlcohol}
-                  className={inputClass}
-                  value={claimed.alcohol}
-                  onChange={(e) => setClaimed((c) => ({ ...c, alcohol: e.target.value }))}
-                  placeholder="e.g. 45% Alc./Vol. (90 Proof)"
-                  autoComplete="off"
-                  aria-required="true"
-                />
-              </FormField>
-              <div className="sm:col-span-2">
-                <FormField
-                  label="Class / type"
-                  htmlFor={ids.vClass}
-                  hint="Optional — helps select the right ABV tolerance (e.g. Bourbon, Table Wine, IPA)."
-                >
-                  <input
-                    id={ids.vClass}
-                    className={inputClass}
-                    value={claimed.classType}
-                    onChange={(e) => setClaimed((c) => ({ ...c, classType: e.target.value }))}
-                    placeholder="e.g. Kentucky Straight Bourbon Whiskey"
-                    autoComplete="off"
-                  />
-                </FormField>
-              </div>
-            </div>
-            <div className="mt-4 flex flex-wrap items-center gap-3">
-              <button type="submit" className={primaryButtonClass} disabled={!canVerify}>
-                Check against the application
-              </button>
-              {verdict && (
-                <button type="button" className={secondaryButtonClass} onClick={() => setVerdict(null)}>
-                  Clear
-                </button>
-              )}
-            </div>
-          </form>
-
-          {verdict && <ResultView result={verdict} headingRef={verdictHeadingRef} />}
         </>
       )}
 
@@ -363,6 +385,13 @@ export function VerifyForm() {
           <p className="mt-2 text-review-900">{response.message ?? "Please re-upload a clearer photo."}</p>
         </section>
       )}
+
+      <ImageLightbox
+        open={zoom !== null}
+        src={zoom?.src ?? ""}
+        alt={zoom?.alt ?? ""}
+        onClose={() => setZoom(null)}
+      />
     </section>
   );
 }

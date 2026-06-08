@@ -20,7 +20,7 @@ const STATUS_LABEL: Record<ElementStatus, string> = {
   present: "PRESENT",
   missing: "MISSING",
   malformed: "MALFORMED",
-  unverifiable: "N/A",
+  unverifiable: "NOT APPLICABLE",
 };
 const OVERALL: Record<CompletenessResult["overall"], { tone: Tone; label: string }> = {
   complete: { tone: "pass", label: "Complete" },

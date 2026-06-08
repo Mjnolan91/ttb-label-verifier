@@ -66,13 +66,15 @@ describe("VerifyForm — claimed-vs-application verification", () => {
     render(<VerifyForm />);
     dropLabelImage();
 
-    const brand = await screen.findByLabelText(/Brand name/i);
-    fireEvent.change(brand, { target: { value: "Old Tom Distillery" } });
+    // Wait for the read to complete, THEN fill the application values (fresh queries — the
+    // always-visible form's inputs reconcile in place, so query at fill time).
+    await screen.findByText("Extracted from the label");
+    fireEvent.change(screen.getByLabelText(/Brand name/i), { target: { value: "Old Tom Distillery" } });
     fireEvent.change(screen.getByLabelText(/Alcohol content/i), {
       target: { value: "45% Alc./Vol. (90 Proof)" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /Check against the application/i }));
 
+    // The verdict is computed reactively (verify-first) — no button press required.
     expect(await screen.findByText("Verification result")).toBeTruthy();
     expect(screen.getByText("Approve")).toBeTruthy();
   });
@@ -88,14 +90,33 @@ describe("VerifyForm — claimed-vs-application verification", () => {
     render(<VerifyForm />);
     dropLabelImage();
 
-    const brand = await screen.findByLabelText(/Brand name/i);
-    fireEvent.change(brand, { target: { value: "Old Tom Distillery" } });
+    await screen.findByText("Extracted from the label");
+    fireEvent.change(screen.getByLabelText(/Brand name/i), { target: { value: "Old Tom Distillery" } });
     fireEvent.change(screen.getByLabelText(/Alcohol content/i), {
       target: { value: "45% Alc./Vol. (90 Proof)" },
     });
-    fireEvent.click(screen.getByRole("button", { name: /Check against the application/i }));
 
     expect(await screen.findByText("Reject")).toBeTruthy();
+  });
+
+  it("shows the application form up front, before any image is uploaded (verify-first)", () => {
+    render(<VerifyForm />);
+    // The match check is front-and-center: the application fields are visible without a successful read.
+    expect(screen.getByLabelText(/Brand name/i)).toBeTruthy();
+    expect(screen.getByLabelText(/Alcohol content/i)).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Verify against the application/i })).toBeTruthy();
+  });
+
+  it("reads a label without application values: shows the reading, no verdict", async () => {
+    mockFetch({ provider: "mock", readable: true, extracted: extractedBourbon(), result: null });
+    render(<VerifyForm />);
+    dropLabelImage();
+
+    expect(await screen.findByText("Extracted from the label")).toBeTruthy();
+    // The long field list is behind a progressive-disclosure summary.
+    expect(screen.getByText(/Show everything we read/i)).toBeTruthy();
+    // No application values entered -> no Approve/Reject verdict is fabricated.
+    expect(screen.queryByText("Verification result")).toBeNull();
   });
 
   it("shows the re-upload prompt for an unreadable image (never a fabricated verdict)", async () => {
