@@ -17,10 +17,10 @@ import { FIELD_CATALOG } from "./fieldCatalog";
 import { defaultFetch, fetchWithRetry, withHardTimeout, type FetchLike } from "./http";
 import { geminiTuning } from "./geminiTuning";
 
-// Gemini 2.x flash models were retired in 2026; the current line is the Gemini 3 series. Override
-// with GEMINI_MODEL — e.g. a `-pro` model for the hardest reads (subtle visual cues like bold).
+// Default is the pro model — better for subtle visual reads (bold, all-caps, fine print).
+// Override with GEMINI_MODEL (e.g. gemini-3.5-flash for cheaper/faster runs).
 // Whatever you choose must support image input + structured output (responseSchema).
-const DEFAULT_MODEL = "gemini-3.5-flash";
+const DEFAULT_MODEL = "gemini-3.1-pro-preview";
 
 // A generous token ceiling gives headroom for a -pro model and verbose labels.
 const MAX_OUTPUT_TOKENS = 4096;
@@ -34,8 +34,8 @@ export interface GeminiConfig {
 
 /**
  * Read + validate Gemini config from env. Throws an actionable error if no key is set (accepts
- * GEMINI_API_KEY or GOOGLE_API_KEY); the model defaults to a current Gemini 3 flash model
- * (override with GEMINI_MODEL).
+ * GEMINI_API_KEY or GOOGLE_API_KEY); the model defaults to the Gemini 3 pro model
+ * (override with GEMINI_MODEL, e.g. gemini-3.5-flash for cheaper/faster runs).
  */
 export function readGeminiConfig(
   env: Record<string, string | undefined> = process.env,

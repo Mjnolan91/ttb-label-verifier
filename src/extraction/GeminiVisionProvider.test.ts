@@ -63,7 +63,7 @@ describe("readGeminiConfig", () => {
   });
 
   it("accepts GEMINI_API_KEY or GOOGLE_API_KEY and honors GEMINI_MODEL", () => {
-    expect(readGeminiConfig({ GEMINI_API_KEY: "k" }).model).toBe("gemini-3.5-flash");
+    expect(readGeminiConfig({ GEMINI_API_KEY: "k" }).model).toBe("gemini-3.1-pro-preview");
     expect(readGeminiConfig({ GOOGLE_API_KEY: "k" }).apiKey).toBe("k");
     expect(readGeminiConfig({ GEMINI_API_KEY: "k", GEMINI_MODEL: "gemini-3.1-pro-preview" }).model).toBe(
       "gemini-3.1-pro-preview",
