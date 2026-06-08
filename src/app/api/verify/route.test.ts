@@ -6,7 +6,7 @@
  * values → fields only) and the optional verification (claimed supplied → verdict). No network.
  */
 import { describe, it, expect } from "vitest";
-import { POST } from "./route";
+import { POST, readBodyWithinCap } from "./route";
 
 function stubImage(filename: string): File {
   return new File([new Uint8Array([1, 2, 3, 4])], filename, { type: "image/svg+xml" });
@@ -141,6 +141,31 @@ describe("POST /api/verify — upload guards", () => {
   it("rejects more than the per-product image cap with 413", async () => {
     const res = await postRaw(Array.from({ length: 5 }, (_, i) => stubImage(`x${i}.svg`)));
     expect(res.status).toBe(413);
+  });
+});
+
+describe("readBodyWithinCap — bound memory before parsing (no-content-length DoS guard)", () => {
+  const streamOf = (bytes: Uint8Array): ReadableStream<Uint8Array> =>
+    new ReadableStream({
+      start(c) {
+        c.enqueue(bytes);
+        c.close();
+      },
+    });
+
+  it("returns the buffered bytes when the body is within the cap", async () => {
+    const out = await readBodyWithinCap(streamOf(new Uint8Array([1, 2, 3])), 10);
+    expect(out).toBeInstanceOf(Uint8Array);
+    expect((out as Uint8Array).length).toBe(3);
+  });
+
+  it("aborts with 'too-large' once the running total exceeds the cap", async () => {
+    const out = await readBodyWithinCap(streamOf(new Uint8Array([1, 2, 3, 4, 5])), 3);
+    expect(out).toBe("too-large");
+  });
+
+  it("returns null when there is no readable body stream (caller falls back)", async () => {
+    expect(await readBodyWithinCap(null, 10)).toBeNull();
   });
 });
 

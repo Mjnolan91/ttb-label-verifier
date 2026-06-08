@@ -27,6 +27,15 @@ const OVERALL_TONE: Record<CompletenessResult["overall"], Tone> = {
   incomplete: "fail",
   review: "review",
 };
+/** A plain "what do I do now" line under the completeness headline — this section is the headline
+ *  result when no application values are entered, so it needs the same guidance ResultView gives. */
+const NEXT_STEP: Record<CompletenessResult["overall"], string> = {
+  complete: "Every element TTB requires for this beverage type was found on the label.",
+  incomplete:
+    "One or more required items are missing or in the wrong format — check the rows marked MISSING or WRONG FORMAT below before approving.",
+  review:
+    "Some required items couldn't be confirmed from the image — open the label and check the highlighted rows below.",
+};
 
 export function CompletenessView({
   completeness,
@@ -54,6 +63,7 @@ export function CompletenessView({
             {CLASS_DISPLAY_LABEL[completeness.beverageClass]}
           </p>
           <p className="text-2xl font-bold">{COMPLETENESS_LABEL[completeness.overall]}</p>
+          <p className="mt-1 text-sm">{NEXT_STEP[completeness.overall]}</p>
         </div>
       </div>
 

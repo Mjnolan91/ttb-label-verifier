@@ -3,6 +3,9 @@ import { BatchVerify } from "./BatchVerify";
 import { linkClass } from "../ui/fieldStyles";
 
 export default function BatchPage() {
+  // Same calm "demo mode" hint as the single screen, so a reviewer who lands on /batch in the offline
+  // mock isn't surprised that their own photos can't be read. A configured real provider hides it.
+  const mockMode = (process.env.VISION_PROVIDER ?? "mock").toLowerCase() === "mock";
   return (
     <main id="main-content" tabIndex={-1} className="mx-auto flex min-h-screen max-w-4xl flex-col gap-8 px-4 py-10 sm:py-14 focus:outline-none">
       <header>
@@ -20,7 +23,7 @@ export default function BatchPage() {
         </p>
       </header>
 
-      <BatchVerify />
+      <BatchVerify mockMode={mockMode} />
     </main>
   );
 }

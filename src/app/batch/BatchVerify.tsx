@@ -44,6 +44,9 @@ interface BatchRow {
   result?: VerifyResult | null;
   /** Headline verdict after gating on completeness. */
   overall?: VerifyResult["overall"] | null;
+  /** True when an application-values CSV row matched this product — even if the label was unreadable
+   *  (so a matched-but-unreadable scan isn't mislabeled "no application row"). */
+  matchedClaim?: boolean;
   note?: string;
 }
 
@@ -96,6 +99,7 @@ async function analyzeProduct(
       completeness: r.completeness,
       result: combined?.verify ?? null,
       overall: combined?.overall ?? null,
+      matchedClaim: Boolean(claimedRow?.brand),
       note: r.readable ? undefined : r.message,
     };
   } catch {
@@ -110,7 +114,7 @@ function cell(row: BatchRow, pick: (e: ExtractedFields) => string | undefined): 
   return v && v.trim() !== "" ? v : "—";
 }
 
-export function BatchVerify() {
+export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
   const ids = { images: useId(), help: useId() };
   const [images, setImages] = useState<{ file: File; preview: string }[]>([]);
   const [zoom, setZoom] = useState<{ src: string; alt: string } | null>(null);
@@ -169,7 +173,7 @@ export function BatchVerify() {
   // An application CSV was loaded but matched no product — almost always a filename-column mismatch.
   // Surface it instead of silently showing "no application row" on every row.
   const noneMatched =
-    !running && rows.length > 0 && claimed.size > 0 && rows.every((r) => !r.result);
+    !running && rows.length > 0 && claimed.size > 0 && rows.every((r) => !r.result && !r.matchedClaim);
   function exportJson() {
     downloadJson(
       "ttb-extractions.json",
@@ -177,6 +181,9 @@ export function BatchVerify() {
         product: r.product,
         extracted: r.extracted,
         completeness: r.completeness,
+        // Mirror the single-screen JSON: carry the application-match verdict so JSON and CSV agree.
+        ...(r.result ? { result: r.result } : {}),
+        ...(r.overall ? { overall: r.overall } : {}),
       })),
     );
   }
@@ -206,6 +213,14 @@ export function BatchVerify() {
         <code>acme-ipa-front.jpg</code> + <code>acme-ipa-back.jpg</code>; a file with no suffix is its
         own single-label product.
       </p>
+
+      {mockMode && (
+        <p className="mt-3 rounded-field border border-border bg-surface-muted px-3 py-2.5 text-sm text-ink-muted">
+          <strong className="font-semibold text-ink">Demo mode.</strong> This preview recognizes the
+          built-in sample labels only. To read your own photos, a vision provider must be configured —
+          see the README.
+        </p>
+      )}
 
       <div className="mt-5 flex flex-col gap-5">
         <div>
@@ -367,6 +382,8 @@ export function BatchVerify() {
                   <td className="px-3 py-2.5">
                     {r.overall ? (
                       <StatusBadge tone={toneForStatus(r.overall)} label={VERDICT_LABEL[r.overall]} />
+                    ) : r.matchedClaim ? (
+                      <span className="text-sm text-review-700">Matched — couldn&apos;t read label; re-scan</span>
                     ) : (
                       <span className="text-ink-muted">{claimed.size > 0 ? "no application row" : "—"}</span>
                     )}

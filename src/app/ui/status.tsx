@@ -23,6 +23,16 @@ export const COMPLETENESS_LABEL: Record<"complete" | "incomplete" | "review", st
   incomplete: "Incomplete",
   review: "Needs review",
 };
+/**
+ * Per-field comparison labels for the claimed-vs-label cards. Plain language that mirrors the overall
+ * verdict's vocabulary (Approve / Needs review / Reject) so the same screen never shows the headline
+ * in words and the field cards in raw enum tokens (PASS/REVIEW/FAIL).
+ */
+export const FIELD_LABEL: Record<"pass" | "review" | "fail", string> = {
+  pass: "Match",
+  review: "Needs review",
+  fail: "No match",
+};
 
 /** Map any per-field or overall status string to a tone. Unknowns ("…", "—", "pending") -> neutral. */
 export function toneForStatus(value: string): Tone {

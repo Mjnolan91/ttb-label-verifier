@@ -25,7 +25,7 @@ const PROPOSALS: { title: string; detail: string }[] = [
 export function ForwardLookingNote() {
   return (
     <details className="mt-6 rounded-card border border-border bg-surface-muted p-4 text-sm">
-      <summary className="cursor-pointer font-semibold text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2">
+      <summary className="min-h-[44px] cursor-pointer py-2 font-semibold text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2">
         Forward-looking: proposed rules (not checked)
       </summary>
       <p className="mt-2 text-ink-muted">

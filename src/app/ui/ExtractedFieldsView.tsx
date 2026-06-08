@@ -95,7 +95,7 @@ export function ExtractedFieldsView({
         </dl>
 
         <details className="mt-3 border-t border-border pt-3">
-          <summary className="cursor-pointer text-sm font-semibold text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2">
+          <summary className="min-h-[44px] cursor-pointer py-2 text-sm font-semibold text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2">
             Show everything we read ({DETAIL_FIELDS.length} more fields)
           </summary>
           <dl className="mt-2">
@@ -112,7 +112,7 @@ export function ExtractedFieldsView({
       </div>
 
       <details className="rounded-card border border-border bg-surface-muted p-4 text-sm">
-        <summary className="cursor-pointer font-semibold text-ink">Raw JSON</summary>
+        <summary className="min-h-[44px] cursor-pointer py-2 font-semibold text-ink">Raw JSON</summary>
         <pre className="mt-3 overflow-x-auto rounded-field bg-surface p-3 text-xs leading-relaxed text-ink">
           {JSON.stringify(extracted, null, 2)}
         </pre>

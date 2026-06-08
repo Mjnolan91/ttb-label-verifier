@@ -6,6 +6,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, within } from "@testing-library/react";
 import { BatchVerify } from "./BatchVerify";
+import { downloadJson } from "../ui/download";
 import type { VerifyApiResponse } from "../api/verify/contract";
 import { CANONICAL_GOVERNMENT_WARNING } from "@/domain";
 
@@ -13,6 +14,8 @@ import { CANONICAL_GOVERNMENT_WARNING } from "@/domain";
 vi.mock("../imageDownscale", () => ({
   downscaleForUpload: (file: File) => Promise.resolve(file),
 }));
+// Stub the file-download side effect so the export payload can be inspected without a real download.
+vi.mock("../ui/download", () => ({ downloadJson: vi.fn(), downloadCsv: vi.fn() }));
 
 const RESPONSE: VerifyApiResponse = {
   provider: "mock",
@@ -99,5 +102,31 @@ describe("BatchVerify — verify against an application CSV", () => {
       }) as unknown as typeof fetch,
     );
     expect(await q.findByText(/Request failed/i)).toBeTruthy();
+  });
+
+  it("includes the application-match verdict in the JSON export (parity with the CSV + single screen)", { retry: 2 }, async () => {
+    const q = await run("filename,brand,alcohol\nacme-front.png,Acme,40% Alc./Vol.");
+    expect(await q.findByText("Approve")).toBeTruthy();
+    fireEvent.click(q.getByRole("button", { name: /Download JSON/i }));
+    const rows = (downloadJson as unknown as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[1] as unknown[];
+    expect(Array.isArray(rows)).toBe(true);
+    expect(rows[0]).toHaveProperty("overall", "approve");
+    expect(rows[0]).toHaveProperty("result");
+  });
+
+  it("flags a matched-but-unreadable product as 're-scan', not 'no application row'", { retry: 2 }, async () => {
+    const unreadable: VerifyApiResponse = {
+      provider: "mock",
+      readable: false,
+      extracted: RESPONSE.extracted,
+      result: null,
+      message: "We couldn't read this label clearly.",
+    };
+    const q = await run(
+      "filename,brand,alcohol\nacme-front.png,Acme,40% Alc./Vol.",
+      vi.fn(async () => ({ ok: true, json: async () => unreadable })) as unknown as typeof fetch,
+    );
+    expect(await q.findByText(/couldn.t read label; re-scan/i)).toBeTruthy();
+    expect(q.queryByText(/no application row/i)).toBeNull();
   });
 });

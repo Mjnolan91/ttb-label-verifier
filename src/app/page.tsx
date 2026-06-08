@@ -35,7 +35,7 @@ export default function Home() {
       <VerifyForm mockMode={mockMode} />
 
       <details className={`${cardClass} p-5 text-sm`}>
-        <summary className="cursor-pointer font-semibold text-ink">
+        <summary className="min-h-[44px] cursor-pointer py-2 font-semibold text-ink">
           What we check the warning against (27 CFR 16.21)
         </summary>
         <blockquote className="mt-3 rounded-field border-l-4 border-border bg-surface-muted p-4 leading-relaxed text-ink-muted">

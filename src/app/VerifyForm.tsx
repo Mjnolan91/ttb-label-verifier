@@ -25,6 +25,7 @@ import { downloadJson, downloadCsv } from "./ui/download";
 import { analysisToCsv } from "@/batch/csv";
 import { ImageLightbox } from "./ui/ImageLightbox";
 import { ForwardLookingNote } from "./ui/ForwardLookingNote";
+import { VERDICT_LABEL } from "./ui/status";
 import { IconReview, IconSpinner, IconZoom } from "./ui/icons";
 
 type SubmitState = "idle" | "loading" | "done" | "error";
@@ -358,6 +359,18 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
           </span>
         </div>
       </form>
+
+      {/* Persistent live region: the verdict can appear/refresh reactively as the agent types the
+          application values AFTER the read (no `state` change), so the focus-move announcement never
+          fires on that — the dominant — path. This polite region announces the headline outcome
+          whenever it appears or changes, so a screen-reader/keyboard user is never left in silence. */}
+      <p role="status" aria-live="polite" className="sr-only">
+        {combined?.overall
+          ? `Verification result: ${VERDICT_LABEL[combined.overall]}.${
+              combined.gatedByCompleteness ? " A field this beverage type requires needs review." : ""
+            }`
+          : ""}
+      </p>
 
       {formError && (
         <div className="mt-5">

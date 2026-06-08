@@ -1,15 +1,15 @@
 import type { Ref } from "react";
 import type { VerifyResult, FieldResult } from "@/compare";
 import { StatusBadge } from "./ui/StatusBadge";
-import { toneForStatus, TONE_TINT, TONE_ICON, VERDICT_LABEL } from "./ui/status";
+import { toneForStatus, TONE_TINT, TONE_ICON, VERDICT_LABEL, FIELD_LABEL } from "./ui/status";
 
 /**
  * ResultView — at-a-glance claimed-vs-label verdict.
  *
  * Status is NEVER conveyed by color alone (WCAG 1.4.1): the banner and each card pair the color
- * with an icon AND a text label (PASS/REVIEW/FAIL, Approve/Needs review/Reject) via the shared tone
- * system. The verdict is shown in response to an explicit "Check" action, and focus is moved to its
- * heading — so a single announcement channel (focus) is used, with no overlapping aria-live region.
+ * with an icon AND a plain text label (Match/Needs review/No match, Approve/Needs review/Reject) via
+ * the shared tone system. Focus is moved to the result heading; a parent live region in VerifyForm
+ * also announces the verdict so the reactive (type-after-read) path is not silent for AT users.
  */
 
 /** A plain next-action line under the verdict, so a non-technical agent knows what to DO, not just
@@ -19,7 +19,7 @@ const NEXT_STEP: Record<VerifyResult["overall"], string> = {
   review:
     "Some items need a person to confirm. Open the label image and check the highlighted fields below.",
   reject:
-    "A required check failed. Review the item(s) marked FAIL below before sending this back to the applicant.",
+    "A required check failed. Review the item(s) marked “No match” below before sending this back to the applicant.",
 };
 
 const FIELDS: { key: "brand" | "alcohol" | "warning"; name: string }[] = [
@@ -39,7 +39,7 @@ function FieldCard({ name, field, index }: { name: string; field: FieldResult; i
       <div className="flex items-center gap-2">
         {Icon && <Icon className="h-5 w-5 shrink-0" />}
         <h3 className="font-semibold">{name}</h3>
-        <StatusBadge tone={tone} label={field.status.toUpperCase()} className="ml-auto" />
+        <StatusBadge tone={tone} label={FIELD_LABEL[field.status]} className="ml-auto" />
       </div>
       <dl className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
         <div>

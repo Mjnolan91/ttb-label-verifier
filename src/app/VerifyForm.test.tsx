@@ -131,6 +131,28 @@ describe("VerifyForm — claimed-vs-application verification", () => {
     expect(await q.findByText("Reject")).toBeTruthy();
   });
 
+  it("announces the verdict via a live region on the upload-then-type flow (focus never moves there)", ASYNC, async () => {
+    mockFetch({
+      provider: "mock",
+      readable: true,
+      extracted: extractedBourbon({ warningPrefixIsAllCaps: false }),
+      result: null,
+    });
+    const { container } = render(<VerifyForm />);
+    const q = within(container);
+    dropLabelImage(container);
+    await q.findByText("Extracted from the label");
+    fireEvent.change(q.getByLabelText(/Brand name/i), { target: { value: "Old Tom Distillery" } });
+    fireEvent.change(q.getByLabelText(/Alcohol content/i), {
+      target: { value: "45% Alc./Vol. (90 Proof)" },
+    });
+
+    // A polite live region carries the headline outcome, so a screen-reader/keyboard user is not left
+    // in silence on the reactive path where the focus-move announcement never fires.
+    const live = await q.findByText(/Verification result: Reject/i);
+    expect(live.getAttribute("role")).toBe("status");
+  });
+
   it("shows two explicit upload slots (front + back), each with its own file input", () => {
     const { container } = render(<VerifyForm />);
     // Two empty slots each render a file input before anything is uploaded (front + back).

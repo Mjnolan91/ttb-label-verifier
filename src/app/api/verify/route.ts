@@ -33,6 +33,45 @@ function field(form: FormData, name: string): string {
   return typeof v === "string" ? v.trim() : "";
 }
 
+/**
+ * Read the request body, aborting once the running byte total exceeds `cap`. This bounds memory
+ * BEFORE `request.formData()` (which would otherwise buffer an unbounded multipart body) — the
+ * declared content-length header is only an advisory early-out a client can omit or under-report.
+ * Returns the buffered bytes, the sentinel "too-large" when the cap is crossed, or null when there is
+ * no readable body stream (the caller falls back to `request.formData()`).
+ */
+export async function readBodyWithinCap(
+  body: ReadableStream<Uint8Array> | null,
+  cap: number,
+): Promise<Uint8Array<ArrayBuffer> | "too-large" | null> {
+  if (!body) return null;
+  const reader = body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+      total += value.byteLength;
+      if (total > cap) {
+        await reader.cancel();
+        return "too-large";
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const out: Uint8Array<ArrayBuffer> = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return out;
+}
+
 function toPosition(v: FormDataEntryValue | undefined): LabelPosition | undefined {
   return typeof v === "string" && (POSITIONS as readonly string[]).includes(v)
     ? (v as LabelPosition)
@@ -46,9 +85,19 @@ export async function POST(request: Request): Promise<Response> {
     return Response.json({ error: "Upload too large." }, { status: 413 });
   }
 
+  // Buffer the body under a hard cap so a missing/under-reported content-length can't force an
+  // unbounded allocation, THEN parse the multipart form from the bounded bytes.
+  const contentType = request.headers.get("content-type") ?? "";
   let form: FormData;
   try {
-    form = await request.formData();
+    const body = await readBodyWithinCap(request.body, MAX_TOTAL_BYTES);
+    if (body === "too-large") {
+      return Response.json({ error: "Upload too large." }, { status: 413 });
+    }
+    form =
+      body === null
+        ? await request.formData() // no readable stream exposed — fall back to the platform parser
+        : await new Response(new Blob([body]), { headers: { "content-type": contentType } }).formData();
   } catch {
     return Response.json(
       { error: "Expected multipart/form-data with one or more image files." },
