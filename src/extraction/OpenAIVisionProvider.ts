@@ -98,7 +98,7 @@ export class OpenAIVisionProvider implements VisionProvider {
                 ? [{ type: "text", text: `This image is the ${image.position} label of the product.` }]
                 : []),
               { type: "text", text: USER_PROMPT },
-              { type: "image_url", image_url: { url: dataUrl } },
+              { type: "image_url", image_url: { url: dataUrl, detail: "high" } },
             ],
           },
         ],

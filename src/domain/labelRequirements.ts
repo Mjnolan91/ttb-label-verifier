@@ -24,7 +24,8 @@ export type RequirementKey =
   | "classType"
   | "alcoholContent"
   | "netContents"
-  | "nameAndAddress"
+  | "name"
+  | "address"
   | "governmentWarning"
   | "countryOfOrigin"
   | "sulfiteDeclaration"
@@ -47,7 +48,8 @@ const UNIVERSAL: RequirementSpec[] = [
   { key: "classType", label: "Class / type designation", necessity: "mandatory", note: "Standard of identity." },
   { key: "alcoholContent", label: "Alcohol content", necessity: "mandatory", note: "Numeric % Alc./Vol." },
   { key: "netContents", label: "Net contents", necessity: "mandatory", note: "e.g. 750 mL / 12 FL OZ." },
-  { key: "nameAndAddress", label: "Name & address", necessity: "mandatory", note: "Responsible party (bottler / producer / importer)." },
+  { key: "name", label: "Producer / bottler name", necessity: "mandatory", note: "Name of the responsible party (bottler / producer / importer)." },
+  { key: "address", label: "Producer / bottler address", necessity: "mandatory", note: "City and state (and street) of the responsible party." },
   { key: "governmentWarning", label: "Government warning", necessity: "mandatory", note: "27 CFR Part 16; ALL-CAPS bold 'GOVERNMENT WARNING:' prefix." },
 ];
 

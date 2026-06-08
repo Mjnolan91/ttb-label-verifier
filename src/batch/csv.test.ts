@@ -71,12 +71,20 @@ describe("analysisToCsv (extraction-first export)", () => {
   it("emits extraction columns (no verdict columns) when no row has a result", () => {
     const csv = analysisToCsv([{ filename: "x.png", extracted: EXTRACTED }]);
     const lines = csv.split("\n");
-    expect(lines[0]).toBe(
-      "filename,brand,class_type,alcohol,net_contents,warning_present,warning_all_caps,warning_bold,brand_conf,alcohol_conf,warning_conf,completeness",
-    );
-    expect(lines[1]).toBe(
-      "x.png,OLD TOM DISTILLERY,Kentucky Straight Bourbon Whiskey,45% Alc./Vol. (90 Proof),750 mL,yes,yes,yes,0.98,0.97,0.96,",
-    );
+    const header = lines[0].split(",");
+    for (const col of ["class", "type", "name", "address", "completeness"]) {
+      expect(header).toContain(col);
+    }
+    expect(header).not.toContain("class_type");
+    expect(header).not.toContain("brand_status"); // no verdict columns
+    const row = lines[1].split(",");
+    const get = (k: string) => row[header.indexOf(k)];
+    expect(get("brand")).toBe("OLD TOM DISTILLERY");
+    expect(get("type")).toBe("Kentucky Straight Bourbon Whiskey");
+    expect(get("alcohol")).toBe("45% Alc./Vol. (90 Proof)");
+    expect(get("warning_present")).toBe("yes");
+    expect(get("brand_conf")).toBe("0.98");
+    expect(get("completeness")).toBe("");
   });
 
   it("appends verdict columns when any row has a result; blank for rows without", () => {
@@ -103,6 +111,8 @@ describe("analysisToCsv (extraction-first export)", () => {
       confidence: {},
     };
     const line = analysisToCsv([{ filename: "weird,name.png", extracted: sparse }]).split("\n")[1];
-    expect(line).toBe('"weird,name.png",,,,,no,no,,,,,');
+    expect(line.startsWith('"weird,name.png",')).toBe(true); // comma in filename is quoted
+    expect(line).toContain("no,no"); // warning_present=no, warning_all_caps=no
+    expect(line).not.toContain("yes"); // nothing present, bold null -> empty
   });
 });

@@ -13,7 +13,8 @@ function ds(overrides: Partial<ExtractedFields> = {}): ExtractedFields {
     beverageClass: "distilledSpirits",
     alcoholContentText: "45% Alc./Vol. (90 Proof)",
     netContents: "750 mL",
-    nameAndAddress: "Distilled & bottled by Old Tom Distillery, Louisville, KY",
+    name: "Old Tom Distillery",
+    address: "Louisville, KY",
     warningText: CANONICAL_GOVERNMENT_WARNING,
     warningPrefixIsAllCaps: true,
     warningPrefixIsBold: true,
@@ -22,7 +23,8 @@ function ds(overrides: Partial<ExtractedFields> = {}): ExtractedFields {
       classType: 0.97,
       alcoholContent: 0.98,
       netContents: 0.96,
-      nameAndAddress: 0.95,
+      name: 0.95,
+      address: 0.95,
       warningText: 0.96,
     },
     ...overrides,
@@ -37,7 +39,7 @@ describe("checkCompleteness", () => {
     const r = checkCompleteness(ds());
     expect(r.beverageClass).toBe("distilledSpirits");
     expect(r.overall).toBe("complete");
-    for (const key of ["brand", "classType", "alcoholContent", "netContents", "nameAndAddress", "governmentWarning"]) {
+    for (const key of ["brand", "classType", "alcoholContent", "netContents", "name", "address", "governmentWarning"]) {
       expect(statusOf(r, key)).toBe("present");
     }
     // Age statement is conditional and absent -> neutral 'unverifiable', not 'missing'.

@@ -67,12 +67,16 @@ export const SYSTEM_PROMPT =
   'only what is visible on THIS image and leave the rest "" with low confidence.';
 
 export const USER_PROMPT =
-  "Extract these fields from the alcohol label image and return STRICT JSON with EXACTLY this shape:\n" +
+  "Read EVERY piece of text on this label — top, bottom, sides, and small/fine print — and fill every " +
+  'field that appears ANYWHERE on the image. Only use "" (with low confidence) when the text is truly ' +
+  "not present. Return STRICT JSON with EXACTLY this shape:\n" +
   '{"brand":{"value":string,"confidence":number},' +
+  '"class":{"value":string,"confidence":number},' +
   '"classType":{"value":string,"confidence":number},' +
   '"alcoholContent":{"value":string,"confidence":number},' +
   '"netContents":{"value":string,"confidence":number},' +
-  '"nameAndAddress":{"value":string,"confidence":number},' +
+  '"name":{"value":string,"confidence":number},' +
+  '"address":{"value":string,"confidence":number},' +
   '"countryOfOrigin":{"value":string,"confidence":number},' +
   '"appellation":{"value":string,"confidence":number},' +
   '"vintage":{"value":string,"confidence":number},' +
@@ -82,19 +86,23 @@ export const USER_PROMPT =
   '"commodityStatement":{"value":string,"confidence":number},' +
   '"warningText":{"value":string,"confidence":number},' +
   '"warningPrefixIsAllCaps":boolean,"warningPrefixIsBold":boolean|null}\n\n' +
-  'Transcribe verbatim; use "" + low confidence for anything not on this image. Field rules:\n' +
-  '- brand: brand name as printed (e.g. "OLD TOM DISTILLERY").\n' +
-  '- classType: class/type designation (e.g. "Kentucky Straight Bourbon Whiskey", "Cabernet Sauvignon", "India Pale Ale").\n' +
-  '- alcoholContent: VERBATIM alcohol statement (e.g. "45% Alc./Vol. (90 Proof)"); do NOT convert units or compute proof.\n' +
-  '- netContents: net contents as printed (e.g. "750 mL").\n' +
-  '- nameAndAddress: responsible-party name & address WITH its verb ("Bottled by", "Distilled by", "Imported by", "Produced by").\n' +
+  "Transcribe verbatim. Field rules:\n" +
+  '- brand: brand name as printed (e.g. "ABC", "OLD TOM DISTILLERY").\n' +
+  '- class: the BROAD category only (e.g. "Whisky", "Wine", "Malt beverage", "Brandy").\n' +
+  '- classType: the FULL specific designation / standard of identity (e.g. "Straight Rye Whisky", "Kentucky Straight Bourbon Whiskey", "Cabernet Sauvignon", "India Pale Ale").\n' +
+  '- alcoholContent: VERBATIM alcohol statement (e.g. "45% Alc./Vol. (90 Proof)", "45% ALC/VOL"); do NOT convert units or compute proof.\n' +
+  '- netContents: net contents as printed (e.g. "750 mL", "750 ML").\n' +
+  '- name: the responsible-party COMPANY NAME only. It usually follows a verb like "DISTILLED & ' +
+  'BOTTLED BY:", "PRODUCED BY", "IMPORTED BY" — e.g. from "DISTILLED AND BOTTLED BY: ABC DISTILLERY, ' +
+  'FREDERICK, MD" the name is "ABC Distillery". Do NOT include the verb or the address.\n' +
+  '- address: the responsible-party ADDRESS only (street/city/state), e.g. "Frederick, MD". Separate from name.\n' +
   '- countryOfOrigin: e.g. "Product of Scotland" (imports); "" if none.\n' +
   '- appellation: wine appellation of origin, e.g. "Napa Valley".\n' +
   '- vintage: wine vintage year, e.g. "2019".\n' +
   '- varietal: grape variety, e.g. "Cabernet Sauvignon".\n' +
   '- sulfiteDeclaration: e.g. "Contains Sulfites"; "" if none.\n' +
   '- ageStatement: e.g. "Aged 4 Years"; "" if none.\n' +
-  '- commodityStatement: any commodity statement distinct from name/address.\n' +
+  '- commodityStatement: the full responsibility/commodity statement incl. the verb (e.g. "Distilled and bottled by ...").\n' +
   '- warningText: the FULL government warning, verbatim from GOVERNMENT/Government through "...health problems.", preserving "(1) ... (2) ...". "" if absent.\n' +
   '- warningPrefixIsAllCaps: true ONLY if the "GOVERNMENT WARNING:" prefix is ALL CAPITAL LETTERS; false if title/mixed case.\n' +
   '- warningPrefixIsBold: true if that prefix is clearly bolder than the body; false if clearly same weight; null if unsure (never guess true).\n' +
@@ -146,11 +154,13 @@ export function parseModelJson(content: string): ExtractedFields {
   const p = parsed as Record<string, unknown>;
   const raw: RawExtractedFields = {
     brand: coerceConfidenced(p.brand),
+    class: coerceConfidenced(p.class),
     classType: coerceConfidenced(p.classType),
     alcoholContent: coerceConfidenced(p.alcoholContent),
     netContents: coerceConfidenced(p.netContents),
     warningText: coerceConfidenced(p.warningText),
-    nameAndAddress: coerceConfidenced(p.nameAndAddress),
+    name: coerceConfidenced(p.name),
+    address: coerceConfidenced(p.address),
     countryOfOrigin: coerceConfidenced(p.countryOfOrigin),
     appellation: coerceConfidenced(p.appellation),
     vintage: coerceConfidenced(p.vintage),
@@ -229,7 +239,7 @@ export class LlmVisionProvider implements VisionProvider {
                 ? [{ type: "text", text: `This image is the ${image.position} label of the product.` }]
                 : []),
               { type: "text", text: USER_PROMPT },
-              { type: "image_url", image_url: { url: dataUrl } },
+              { type: "image_url", image_url: { url: dataUrl, detail: "high" } },
             ],
           },
         ],

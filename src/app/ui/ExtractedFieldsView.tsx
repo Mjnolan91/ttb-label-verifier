@@ -78,10 +78,12 @@ export function ExtractedFieldsView({
       <div className="rounded-card border border-border bg-surface p-5 shadow-card">
         <dl>
           <Row label="Brand" value={extracted.brand} confidence={c.brand} />
-          <Row label="Class / type" value={extracted.classType} confidence={c.classType} />
+          {extracted.class ? <Row label="Class" value={extracted.class} confidence={c.class} /> : null}
+          <Row label="Type" value={extracted.classType} confidence={c.classType} />
           <Row label="Alcohol" value={extracted.alcoholContentText} confidence={c.alcoholContent} />
           <Row label="Net contents" value={extracted.netContents} confidence={c.netContents} />
-          <Row label="Name & address" value={extracted.nameAndAddress} confidence={c.nameAndAddress} />
+          <Row label="Name" value={extracted.name} confidence={c.name} />
+          <Row label="Address" value={extracted.address} confidence={c.address} />
           {extracted.countryOfOrigin ? (
             <Row label="Country of origin" value={extracted.countryOfOrigin} confidence={c.countryOfOrigin} />
           ) : null}

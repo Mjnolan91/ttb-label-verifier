@@ -9,7 +9,9 @@
  * preserved (only the bytes + type change) so the offline filename-keyed mock is never disturbed.
  */
 
-export const DEFAULT_MAX_EDGE = 1400;
+// 2000px keeps small print (e.g. the "BOTTLED BY ..." line, sulfite declaration) legible for the
+// model while still cutting multi-MP phone photos down. Bumped from 1400 after small-text misses.
+export const DEFAULT_MAX_EDGE = 2000;
 export const JPEG_QUALITY = 0.85;
 
 /** File types we must not rasterize (vector/animated/non-image) — pass through untouched. */

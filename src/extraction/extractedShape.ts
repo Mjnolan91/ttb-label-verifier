@@ -21,7 +21,9 @@ export interface RawExtractedFields {
   alcoholContent?: RawConfidencedValue;
   netContents?: RawConfidencedValue;
   warningText?: RawConfidencedValue;
-  nameAndAddress?: RawConfidencedValue;
+  class?: RawConfidencedValue;
+  name?: RawConfidencedValue;
+  address?: RawConfidencedValue;
   countryOfOrigin?: RawConfidencedValue;
   appellation?: RawConfidencedValue;
   vintage?: RawConfidencedValue;
@@ -46,7 +48,9 @@ export function mapRawExtracted(raw: RawExtractedFields): ExtractedFields {
   if (raw.alcoholContent) confidence.alcoholContent = raw.alcoholContent.confidence;
   if (raw.netContents) confidence.netContents = raw.netContents.confidence;
   if (raw.warningText) confidence.warningText = raw.warningText.confidence;
-  if (raw.nameAndAddress) confidence.nameAndAddress = raw.nameAndAddress.confidence;
+  if (raw.class) confidence.class = raw.class.confidence;
+  if (raw.name) confidence.name = raw.name.confidence;
+  if (raw.address) confidence.address = raw.address.confidence;
   if (raw.countryOfOrigin) confidence.countryOfOrigin = raw.countryOfOrigin.confidence;
   if (raw.appellation) confidence.appellation = raw.appellation.confidence;
   if (raw.vintage) confidence.vintage = raw.vintage.confidence;
@@ -61,7 +65,9 @@ export function mapRawExtracted(raw: RawExtractedFields): ExtractedFields {
     alcoholContentText: raw.alcoholContent?.value,
     netContents: raw.netContents?.value,
     warningText: raw.warningText?.value,
-    nameAndAddress: raw.nameAndAddress?.value,
+    class: raw.class?.value,
+    name: raw.name?.value,
+    address: raw.address?.value,
     countryOfOrigin: raw.countryOfOrigin?.value,
     appellation: raw.appellation?.value,
     vintage: raw.vintage?.value,

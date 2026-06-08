@@ -43,8 +43,10 @@ function fieldFor(key: RequirementKey, e: ExtractedFields): { value?: string; co
       return { value: e.alcoholContentText, confidence: e.confidence.alcoholContent };
     case "netContents":
       return { value: e.netContents, confidence: e.confidence.netContents };
-    case "nameAndAddress":
-      return { value: e.nameAndAddress, confidence: e.confidence.nameAndAddress };
+    case "name":
+      return { value: e.name, confidence: e.confidence.name };
+    case "address":
+      return { value: e.address, confidence: e.confidence.address };
     case "countryOfOrigin":
       return { value: e.countryOfOrigin, confidence: e.confidence.countryOfOrigin };
     case "sulfiteDeclaration":
@@ -64,13 +66,20 @@ function evalWarning(spec: RequirementSpec, e: ExtractedFields): CompletenessEle
   if (!has) {
     return { ...base(spec), status: "missing", detail: "Government warning not found on the label." };
   }
-  const issues: string[] = [];
-  if (!e.warningPrefixIsAllCaps) issues.push("prefix not ALL CAPS");
-  if (e.warningPrefixIsBold === false) issues.push("prefix not bold");
-  if (issues.length > 0) {
-    return { ...base(spec), status: "malformed", value: w, detail: `${issues.join("; ")} (27 CFR 16.22(a)(2)).` };
+  // ALL-CAPS is a reliable transcription judgment, so a title/mixed-case prefix is a hard fail.
+  if (!e.warningPrefixIsAllCaps) {
+    return {
+      ...base(spec),
+      status: "malformed",
+      value: w,
+      detail: 'The "GOVERNMENT WARNING:" prefix must be in ALL CAPITAL LETTERS (27 CFR 16.22(a)(2)).',
+    };
   }
-  return { ...base(spec), status: "present", value: w, detail: "Present with an ALL-CAPS prefix." };
+  // Bold-ness is hard to judge reliably from an image, so it's ADVISORY — surfaced, not failed
+  // (failing a compliant label on an uncertain bold read would not be effective).
+  const boldNote =
+    e.warningPrefixIsBold === false ? " Also verify the prefix is BOLD (27 CFR 16.22(a)(2))." : "";
+  return { ...base(spec), status: "present", value: w, detail: `Present with an ALL-CAPS prefix.${boldNote}` };
 }
 
 function base(spec: RequirementSpec): Pick<CompletenessElement, "key" | "label" | "necessity"> {

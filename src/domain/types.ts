@@ -71,7 +71,9 @@ export interface FieldConfidence {
   /** Confidence that the prefix bold determination is correct. */
   warningPrefixIsBold?: number;
   // Extended TTB label elements (see ExtractedFields + labelRequirements.ts).
-  nameAndAddress?: number;
+  class?: number;
+  name?: number;
+  address?: number;
   countryOfOrigin?: number;
   appellation?: number;
   vintage?: number;
@@ -127,7 +129,9 @@ export interface ClaimedFields {
 export interface ExtractedFields {
   /** Brand name read off the label, or undefined if not found. */
   brand?: string;
-  /** Class/type text read off the label (free text), e.g. "Kentucky Straight Bourbon". */
+  /** Broad class / category, e.g. "Whisky", "Wine", "Malt beverage". Distinct from the type. */
+  class?: string;
+  /** Specific class/type DESIGNATION (standard of identity), e.g. "Straight Rye Whisky". */
   classType?: string;
   /** Normalized beverage class inferred from the label, if determinable. */
   beverageClass?: BeverageClass;
@@ -163,11 +167,12 @@ export interface ExtractedFields {
    */
   warningPrefixIsBold: boolean | null;
   /**
-   * Name and address of the responsible party as printed, e.g. "Bottled by Old Tom Distillery,
-   * Louisville, KY". The verb prefix ("Distilled by", "Produced by", "Imported by") is part of the
-   * commodity statement for spirits; we capture the full statement here.
+   * Responsible-party NAME as printed, e.g. "ABC Distillery" (from "DISTILLED & BOTTLED BY: ABC
+   * DISTILLERY"). The bottling/producing verb belongs with the commodity statement, not the name.
    */
-  nameAndAddress?: string;
+  name?: string;
+  /** Responsible-party ADDRESS as printed, e.g. "Frederick, MD". Separate from the name. */
+  address?: string;
   /** Country of origin, required for imported products, e.g. "Product of Scotland". */
   countryOfOrigin?: string;
   /** Appellation of origin (wine), e.g. "Napa Valley". */

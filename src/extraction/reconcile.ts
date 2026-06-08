@@ -81,11 +81,13 @@ export function extractWithTimeout(
 
 const VALUE_FIELDS = [
   "brand",
+  "class",
   "classType",
   "alcoholContentText",
   "netContents",
+  "name",
+  "address",
   "warningText",
-  "nameAndAddress",
   "countryOfOrigin",
   "appellation",
   "vintage",
@@ -99,11 +101,13 @@ type ValueField = (typeof VALUE_FIELDS)[number];
 /** The FieldConfidence key for a value field (alcoholContentText is keyed as `alcoholContent`). */
 const CONF_KEY: Record<ValueField, keyof FieldConfidence> = {
   brand: "brand",
+  class: "class",
   classType: "classType",
   alcoholContentText: "alcoholContent",
   netContents: "netContents",
+  name: "name",
+  address: "address",
   warningText: "warningText",
-  nameAndAddress: "nameAndAddress",
   countryOfOrigin: "countryOfOrigin",
   appellation: "appellation",
   vintage: "vintage",
@@ -123,11 +127,26 @@ function norm(s: string | undefined): string {
  */
 export function mergeExtracted(a: ExtractedFields, b: ExtractedFields): ExtractedFields {
   const confidence: FieldConfidence = {};
+  // The warning format flags must travel WITH the warning text: when only one image carries the
+  // government warning (the usual front/back split), use THAT image's prefix flags — not the first
+  // image's defaults, which would mislabel a clean back-label warning as "not all caps".
+  const aHasWarning = a.warningText != null && a.warningText.trim() !== "";
+  const bHasWarning = b.warningText != null && b.warningText.trim() !== "";
+  const warnSrc: ExtractedFields =
+    bHasWarning && !aHasWarning
+      ? b
+      : aHasWarning && bHasWarning
+        ? (a.confidence.warningText ?? 0) >= (b.confidence.warningText ?? 0)
+          ? a
+          : b
+        : a;
   const out: ExtractedFields = {
-    warningPrefixIsAllCaps: a.warningPrefixIsAllCaps,
-    // Prefer a DETECTED bold reading (true/false) over an undetectable one (null, e.g. OCR).
+    warningPrefixIsAllCaps: warnSrc.warningPrefixIsAllCaps,
+    // From the warning-bearing read; if its bold is undetectable (null), prefer the other's detected value.
     warningPrefixIsBold:
-      a.warningPrefixIsBold !== null ? a.warningPrefixIsBold : b.warningPrefixIsBold,
+      warnSrc.warningPrefixIsBold !== null
+        ? warnSrc.warningPrefixIsBold
+        : (warnSrc === a ? b : a).warningPrefixIsBold,
     confidence,
   };
 
@@ -137,17 +156,22 @@ export function mergeExtracted(a: ExtractedFields, b: ExtractedFields): Extracte
     const vb = b[f];
     const ca = a.confidence[key] ?? 0;
     const cb = b.confidence[key] ?? 0;
+    // Treat empty string as ABSENT, not a value. This matters for front/back merges: a field that
+    // lives only on the front (blank on the back) is a one-sided fill, NOT a disagreement to
+    // down-weight. Only two genuinely-different non-empty reads count as a disagreement.
+    const ha = va != null && va.trim() !== "";
+    const hb = vb != null && vb.trim() !== "";
 
-    if (va != null && vb != null) {
+    if (ha && hb) {
       out[f] = ca >= cb ? va : vb;
       confidence[key] =
         norm(va) === norm(vb)
           ? Math.max(ca, cb) // agree -> confident
           : Math.min(DISAGREEMENT_CONFIDENCE, Math.min(ca, cb)); // disagree -> review
-    } else if (va != null) {
+    } else if (ha) {
       out[f] = va;
       confidence[key] = ca;
-    } else if (vb != null) {
+    } else if (hb) {
       out[f] = vb;
       confidence[key] = cb;
     }
