@@ -43,8 +43,8 @@ export interface CompletenessResult {
   overall: CompletenessOverall;
 }
 
-/** The extracted value + confidence backing a requirement key. */
-function fieldFor(key: RequirementKey, e: ExtractedFields): { value?: string; confidence?: number } {
+/** The extracted value + confidence backing a requirement key. Exported for reuse by confirm.ts. */
+export function fieldFor(key: RequirementKey, e: ExtractedFields): { value?: string; confidence?: number } {
   switch (key) {
     case "brand":
       return { value: e.brand, confidence: e.confidence.brand };
@@ -75,7 +75,7 @@ function fieldFor(key: RequirementKey, e: ExtractedFields): { value?: string; co
   }
 }
 
-function evalWarning(spec: RequirementSpec, e: ExtractedFields): CompletenessElement {
+export function evaluateWarningElement(spec: RequirementSpec, e: ExtractedFields): CompletenessElement {
   const w = e.warningText;
   const has = typeof w === "string" && w.trim() !== "";
   if (!has) {
@@ -132,7 +132,7 @@ function base(spec: RequirementSpec): Pick<CompletenessElement, "key" | "label" 
  *  - spirits, wine > 14%, unknown: a numeric statement is mandatory — missing.
  * (The PRESENT case is handled inline by the generic loop, including low-confidence -> review.)
  */
-function evalAbsentAlcohol(spec: RequirementSpec, e: ExtractedFields, cls: BeverageClass): CompletenessElement {
+export function evaluateAbsentAlcohol(spec: RequirementSpec, e: ExtractedFields, cls: BeverageClass): CompletenessElement {
   if (cls === "wineUnder14" || cls === "cider") {
     if (TABLE_WINE_DESIGNATION.test(e.classType ?? "")) {
       return {
@@ -164,7 +164,7 @@ export function checkCompleteness(extracted: ExtractedFields): CompletenessResul
 
   let lowConfidencePresent = false;
   const elements = mandatoryElementsFor(beverageClass).map((spec): CompletenessElement => {
-    if (spec.key === "governmentWarning") return evalWarning(spec, extracted);
+    if (spec.key === "governmentWarning") return evaluateWarningElement(spec, extracted);
 
     const { value, confidence } = fieldFor(spec.key, extracted);
     const hasValue = typeof value === "string" && value.trim() !== "";
@@ -180,7 +180,7 @@ export function checkCompleteness(extracted: ExtractedFields): CompletenessResul
     }
     // Absent value. Alcohol content is class-specific (table-wine substitution; malt optional).
     if (spec.key === "alcoholContent") {
-      return evalAbsentAlcohol(spec, extracted, beverageClass);
+      return evaluateAbsentAlcohol(spec, extracted, beverageClass);
     }
     if (spec.necessity === "mandatory") {
       return { ...base(spec), status: "missing", detail: "Required but not found on the label." };
