@@ -161,6 +161,30 @@ describe("VerifyForm — claimed-vs-application verification", () => {
     expect(q.queryByText("Verification result")).toBeNull();
   });
 
+  it("shows Needs review (gated by completeness) when the 3 checks pass but a required field is missing", ASYNC, async () => {
+    // Net contents omitted -> spirits completeness incomplete -> headline gated to review even though
+    // brand/alcohol/warning all match.
+    mockFetch({
+      provider: "mock",
+      readable: true,
+      extracted: extractedBourbon({
+        netContents: undefined,
+        confidence: { brand: 0.98, classType: 0.97, alcoholContent: 0.98, name: 0.95, address: 0.95, warningText: 0.96 },
+      }),
+      result: null,
+    });
+    const { container } = render(<VerifyForm />);
+    const q = within(container);
+    dropLabelImage(container);
+    await q.findByText("Extracted from the label");
+    fireEvent.change(q.getByLabelText(/Brand name/i), { target: { value: "Old Tom Distillery" } });
+    fireEvent.change(q.getByLabelText(/Alcohol content/i), { target: { value: "45% Alc./Vol. (90 Proof)" } });
+
+    expect(await q.findByText("Verification result")).toBeTruthy();
+    expect(q.getByText("Needs review")).toBeTruthy();
+    expect(q.getByText(/missing a field TTB requires/i)).toBeTruthy();
+  });
+
   it("shows the re-upload prompt for an unreadable image (never a fabricated verdict)", ASYNC, async () => {
     mockFetch({
       provider: "mock",

@@ -58,12 +58,19 @@ function FieldCard({ name, field, index }: { name: string; field: FieldResult; i
 
 export function ResultView({
   result,
+  overall,
+  gatedByCompleteness = false,
   headingRef,
 }: {
   result: VerifyResult;
+  /** The headline verdict (the comparison gated on completeness); defaults to the comparison's own. */
+  overall?: VerifyResult["overall"];
+  /** True when the 3 checks passed/were lenient but a missing required field made the verdict worse. */
+  gatedByCompleteness?: boolean;
   headingRef?: Ref<HTMLHeadingElement>;
 }) {
-  const tone = toneForStatus(result.overall);
+  const headline = overall ?? result.overall;
+  const tone = toneForStatus(headline);
   const OverallIcon = TONE_ICON[tone];
   return (
     <section aria-label="Verification result" className="mt-6 flex flex-col gap-4">
@@ -81,8 +88,14 @@ export function ResultView({
         {OverallIcon && <OverallIcon className="h-9 w-9 shrink-0" />}
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide opacity-80">Overall verdict</p>
-          <p className="text-2xl font-bold">{VERDICT_LABEL[result.overall]}</p>
-          <p className="mt-1 text-sm">{NEXT_STEP[result.overall]}</p>
+          <p className="text-2xl font-bold">{VERDICT_LABEL[headline]}</p>
+          <p className="mt-1 text-sm">{NEXT_STEP[headline]}</p>
+          {gatedByCompleteness && (
+            <p className="mt-1 text-sm font-medium">
+              The three checks matched, but the label is missing a field TTB requires for this
+              beverage type — see the completeness check below.
+            </p>
+          )}
         </div>
       </div>
 

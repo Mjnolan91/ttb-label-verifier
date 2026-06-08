@@ -11,7 +11,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { VerifyApiResponse, VerifyApiError } from "./api/verify/contract";
 import type { LabelPosition } from "@/extraction";
-import { verifyLabel, type VerifyResult } from "@/compare";
+import { combinedVerdict, type CombinedVerdict, type VerifyResult } from "@/compare";
 import { ExtractedFieldsView } from "./ui/ExtractedFieldsView";
 import { CompletenessView } from "./ui/CompletenessView";
 import { ResultView } from "./ResultView";
@@ -85,10 +85,10 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
   // Derive the application-match verdict from the reading + the application values (no effect, no
   // extra state). It exists the moment a readable extraction and brand+alcohol are present, so
   // verification is the headline outcome with no button to hunt for.
-  const verdict: VerifyResult | null = useMemo(() => {
+  const combined: CombinedVerdict | null = useMemo(() => {
     if (state !== "done" || !response?.readable) return null;
     if (claimed.brand.trim() === "" || claimed.alcohol.trim() === "") return null;
-    return verifyLabel(
+    return combinedVerdict(
       {
         brand: claimed.brand.trim(),
         alcoholContentText: claimed.alcohol.trim(),
@@ -97,6 +97,8 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
       response.extracted,
     );
   }, [state, response, claimed.brand, claimed.alcohol, claimed.classType]);
+  // The per-field comparison (for the cards) and the gated headline verdict.
+  const verdict: VerifyResult | null = combined?.verify ?? null;
 
   // Move focus to the verdict only when the agent explicitly pressed Verify (not on live recompute).
   useEffect(() => {
@@ -376,7 +378,14 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
       {/* Results — lead with the application-match verdict, then completeness, then the full reading. */}
       {readable && response && (
         <>
-          {verdict && <ResultView result={verdict} headingRef={verdictHeadingRef} />}
+          {verdict && (
+            <ResultView
+              result={verdict}
+              overall={combined?.overall ?? undefined}
+              gatedByCompleteness={combined?.gatedByCompleteness ?? false}
+              headingRef={verdictHeadingRef}
+            />
+          )}
           {response.completeness && (
             <CompletenessView completeness={response.completeness} headingRef={completenessHeadingRef} />
           )}
