@@ -19,8 +19,11 @@ import { downscaleForUpload } from "../imageDownscale";
 import { ErrorAlert } from "../ui/ErrorAlert";
 import { StatusBadge } from "../ui/StatusBadge";
 import { type Tone } from "../ui/status";
-import { inputClass, primaryButtonClass, secondaryButtonClass } from "../ui/fieldStyles";
+import { primaryButtonClass, secondaryButtonClass } from "../ui/fieldStyles";
 import { downloadJson, downloadCsv } from "../ui/download";
+import { DropZone } from "../ui/DropZone";
+import { ImageLightbox } from "../ui/ImageLightbox";
+import { IconZoom } from "../ui/icons";
 
 const CONCURRENCY = 4;
 
@@ -91,18 +94,33 @@ function cell(row: BatchRow, pick: (e: ExtractedFields) => string | undefined): 
 }
 
 export function BatchVerify() {
-  const ids = { images: useId() };
-  const [files, setFiles] = useState<File[]>([]);
+  const ids = { images: useId(), help: useId() };
+  const [images, setImages] = useState<{ file: File; preview: string }[]>([]);
+  const [zoom, setZoom] = useState<{ src: string; alt: string } | null>(null);
   const [rows, setRows] = useState<BatchRow[]>([]);
   const [running, setRunning] = useState(false);
   const [done, setDone] = useState(0);
   const [error, setError] = useState<string | null>(null);
 
-  const groups = useMemo(() => groupFiles(files), [files]);
+  const groups = useMemo(() => groupFiles(images.map((im) => im.file)), [images]);
+
+  function addFiles(newFiles: File[]) {
+    setImages((prev) => [...prev, ...newFiles.map((file) => ({ file, preview: URL.createObjectURL(file) }))]);
+  }
+  function removeImage(index: number) {
+    setImages((prev) => {
+      const target = prev[index];
+      if (target) {
+        if (zoom?.src === target.preview) setZoom(null);
+        URL.revokeObjectURL(target.preview);
+      }
+      return prev.filter((_, i) => i !== index);
+    });
+  }
 
   async function process() {
     setError(null);
-    if (files.length === 0) {
+    if (images.length === 0) {
       setError("Add one or more label images.");
       return;
     }
@@ -167,22 +185,48 @@ export function BatchVerify() {
 
       <div className="mt-5 flex flex-col gap-5">
         <div>
-          <label htmlFor={ids.images} className="mb-1.5 block font-medium text-ink">
-            Label images <span className="font-normal text-ink-muted">(select multiple)</span>
-          </label>
-          <input
-            id={ids.images}
-            type="file"
-            accept="image/*"
-            multiple
-            onChange={(e) => setFiles(Array.from(e.target.files ?? []))}
-            className={inputClass}
-          />
-          {files.length > 0 && (
-            <p className="mt-1.5 text-sm text-ink-muted">
-              {files.length} image(s) → <strong className="text-ink">{groups.length} product(s)</strong>{" "}
-              {groups.some((g) => g.images.length > 1) ? "(some paired front/back)" : ""}
-            </p>
+          <span className="mb-1.5 block font-medium text-ink">
+            Label images <span className="font-normal text-ink-muted">(add many)</span>
+          </span>
+          <DropZone id={ids.images} onFiles={addFiles} describedById={ids.help} />
+          <p id={ids.help} className="sr-only">
+            Add label images; pair a front and back by naming them alike with a suffix. Click a
+            thumbnail to enlarge it.
+          </p>
+          {images.length > 0 && (
+            <>
+              <p className="mt-2 text-sm text-ink-muted">
+                {images.length} image(s) → <strong className="text-ink">{groups.length} product(s)</strong>{" "}
+                {groups.some((g) => g.images.length > 1) ? "(some paired front/back)" : ""}
+              </p>
+              <ul className="mt-3 flex flex-wrap gap-3">
+                {images.map((img, i) => (
+                  <li key={`${img.file.name}-${i}`} className="relative">
+                    <button
+                      type="button"
+                      onClick={() => setZoom({ src: img.preview, alt: img.file.name })}
+                      aria-label={`Enlarge ${img.file.name}`}
+                      title={img.file.name}
+                      className="group relative block h-20 w-20 cursor-zoom-in overflow-hidden rounded border border-border bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element -- local object URL preview */}
+                      <img src={img.preview} alt="" className="h-full w-full object-contain" />
+                      <span className="absolute bottom-0.5 right-0.5 inline-flex h-5 w-5 items-center justify-center rounded-full bg-black/65 text-xs text-white">
+                        <IconZoom />
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeImage(i)}
+                      aria-label={`Remove ${img.file.name}`}
+                      className="absolute -right-2 -top-2 inline-flex h-6 w-6 items-center justify-center rounded-full border border-border-strong bg-surface text-sm font-semibold text-ink shadow-card hover:border-fail-600 hover:text-fail-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700"
+                    >
+                      ×
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            </>
           )}
         </div>
 
@@ -249,6 +293,13 @@ export function BatchVerify() {
           </table>
         </div>
       )}
+
+      <ImageLightbox
+        open={zoom !== null}
+        src={zoom?.src ?? ""}
+        alt={zoom?.alt ?? ""}
+        onClose={() => setZoom(null)}
+      />
     </section>
   );
 }
