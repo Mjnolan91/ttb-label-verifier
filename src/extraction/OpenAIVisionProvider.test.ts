@@ -103,6 +103,19 @@ describe("OpenAIVisionProvider.extract — request shape + parsing (HTTP mocked)
   });
 });
 
+describe("OpenAIVisionProvider.judgeWarningBold — bold judgment via chat (HTTP mocked)", () => {
+  it("judgeWarningBold maps the model's enum to true/false/null", async () => {
+    const make = (content: string) => ({ ok: true, status: 200, json: async () => ({ choices: [{ message: { content } }] }) });
+    const img = { filename: "x.jpg", data: new Uint8Array([1]), contentType: "image/jpeg" };
+    const bolder = new OpenAIVisionProvider({ config: { apiKey: "k", model: "gpt-4.1" }, fetchImpl: (async () => make('{"bold":"BOLDER"}')) as unknown as typeof fetch });
+    expect(await bolder.judgeWarningBold!(img)).toBe(true);
+    const same = new OpenAIVisionProvider({ config: { apiKey: "k", model: "gpt-4.1" }, fetchImpl: (async () => make('{"bold":"SAME"}')) as unknown as typeof fetch });
+    expect(await same.judgeWarningBold!(img)).toBe(false);
+    const unk = new OpenAIVisionProvider({ config: { apiKey: "k", model: "gpt-4.1" }, fetchImpl: (async () => make('{"bold":"CANNOT_DETERMINE"}')) as unknown as typeof fetch });
+    expect(await unk.judgeWarningBold!(img)).toBeNull();
+  });
+});
+
 describe("getVisionProvider('openai') — selection + offline safety", () => {
   function withEnv(vars: Record<string, string | undefined>, fn: () => void) {
     const keys = Object.keys(vars);

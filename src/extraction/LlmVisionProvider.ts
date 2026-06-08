@@ -12,7 +12,7 @@
  * tests run with no live network.
  */
 import type { ExtractedFields } from "@/domain";
-import type { ImageInput, VisionProvider } from "./VisionProvider";
+import type { ExtractOptions, ImageInput, VisionProvider } from "./VisionProvider";
 import {
   mapRawExtracted,
   type RawConfidencedValue,
@@ -230,6 +230,7 @@ export function buildExtractionBody(
   image: ImageInput,
   dataUrl: string,
   extra?: Record<string, unknown>,
+  temperature = 0,
 ): object {
   return {
     ...extra,
@@ -246,10 +247,53 @@ export function buildExtractionBody(
         ],
       },
     ],
-    temperature: 0,
+    temperature,
     max_tokens: MAX_OUTPUT_TOKENS,
     response_format: EXTRACTION_RESPONSE_FORMAT,
   };
+}
+
+export const BOLD_PROMPT =
+  'Look ONLY at the government health warning on this label. Compare the visual weight (stroke width ' +
+  'and darkness) of the "GOVERNMENT WARNING:" prefix against the warning body that follows it. Is the ' +
+  'prefix clearly bolder than the body? Respond as JSON {"bold":"BOLDER"|"SAME"|"CANNOT_DETERMINE"}. ' +
+  "If there is no warning, use CANNOT_DETERMINE.";
+
+const BOLD_RESPONSE_FORMAT = {
+  type: "json_schema",
+  json_schema: { name: "warning_bold", strict: true, schema: {
+    type: "object", properties: { bold: { type: "string", enum: ["BOLDER", "SAME", "CANNOT_DETERMINE"] } },
+    required: ["bold"], additionalProperties: false } },
+} as const;
+
+/** Shared OpenAI-dialect bold judgment. Returns true/false/null; never throws. */
+export async function judgeWarningBoldViaChat(opts: {
+  fetchImpl: FetchLike; url: string; headers: Record<string, string>; dataUrl: string; signal?: AbortSignal;
+}): Promise<boolean | null> {
+  try {
+    const res = await fetchWithRetry(opts.fetchImpl, opts.url, {
+      method: "POST",
+      headers: { ...opts.headers, "content-type": "application/json" },
+      signal: withHardTimeout(opts.signal),
+      body: JSON.stringify({
+        messages: [{ role: "user", content: [
+          { type: "text", text: BOLD_PROMPT },
+          { type: "image_url", image_url: { url: opts.dataUrl, detail: "high" } },
+        ] }],
+        temperature: 0,
+        max_tokens: 50,
+        response_format: BOLD_RESPONSE_FORMAT,
+      }),
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { choices?: { message?: { content?: unknown } }[] };
+    const content = json.choices?.[0]?.message?.content;
+    if (typeof content !== "string") return null;
+    const verdict = (JSON.parse(content) as { bold?: string }).bold;
+    return verdict === "BOLDER" ? true : verdict === "SAME" ? false : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -312,7 +356,7 @@ export class LlmVisionProvider implements VisionProvider {
     this.fetchImpl = opts?.fetchImpl ?? defaultFetch;
   }
 
-  async extract(image: ImageInput, signal?: AbortSignal): Promise<ExtractedFields> {
+  async extract(image: ImageInput, signal?: AbortSignal, options?: ExtractOptions): Promise<ExtractedFields> {
     if (!image.data || image.data.length === 0) {
       throw new Error("The llm provider requires image bytes (image.data).");
     }
@@ -320,15 +364,31 @@ export class LlmVisionProvider implements VisionProvider {
     const url =
       `${this.config.endpoint.replace(/\/+$/, "")}/openai/deployments/` +
       `${this.config.deployment}/chat/completions?api-version=${this.config.apiVersion}`;
+    const temperature = options?.sample ? 0.7 : 0;
 
     return callChatCompletion({
       fetchImpl: this.fetchImpl,
       url,
       headers: { "api-key": this.config.apiKey },
-      body: buildExtractionBody(image, dataUrl),
+      body: buildExtractionBody(image, dataUrl, undefined, temperature),
       label: "Azure OpenAI",
       hintFor: (status) =>
         status === 401 ? " (check AZURE_OPENAI_API_KEY)" : status === 429 ? " (rate limited — retry shortly)" : "",
+      signal,
+    });
+  }
+
+  async judgeWarningBold(image: ImageInput, signal?: AbortSignal): Promise<boolean | null> {
+    if (!image.data || image.data.length === 0) return null;
+    const dataUrl = `data:${image.contentType ?? "image/jpeg"};base64,${Buffer.from(image.data).toString("base64")}`;
+    const url =
+      `${this.config.endpoint.replace(/\/+$/, "")}/openai/deployments/` +
+      `${this.config.deployment}/chat/completions?api-version=${this.config.apiVersion}`;
+    return judgeWarningBoldViaChat({
+      fetchImpl: this.fetchImpl,
+      url,
+      headers: { "api-key": this.config.apiKey },
+      dataUrl,
       signal,
     });
   }

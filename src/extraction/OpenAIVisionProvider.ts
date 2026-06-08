@@ -8,8 +8,8 @@
  * Azure access is gated. Config from env only; the HTTP layer is injectable so unit tests use no network.
  */
 import type { ExtractedFields } from "@/domain";
-import type { ImageInput, VisionProvider } from "./VisionProvider";
-import { buildExtractionBody, callChatCompletion } from "./LlmVisionProvider";
+import type { ExtractOptions, ImageInput, VisionProvider } from "./VisionProvider";
+import { buildExtractionBody, callChatCompletion, judgeWarningBoldViaChat } from "./LlmVisionProvider";
 import { defaultFetch, type FetchLike } from "./http";
 
 // A current, generally-available multimodal model (gpt-4o is the older generation and on a 2026
@@ -52,17 +52,18 @@ export class OpenAIVisionProvider implements VisionProvider {
     this.fetchImpl = opts?.fetchImpl ?? defaultFetch;
   }
 
-  async extract(image: ImageInput, signal?: AbortSignal): Promise<ExtractedFields> {
+  async extract(image: ImageInput, signal?: AbortSignal, options?: ExtractOptions): Promise<ExtractedFields> {
     if (!image.data || image.data.length === 0) {
       throw new Error("The openai provider requires image bytes (image.data).");
     }
     const dataUrl = `data:${image.contentType ?? "image/jpeg"};base64,${Buffer.from(image.data).toString("base64")}`;
+    const temperature = options?.sample ? 0.7 : 0;
 
     return callChatCompletion({
       fetchImpl: this.fetchImpl,
       url: OPENAI_URL,
       headers: { authorization: `Bearer ${this.config.apiKey}` },
-      body: buildExtractionBody(image, dataUrl, { model: this.config.model }),
+      body: buildExtractionBody(image, dataUrl, { model: this.config.model }, temperature),
       label: "OpenAI",
       hintFor: (status) =>
         status === 401
@@ -70,6 +71,18 @@ export class OpenAIVisionProvider implements VisionProvider {
           : status === 429
             ? " (rate limited or out of credit — add billing at platform.openai.com)"
             : "",
+      signal,
+    });
+  }
+
+  async judgeWarningBold(image: ImageInput, signal?: AbortSignal): Promise<boolean | null> {
+    if (!image.data || image.data.length === 0) return null;
+    const dataUrl = `data:${image.contentType ?? "image/jpeg"};base64,${Buffer.from(image.data).toString("base64")}`;
+    return judgeWarningBoldViaChat({
+      fetchImpl: this.fetchImpl,
+      url: OPENAI_URL,
+      headers: { authorization: `Bearer ${this.config.apiKey}` },
+      dataUrl,
       signal,
     });
   }
