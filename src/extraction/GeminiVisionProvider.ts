@@ -13,6 +13,7 @@
 import type { ExtractedFields } from "@/domain";
 import type { ImageInput, VisionProvider } from "./VisionProvider";
 import { SYSTEM_PROMPT, USER_PROMPT, parseModelJson } from "./LlmVisionProvider";
+import { FIELD_CATALOG } from "./fieldCatalog";
 import { defaultFetch, fetchWithRetry, withHardTimeout, type FetchLike } from "./http";
 
 // Gemini 2.x flash models were retired in 2026; the current line is the Gemini 3 series. Override
@@ -62,23 +63,9 @@ const CONFIDENCED_VALUE = {
   required: ["value", "confidence"],
 } as const;
 
-const CONFIDENCED_FIELDS = [
-  "brand",
-  "class",
-  "classType",
-  "alcoholContent",
-  "netContents",
-  "name",
-  "address",
-  "countryOfOrigin",
-  "appellation",
-  "vintage",
-  "varietal",
-  "sulfiteDeclaration",
-  "ageStatement",
-  "commodityStatement",
-  "warningText",
-] as const;
+// Derived from the single source of truth (fieldCatalog) so this response schema can never drift from
+// the field set the rest of the pipeline uses.
+const CONFIDENCED_FIELDS: readonly string[] = FIELD_CATALOG.map((d) => d.rawKey);
 
 const RESPONSE_SCHEMA = {
   type: "OBJECT",

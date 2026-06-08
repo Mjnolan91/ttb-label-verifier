@@ -11,6 +11,7 @@
 import type { ExtractedFields, FieldConfidence } from "@/domain";
 import { similarity } from "@/compare";
 import { FIELD_CATALOG, type ExtractedValueKey } from "./fieldCatalog";
+import { isAbortOrTimeout } from "./http";
 import type { ImageInput, VisionProvider } from "./VisionProvider";
 
 /** Per-call extraction timeout (~3s) — the mock/offline default; keeps tests fast and deterministic. */
@@ -46,9 +47,6 @@ export function resolveTimeoutMs(
     : DEFAULT_PER_CALL_TIMEOUT_MS;
 }
 
-function isTimeoutLike(e: unknown): boolean {
-  return e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
-}
 
 /**
  * Run one provider's extract with a per-call timeout. Resolves with its result, or rejects with a
@@ -232,7 +230,7 @@ export async function reconcileExtract(
 
   if (fulfilled.length === 0) {
     const reasons = settled.map((s) => (s.status === "rejected" ? (s.reason as unknown) : undefined));
-    if (reasons.every((r) => isTimeoutLike(r))) {
+    if (reasons.every((r) => isAbortOrTimeout(r))) {
       throw new DOMException("All vision providers timed out.", "TimeoutError");
     }
     const firstError = reasons.find((r): r is Error => r instanceof Error);

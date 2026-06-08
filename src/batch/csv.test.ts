@@ -2,7 +2,7 @@
  * csv.test.ts — CSV parse/serialize helpers for batch mode.
  */
 import { describe, it, expect } from "vitest";
-import { parseCsv, parseClaimedCsv, resultsToCsv, analysisToCsv } from "./csv";
+import { parseCsv, parseClaimedCsv, analysisToCsv } from "./csv";
 import type { ExtractedFields } from "@/domain";
 import type { VerifyResult } from "@/compare";
 
@@ -51,19 +51,6 @@ describe("parseClaimedCsv", () => {
     const map = parseClaimedCsv("filename,brand\n,No Name\nx.jpg,Has Name");
     expect(map.has("x.jpg")).toBe(true);
     expect(map.size).toBe(1);
-  });
-});
-
-describe("resultsToCsv", () => {
-  it("emits a header and quotes fields with commas", () => {
-    const csv = resultsToCsv([
-      { filename: "x.jpg", brand: "pass", alcohol: "fail", warning: "pass", overall: "reject" },
-      { filename: "weird,name.jpg", brand: "review", alcohol: "pass", warning: "pass", overall: "review" },
-    ]);
-    const lines = csv.split("\n");
-    expect(lines[0]).toBe("filename,brand,alcohol,warning,overall");
-    expect(lines[1]).toBe("x.jpg,pass,fail,pass,reject");
-    expect(lines[2]).toContain('"weird,name.jpg"');
   });
 });
 

@@ -9,7 +9,7 @@
  * the UI responsive on big batches.
  */
 import { useId, useMemo, useState } from "react";
-import type { BeverageClass, ExtractedFields } from "@/domain";
+import type { ExtractedFields } from "@/domain";
 import type { CompletenessResult } from "@/compare";
 import type { LabelPosition } from "@/extraction";
 import { groupImagesByProduct } from "@/batch/pairing";
@@ -21,6 +21,7 @@ import { downscaleForUpload } from "../imageDownscale";
 import { ErrorAlert } from "../ui/ErrorAlert";
 import { StatusBadge } from "../ui/StatusBadge";
 import { toneForStatus, type Tone } from "../ui/status";
+import { CLASS_DISPLAY_LABEL } from "../ui/beverageClass";
 import { inputClass, primaryButtonClass, secondaryButtonClass } from "../ui/fieldStyles";
 import { downloadJson, downloadCsv } from "../ui/download";
 import { DropZone } from "../ui/DropZone";
@@ -44,14 +45,6 @@ interface BatchRow {
   note?: string;
 }
 
-const CLASS_LABEL: Record<BeverageClass, string> = {
-  distilledSpirits: "Distilled spirits",
-  wineUnder14: "Wine (≤14%)",
-  wineOver14: "Wine (>14%)",
-  maltBeverage: "Malt beverage",
-  cider: "Cider",
-  unknown: "Unknown",
-};
 const COMPLETENESS_TONE: Record<CompletenessResult["overall"], Tone> = {
   complete: "pass",
   incomplete: "fail",
@@ -340,7 +333,7 @@ export function BatchVerify() {
                     {r.note && <span className="mt-0.5 block text-ink-muted">{r.note}</span>}
                   </td>
                   <td className="px-3 py-2.5 text-ink">
-                    {r.completeness ? CLASS_LABEL[r.completeness.beverageClass] : r.status === "pending" ? "…" : "—"}
+                    {r.completeness ? CLASS_DISPLAY_LABEL[r.completeness.beverageClass] : r.status === "pending" ? "…" : "—"}
                   </td>
                   <td className="px-3 py-2.5 text-ink">{cell(r, (e) => e.brand)}</td>
                   <td className="px-3 py-2.5 text-ink">{cell(r, (e) => e.classType)}</td>

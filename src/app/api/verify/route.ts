@@ -9,7 +9,7 @@
  * claimed-comparison verdict. The default provider is the offline mock. Web-standard Request/Response.
  */
 import type { ClaimedFields } from "@/domain";
-import { getActiveProviders, resolveTimeoutMs, type ImageInput, type LabelPosition } from "@/extraction";
+import { getActiveProviders, resolveTimeoutMs, isAbortOrTimeout, type ImageInput, type LabelPosition } from "@/extraction";
 import { runExtraction, runVerification, type VerificationOutcome } from "@/pipeline";
 import { checkCompleteness } from "@/compare";
 import type { VerifyApiResponse } from "./contract";
@@ -26,10 +26,6 @@ const MAX_TOTAL_BYTES = 32 * 1024 * 1024; // 32 MB per request
 // string sent to the provider (escaped, not an injection vector), so an image/* allowlist suffices.
 function isImageType(t: string): boolean {
   return t === "" || t.toLowerCase().startsWith("image/");
-}
-
-function isTimeoutError(err: unknown): boolean {
-  return err instanceof Error && (err.name === "AbortError" || err.name === "TimeoutError");
 }
 
 function field(form: FormData, name: string): string {
@@ -134,7 +130,7 @@ export async function POST(request: Request): Promise<Response> {
       ? await runVerification(providers, claimed, images, timeoutMs)
       : { ...(await runExtraction(providers, images, timeoutMs)), result: null };
   } catch (err) {
-    if (isTimeoutError(err)) {
+    if (isAbortOrTimeout(err)) {
       return Response.json(
         { error: "The label reader timed out. Please try again." },
         { status: 504 },

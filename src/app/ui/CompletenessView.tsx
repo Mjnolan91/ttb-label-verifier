@@ -1,8 +1,8 @@
 import type { Ref } from "react";
-import type { BeverageClass } from "@/domain";
 import type { CompletenessResult, ElementStatus } from "@/compare";
 import { StatusBadge } from "./StatusBadge";
 import { TONE_TINT, TONE_ICON, type Tone } from "./status";
+import { CLASS_DISPLAY_LABEL } from "./beverageClass";
 
 /**
  * CompletenessView — the TTB completeness verdict: for the detected beverage type, every required
@@ -26,14 +26,6 @@ const OVERALL: Record<CompletenessResult["overall"], { tone: Tone; label: string
   complete: { tone: "pass", label: "Complete" },
   incomplete: { tone: "fail", label: "Incomplete" },
   review: { tone: "review", label: "Needs review" },
-};
-const CLASS_LABEL: Record<BeverageClass, string> = {
-  distilledSpirits: "Distilled spirits",
-  wineUnder14: "Wine (≤14% ABV)",
-  wineOver14: "Wine (>14% ABV)",
-  maltBeverage: "Malt beverage",
-  cider: "Cider",
-  unknown: "Unknown beverage type",
 };
 
 export function CompletenessView({
@@ -59,7 +51,7 @@ export function CompletenessView({
         {OverallIcon && <OverallIcon className="h-9 w-9 shrink-0" />}
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide opacity-80">
-            {CLASS_LABEL[completeness.beverageClass]}
+            {CLASS_DISPLAY_LABEL[completeness.beverageClass]}
           </p>
           <p className="text-2xl font-bold">{o.label}</p>
         </div>

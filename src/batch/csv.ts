@@ -15,15 +15,6 @@ export interface ClaimedRow {
   netContents?: string;
 }
 
-/** One row of the results table, as exported to CSV. */
-export interface CsvResultRow {
-  filename: string;
-  brand: string;
-  alcohol: string;
-  warning: string;
-  overall: string;
-}
-
 /** Parse a single CSV line into fields, honoring double-quoted fields (with escaped "" quotes). */
 function parseCsvLine(line: string): string[] {
   const fields: string[] = [];
@@ -89,15 +80,6 @@ export function parseClaimedCsv(text: string): Map<string, ClaimedRow> {
 
 function csvCell(v: string): string {
   return /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
-}
-
-/** Serialize results to CSV with a header row (filename, brand, alcohol, warning, overall). */
-export function resultsToCsv(rows: CsvResultRow[]): string {
-  const header = ["filename", "brand", "alcohol", "warning", "overall"];
-  const body = rows.map((r) =>
-    [r.filename, r.brand, r.alcohol, r.warning, r.overall].map(csvCell).join(","),
-  );
-  return [header.join(","), ...body].join("\n");
 }
 
 /** One analysis row: the extracted fields for an image, plus an optional verification verdict. */

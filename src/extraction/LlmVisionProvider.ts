@@ -18,6 +18,7 @@ import {
   type RawConfidencedValue,
   type RawExtractedFields,
 } from "./extractedShape";
+import { FIELD_CATALOG } from "./fieldCatalog";
 import { defaultFetch, fetchWithRetry, withHardTimeout, type FetchLike } from "./http";
 
 /** Resolved Azure OpenAI connection config. */
@@ -51,23 +52,9 @@ const CONFIDENCED_VALUE = {
   additionalProperties: false,
 } as const;
 
-const CONFIDENCED_FIELDS = [
-  "brand",
-  "class",
-  "classType",
-  "alcoholContent",
-  "netContents",
-  "name",
-  "address",
-  "countryOfOrigin",
-  "appellation",
-  "vintage",
-  "varietal",
-  "sulfiteDeclaration",
-  "ageStatement",
-  "commodityStatement",
-  "warningText",
-] as const;
+// Derived from the single source of truth (fieldCatalog) so the strict-output schema can never drift
+// from the field set the mapper/merge/UI/CSV use. (The prose USER_PROMPT stays hand-tuned per field.)
+const CONFIDENCED_FIELDS: readonly string[] = FIELD_CATALOG.map((d) => d.rawKey);
 
 const EXTRACTION_JSON_SCHEMA = {
   type: "object",

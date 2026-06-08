@@ -35,6 +35,10 @@ interface LabelImage {
 }
 type SlotKey = "front" | "back";
 
+/** The ordered, present-only image list to read/export: front then back. */
+const orderedImagesOf = (s: { front?: LabelImage; back?: LabelImage }): LabelImage[] =>
+  [s.front, s.back].filter(Boolean) as LabelImage[];
+
 export function VerifyForm() {
   // The label is uploaded into two explicit slots — Front (required) and Back (optional) — so the
   // agent says what each image is; position is fixed by the slot (no order-guessing, no dropdown).
@@ -137,7 +141,7 @@ export function VerifyForm() {
     }
   }
 
-  const orderedImages = [slots.front, slots.back].filter(Boolean) as LabelImage[];
+  const orderedImages = orderedImagesOf(slots);
 
   // Put an image in a slot (replacing any existing one), then re-read the fused front+back pair.
   function setSlot(key: SlotKey, file: File) {
@@ -148,7 +152,7 @@ export function VerifyForm() {
         URL.revokeObjectURL(old.preview); // replacing -> revoke the old object URL
       }
       const next = { ...prev, [key]: { file, preview: URL.createObjectURL(file), position: key as LabelPosition } };
-      void read([next.front, next.back].filter(Boolean) as LabelImage[]);
+      void read(orderedImagesOf(next));
       return next;
     });
   }
@@ -160,7 +164,7 @@ export function VerifyForm() {
         URL.revokeObjectURL(target.preview);
       }
       const next = { ...prev, [key]: undefined };
-      const imgs = [next.front, next.back].filter(Boolean) as LabelImage[];
+      const imgs = orderedImagesOf(next);
       if (imgs.length === 0) {
         readToken.current++; // cancel any in-flight read
         setState("idle");

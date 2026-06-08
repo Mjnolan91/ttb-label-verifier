@@ -13,7 +13,7 @@
 import type { ExtractedFields } from "@/domain";
 import type { ImageInput, VisionProvider } from "./VisionProvider";
 import { mapRawExtracted, type RawExtractedFields } from "./extractedShape";
-import { defaultFetch, fetchWithRetry, withHardTimeout, type FetchLike } from "./http";
+import { defaultFetch, fetchWithRetry, withHardTimeout, sleep, type FetchLike } from "./http";
 
 export interface AzureDocIntelConfig {
   endpoint: string;
@@ -52,19 +52,6 @@ interface AnalyzeResult {
   pages?: { words?: { confidence?: number }[] }[];
 }
 
-function sleep(ms: number, signal?: AbortSignal): Promise<void> {
-  return new Promise<void>((resolve, reject) => {
-    const timer = setTimeout(resolve, ms);
-    signal?.addEventListener(
-      "abort",
-      () => {
-        clearTimeout(timer);
-        reject(new DOMException("Aborted while polling.", "AbortError"));
-      },
-      { once: true },
-    );
-  });
-}
 
 function averageConfidence(result: AnalyzeResult): number {
   const confidences: number[] = [];
@@ -169,7 +156,11 @@ export class OcrVisionProvider implements VisionProvider {
       if (data.status === "succeeded") return data.analyzeResult ?? {};
       if (data.status === "failed") throw new Error("Azure Document Intelligence analysis failed.");
       const retryAfter = Number(res.headers?.get("retry-after"));
-      await sleep(Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : intervalMs, signal);
+      await sleep(
+        Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : intervalMs,
+        signal,
+        "Aborted while polling.",
+      );
     }
     throw new DOMException("Azure Document Intelligence polling timed out.", "TimeoutError");
   }

@@ -8,6 +8,7 @@
  */
 export type { ImageInput, VisionProvider, VisionProviderName, LabelPosition } from "./VisionProvider";
 export type { FetchLike } from "./http";
+export { isAbortOrTimeout } from "./http";
 export { MockVisionProvider } from "./MockVisionProvider";
 export {
   LlmVisionProvider,

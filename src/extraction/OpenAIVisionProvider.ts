@@ -27,7 +27,7 @@ export interface OpenAIConfig {
 
 /**
  * Read + validate OpenAI config from env vars. Throws an actionable error if OPENAI_API_KEY is unset;
- * the model defaults to gpt-4o (override with OPENAI_MODEL).
+ * the model defaults to DEFAULT_MODEL (gpt-4.1; override with OPENAI_MODEL).
  */
 export function readOpenAIConfig(
   env: Record<string, string | undefined> = process.env,

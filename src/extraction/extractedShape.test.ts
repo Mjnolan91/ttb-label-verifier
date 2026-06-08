@@ -41,6 +41,17 @@ describe("mapRawExtracted", () => {
     expect(e.confidence.countryOfOrigin).toBeUndefined();
   });
 
+  it("maps EVERY catalog field — full coverage of the single source of truth", () => {
+    const full: Record<string, unknown> = { warningPrefixIsAllCaps: true, warningPrefixIsBold: null };
+    for (const d of FIELD_CATALOG) full[d.rawKey] = { value: `v-${d.key}`, confidence: 0.9 };
+    const e = mapRawExtracted(full as unknown as RawExtractedFields);
+    const eByKey = e as unknown as Record<string, unknown>;
+    for (const d of FIELD_CATALOG) {
+      expect(eByKey[d.key]).toBe(`v-${d.key}`);
+      expect(e.confidence[d.confKey]).toBe(0.9);
+    }
+  });
+
   it("never sets a confidence channel for a field that wasn't read", () => {
     const e = mapRawExtracted(raw);
     for (const d of FIELD_CATALOG) {

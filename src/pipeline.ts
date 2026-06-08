@@ -6,7 +6,7 @@
  * evaluation measures the exact production pipeline.
  */
 import type { ClaimedFields, ExtractedFields } from "@/domain";
-import { reconcileExtract, mergeExtracted, type ImageInput, type VisionProvider } from "@/extraction";
+import { reconcileExtract, mergeExtracted, isAbortOrTimeout, type ImageInput, type VisionProvider } from "@/extraction";
 import { verifyLabel, isExtractionReadable, type VerifyResult } from "@/compare";
 
 export interface ExtractionOutcome {
@@ -18,10 +18,6 @@ export interface ExtractionOutcome {
 export interface VerificationOutcome extends ExtractionOutcome {
   /** The verdict, or null when unreadable (or when no claimed values were supplied to compare). */
   result: VerifyResult | null;
-}
-
-function isTimeoutLike(e: unknown): boolean {
-  return e instanceof Error && (e.name === "TimeoutError" || e.name === "AbortError");
 }
 
 /**
@@ -44,7 +40,7 @@ export async function runExtraction(
 
   if (reads.length === 0) {
     const reasons = settled.map((s) => (s.status === "rejected" ? (s.reason as unknown) : undefined));
-    if (reasons.every((r) => isTimeoutLike(r))) {
+    if (reasons.every((r) => isAbortOrTimeout(r))) {
       throw new DOMException("All label images timed out.", "TimeoutError");
     }
     throw reasons.find((r): r is Error => r instanceof Error) ?? new Error("Failed to read the label images.");

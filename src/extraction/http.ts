@@ -32,11 +32,14 @@ export const PROVIDER_HARD_TIMEOUT_MS = 30_000;
 /** Transient HTTP statuses worth retrying (idempotent reads only): throttling + server hiccups. */
 const RETRYABLE_STATUS = new Set([408, 409, 429, 500, 502, 503, 504]);
 
-function isAbortError(e: unknown): boolean {
+/** Whether an error is an abort or a timeout (the wire contract for the 504/re-upload path). Shared
+ *  so the route, pipeline, reconciler, and retry layer classify failures identically. */
+export function isAbortOrTimeout(e: unknown): boolean {
   return e instanceof Error && (e.name === "AbortError" || e.name === "TimeoutError");
 }
 
-function sleep(ms: number, signal?: AbortSignal): Promise<void> {
+/** Abort-aware delay: resolves after `ms`, or rejects with an AbortError if `signal` fires first. */
+export function sleep(ms: number, signal?: AbortSignal, message = "Aborted while waiting."): Promise<void> {
   if (ms <= 0) return Promise.resolve();
   return new Promise<void>((resolve, reject) => {
     const timer = setTimeout(resolve, ms);
@@ -44,7 +47,7 @@ function sleep(ms: number, signal?: AbortSignal): Promise<void> {
       "abort",
       () => {
         clearTimeout(timer);
-        reject(new DOMException("Aborted while backing off.", "AbortError"));
+        reject(new DOMException(message, "AbortError"));
       },
       { once: true },
     );
@@ -98,7 +101,7 @@ export async function fetchWithRetry(
       res = await fetchImpl(url, init);
     } catch (err) {
       // An abort/timeout means the caller's budget is spent — don't burn it on retries.
-      if (isAbortError(err) || attempt === retries) throw err;
+      if (isAbortOrTimeout(err) || attempt === retries) throw err;
       lastError = err;
       await sleep(backoffMs(attempt, baseDelayMs), init.signal);
       continue;
