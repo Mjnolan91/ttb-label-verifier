@@ -10,10 +10,12 @@ thin pointer to it — don't copy architecture or CFR rules in here, or the two 
 - Product/technical context and the "why": `specs/PROJECT_SPEC.md`
 - The CFR-verified domain module (statutory constants, never retune to pass a test): `src/domain/README.md`
 
-The app is **extraction-first**: AI extracts the full TTB field set (primary) and code checks
-**completeness** vs TTB requirements per beverage type. An **optional** claimed-vs-application
-comparison (brand / alcohol content / government warning → Approve/Review/Reject) runs when the
-agent supplies application values. Offline by default; no PII, no auth, no COLA.
+The app is **verify-first**: the UI leads with the claimed-vs-application comparison
+(brand / alcohol content / government warning → Approve/Review/Reject) — the brief's core check —
+computed the moment application values are supplied. Underneath, the AI still extracts the **full**
+TTB field set and code runs the TTB **completeness** check per beverage type (the supporting layer
+that kills manual data entry); with no application values on hand, the completeness summary is the
+headline. Offline by default; no PII, no auth, no COLA.
 
 ## Commands
 - `npm run dev` — app at http://localhost:3000 (mock provider, no keys needed)
@@ -44,7 +46,8 @@ pipeline and the "why". As built, the load-bearing pieces are:
   (canonical warning, tolerance matrix, label-requirements matrix, proof helper). Treat its constants
   as statutory: extend/integrate, never reword or retune them to make a test pass. The completeness
   matrix encodes the per-class nuance (malt ABV optional by default; wine ≤14% table-wine carve-out;
-  warning exempt <0.5% ABV). See `src/domain/README.md`.
+  warning exempt <0.5% ABV — the exemption ABV is parsed from `alcoholContentText`; sulfite is
+  **conditional** per 27 CFR 4.32(e), surfaced not failed). See `src/domain/README.md`.
 - **`src/extraction/`** — the `VisionProvider` interface + `MockVisionProvider` (default; keys
   off the image FILENAME, not bytes) + `Llm`/`Ocr` Azure providers + `OpenAI`-direct + `Gemini`-direct
   providers (env-gated via `VISION_PROVIDER` — `mock`|`llm`|`ocr`|`openai`|`gemini`|`ensemble`, opt-in;
@@ -61,17 +64,26 @@ pipeline and the "why". As built, the load-bearing pieces are:
   beverage type) + `thresholds.ts`. Two DISTINCT thresholds, easy to confuse:
   `MIN_READABLE_CONFIDENCE` (0.5 — is the image readable at all → re-upload path) vs
   `FIELD_REVIEW_CONFIDENCE` (0.7 — trust this field's verdict, else downgrade to `review`).
-- **`src/app/`** — extraction-first single screen (`VerifyForm`: auto-read on upload → JSON/CSV
-  download, plus an optional "Verify against an application" panel that renders `ResultView` via the
-  pure `verifyLabel` comparator) + `/api/verify` route + `/batch`; `src/app/ui/` holds shared
-  primitives. **`eval/`** — the harness and filename-keyed fixtures (`eval/fixtures/cases.json`).
+- **`src/app/`** — verify-first single screen (`VerifyForm`: always-visible application form +
+  auto-read on upload; results LEAD with the `ResultView` verdict from the pure `verifyLabel`
+  comparator, then `CompletenessView`, then `ExtractedFieldsView`; thumbnails open the accessible
+  `ImageLightbox`; a non-blocking `ForwardLookingNote` lists 2025 proposals) + `/api/verify` route +
+  `/batch`; `src/app/ui/` holds shared primitives. **`eval/`** — the harness and filename-keyed
+  fixtures (`eval/fixtures/cases.json`).
+- **`src/extraction/fieldCatalog.ts`** — THE single source of truth for the extracted field set. One
+  ordered descriptor list (`key`/`rawKey`/`confKey`/`label`/`csvColumn`/`group`) that the raw→domain
+  mapper (`extractedShape.ts`), the front/back merge (`reconcile.ts`), the field table
+  (`ExtractedFieldsView`), and the CSV (`batch/csv.ts`) all derive from — add a field here, not in six
+  places. JSON and CSV exports therefore cover the same fields.
 
 ## Gotchas
-- **Reading arbitrary images needs a real provider; the default mock only knows the BUNDLED
-  samples.** The mock (default, zero keys) keys off the FILENAME, so the one-click samples
-  (`public/samples/`) read offline. To read ANY uploaded image, set `VISION_PROVIDER` to a real
-  provider — `openai` (simplest, an OpenAI API key) or `llm`/`ocr`/`ensemble` (Azure in-tenant).
-  OpenAI-direct is the live-demo path; Azure is the documented production target.
+- **Reading arbitrary images needs a real provider; the default mock only knows the built-in test
+  fixtures.** The mock (default, zero keys) keys off the FILENAME and returns the `extracted` block
+  from `eval/fixtures/cases.json` — so it only "reads" those fixture filenames, not arbitrary uploads.
+  To read ANY uploaded image, set `VISION_PROVIDER` to a real provider — `openai` (simplest, an OpenAI
+  API key) or `llm`/`ocr`/`ensemble` (Azure in-tenant). OpenAI-direct is the live-demo path; Azure is
+  the documented production target; the deployed URL runs a real provider. (There is no bundled
+  in-app sample picker — that earlier `public/samples/` feature was never built and has been removed.)
 - **Uploads are downscaled in the browser first.** `src/app/imageDownscale.ts` shrinks phone photos
   to ~2000px longest edge (JPEG) to fit the latency/token budget. It NEVER throws (falls back to the
   original) and PRESERVES the filename — so the filename-keyed mock still resolves. Don't rename the

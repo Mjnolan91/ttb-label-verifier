@@ -28,21 +28,25 @@ npm test           # unit + integration + component tests (offline)
 npm run eval       # per-field precision/recall + latency over labeled fixtures (CI gate)
 npm run build      # production build (Next standalone)
 ```
-On the home screen, drag one of the bundled labels from `public/samples/` onto the upload area to see
-a full read + completeness check offline (the mock provider keys off the filename), then (optionally)
-enter the application's brand and alcohol content to see the three-check verdict. To read your *own*
-photos, set a real provider — see [Enabling real extraction](#enabling-real-azure-native-extraction--optional).
+On the home screen, enter the application's brand name and alcohol content, drop the product's label
+image(s), and the screen leads with the Approve / Needs-review / Reject verdict (with the full read +
+completeness check below). **In the default offline mock mode the reader only recognizes the bundled
+test fixtures** (it keys off the filename), so to read your *own* photos set a real provider — see
+[Enabling real extraction](#enabling-real-azure-native-extraction--optional) — or use the deployed URL,
+which runs a real provider.
 
 ## What it does
-- **Extraction + completeness (primary).** Drop one or more label images; the AI reads them together
-  into the full TTB field set, and the app checks completeness against the mandatory elements for the
-  detected beverage class (distilled spirits / wine ≤14% / wine >14% / malt beverage / cider). Each
-  element is flagged present / missing / malformed / unverifiable, with the governing CFR note.
-  Download the result as JSON or CSV.
-- **Verification against an application (optional).** Enter the application's brand name and alcohol
-  content (and optionally class/type), and the deterministic comparator checks the label against them:
+- **Verification against an application (the core check, front-and-center).** Enter the application's
+  brand name and alcohol content (and optionally class/type), drop the label image(s), and the screen
+  leads with a deterministic Approve / Needs-review / Reject verdict over the three checks the brief
+  calls out:
   fuzzy brand match, ABV tolerance by beverage class, and strict government-warning matching — reduced
   to an overall **Approve / Needs review / Reject** verdict. This runs entirely in pure, auditable code.
+- **Full extraction + completeness (the supporting layer).** The AI also reads the *entire* TTB field
+  set off the image(s) — killing the manual data entry stakeholders complained about — and the app
+  checks completeness against the mandatory elements for the detected beverage class (distilled spirits
+  / wine ≤14% / wine >14% / malt beverage / cider). Each element is flagged present / missing /
+  malformed / not-applicable with the governing CFR note. Download the whole record as JSON or CSV.
 - **Batch.** Upload many products at once; front/back images pair by filename, results stream into a
   table with CSV export ([`/batch`](src/app/batch/page.tsx)).
 
@@ -115,16 +119,17 @@ Honest accounting of the choices and what they cost:
   out-of-the-box runs exercise the *pipeline and verdict logic*, not a real model's reading accuracy.
   Real extraction is opt-in. Reviewers see the deterministic logic working end-to-end immediately;
   judging real OCR/vision accuracy requires supplying a key.
-- **Test fixtures are hermetic and key off the image *filename*, not pixels.** The seven defect/
-  edge-case fixtures stay lightweight `.svg` placeholders (their pixels are never read); the demo
-  sample labels in `public/samples/` are real rasters, so a live provider extracts genuine pixels
-  from them. Their filenames stay in lockstep with `cases.json`, so they also yield the right verdict
-  offline (regenerate with `node scripts/generate-demo-labels.cjs`). To exercise a real provider on
-  the *other* scenarios, drop real images at the paths in `eval/fixtures/images/MANIFEST.md`.
-- **Verification is the optional secondary path.** The primary product is extraction + completeness;
-  the claimed-vs-application comparison runs only when an agent supplies application values. This
-  matches the brief's "read the label, check it matches the application" workflow while making the
-  tool useful even with no application on hand.
+- **Test fixtures are hermetic and key off the image *filename*, not pixels.** The defect/edge-case
+  fixtures stay lightweight `.svg` placeholders (their pixels are never read); a few demo rasters in
+  `eval/fixtures/images/` are real images, so a live provider extracts genuine pixels from them. Their
+  filenames stay in lockstep with `cases.json`, so they also yield the right verdict offline
+  (regenerate with `node scripts/generate-demo-labels.cjs`). To exercise a real provider on the *other*
+  scenarios, drop real images at the paths in `eval/fixtures/images/MANIFEST.md`.
+- **Verification is front-and-center; extraction is the supporting layer.** The screen leads with the
+  claimed-vs-application verdict (the brief's "read the label, check it matches the application"
+  workflow), and the full extraction + TTB completeness check render beneath it. The verdict appears
+  as soon as application values are supplied; with none on hand, the completeness summary is the
+  headline — so the tool is useful either way.
 - **Azure is the chosen cloud, not a multi-cloud abstraction.** The reference providers and deploy
   steps are Azure-specific *on purpose* — it's the in-tenant answer to Marcus's outbound-firewall
   constraint. The `VisionProvider` interface stays generic, so a different backend could be added
@@ -246,5 +251,5 @@ app serves the full UI end-to-end on the **mock** provider (no keys, no external
 | `src/domain/` | CFR-verified domain module — canonical warning, tolerances, label-requirements matrix (`README.md` inside explains the rules) |
 | `src/extraction/` | `VisionProvider` interface + mock / OpenAI / Azure providers + reconciler |
 | `src/compare/` | Deterministic comparators, the completeness check, and thresholds |
-| `src/app/` | Extraction-first UI + `/api/verify` route + `/batch` |
+| `src/app/` | Verify-first UI (verdict-led) + `/api/verify` route + `/batch` |
 | `eval/` | Evaluation harness + filename-keyed fixtures |

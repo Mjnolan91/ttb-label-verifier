@@ -264,7 +264,7 @@
         "perField": { "brand": "pass", "alcohol": "pass", "warning": "pass" },
         "overall": "approve"
       },
-      "notes": "DEMO sample: a REAL readable raster label (eval/fixtures/images/demo-old-tom-clean.png, served from public/samples) so the live Azure-vision demo extracts it for real; the mock keys off this filename so it also yields approve offline. Mirrors clean-pass: brand verbatim, ABV 45% with proof 90 = 2x45 inside +/-0.3 pp (27 CFR 5.65(c)), canonical all-caps bold warning -> all pass -> approve."
+      "notes": "DEMO sample: a REAL readable raster label (eval/fixtures/images/demo-old-tom-clean.png) so a live provider extracts it for real; the mock keys off this filename so it also yields approve offline. Mirrors clean-pass: brand verbatim, ABV 45% with proof 90 = 2x45 inside +/-0.3 pp (27 CFR 5.65(c)), canonical all-caps bold warning -> all pass -> approve."
     },
     {
       "id": "demo-warning-title-case-reject",

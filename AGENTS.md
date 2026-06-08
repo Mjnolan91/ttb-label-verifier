@@ -10,11 +10,13 @@ A standalone prototype that **reads a product's label images (front/back/neck) t
 full set of TTB-required fields** with AI, **checks the label for completeness** against TTB's
 mandatory-information requirements for its beverage type (each element flagged present / missing /
 malformed / unverifiable; see `src/domain/labelRequirements.ts` + `src/compare/completeness.ts`),
-and exports the result as **JSON or CSV** with no manual data entry. **Extraction + completeness is
-the primary path** a human agent can trust or override. An **optional** deterministic claimed-vs-label
-comparator — **brand name**, **alcohol content**, **government health warning** — runs as the
-secondary path when an agent supplies an application's claimed values, returning an
-Approve / Needs-review / Reject verdict; it is fully evaluated and exposed via the API.
+and exports the result as **JSON or CSV** with no manual data entry. The deterministic claimed-vs-label
+comparator — **brand name**, **alcohol content**, **government health warning** → Approve / Needs-review
+/ Reject — is the brief's **core check and leads the UI**, computed whenever an agent supplies an
+application's claimed values; it is fully evaluated and exposed via the API. The **always-on extraction
++ completeness** result (each element flagged present / missing / malformed / not-applicable) is the
+supporting layer a human agent can trust or override, and is the headline when no application values
+are on hand.
 
 The product goal is NOT to replace human judgment. It is to be **superhuman on the axes
 where machines win** — consistency, throughput, and tireless recall of routine checks —
@@ -41,9 +43,12 @@ consistency, not by reading images more accurately than a person.
 image ──> [ VisionProvider(s) ] ──> [ reconciler ] ──> [ completeness + optional comparator ] ──> UI
             (probabilistic)          (agree/disagree)    (pure, auditable, tested)
 ```
-The flow is **extraction-first**: the AI always reads the label, code always runs the TTB
-**completeness** check, and the claimed-vs-application comparison runs only when an agent supplies
-claimed values — it is the optional secondary path, not a gate on extraction.
+The flow is **extraction-always, verify-first in the UI**: the AI always reads the label and code
+always runs the TTB **completeness** check, but the *screen leads with* the claimed-vs-application
+comparison (the brief's core check), computed the moment an agent supplies claimed values. With no
+claimed values, the completeness summary is the headline. Extraction underpins both and is never
+gated on the comparison. (The extracted field set has one source of truth — `src/extraction/
+fieldCatalog.ts` — that the mapper, merge, field table, and CSV all derive from.)
 - **Extraction is probabilistic** and lives behind the `VisionProvider` interface
   (`extract(image) => ExtractedFields` with per-field confidence). Providers: `mock` (default,
   offline), `openai` (OpenAI-direct), `gemini` (Google Gemini-direct), `llm` (Azure OpenAI

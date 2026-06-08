@@ -1,6 +1,6 @@
 /**
- * StatusBadge — the solid status pill (icon + text), used in result field cards, the batch table,
- * and the sample buttons. Always renders the text label; the icon is decorative.
+ * StatusBadge — the solid status pill (icon + text), used in result field cards, the completeness
+ * list, and the batch table. Always renders the text label; the icon is decorative.
  */
 import { TONE_SOLID, TONE_ICON, type Tone } from "./status";
 
