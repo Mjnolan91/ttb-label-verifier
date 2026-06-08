@@ -99,6 +99,27 @@ describe("OcrVisionProvider.extract — Azure DI request shape + OCR field deriv
     expect(result.confidence.alcoholContent).toBeCloseTo(0.94, 2);
   });
 
+  it("flags ALL-CAPS even when the prefix wraps across lines (GOVERNMENT\\nWARNING)", async () => {
+    const wrapped = {
+      content:
+        "Old Tom 45% Alc./Vol. 750 mL GOVERNMENT\nWARNING: (1) According to the Surgeon General, women should not drink.",
+      pages: [{ words: [{ confidence: 0.9 }] }],
+    };
+    const fetchImpl: FetchLike = (url, init) =>
+      init.method === "POST"
+        ? Promise.resolve({
+            ok: true,
+            status: 202,
+            json: () => Promise.resolve({}),
+            headers: { get: (n: string) => (n.toLowerCase() === "operation-location" ? "https://example.cognitiveservices.azure.com/op/x" : null) },
+          })
+        : Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve({ status: "succeeded", analyzeResult: wrapped }) });
+    const provider = new OcrVisionProvider({ config: CONFIG, fetchImpl });
+    const result = await provider.extract({ filename: "x.jpg", data: new Uint8Array([1, 2, 3, 4]), contentType: "image/jpeg" });
+    expect(result.warningText?.startsWith("GOVERNMENT WARNING")).toBe(true);
+    expect(result.warningPrefixIsAllCaps).toBe(true); // wrapped caps prefix must NOT be flagged false
+  });
+
   it("requires image bytes", async () => {
     const { fetchImpl } = mockDIFetch();
     const provider = new OcrVisionProvider({ config: CONFIG, fetchImpl });

@@ -52,23 +52,30 @@ export function verifyLabel(
       claimedText: claimed.alcoholContentText,
       extractedText: extracted.alcoholContentText,
       claimedClass: claimed.classType,
+      extractedClass: extracted.classType,
       beverageClass: claimed.beverageClass,
     }),
     extracted.confidence.alcoholContent,
   );
 
-  // The warning exemption (<0.5% ABV) keys off the claimed ABV (free text first, then structured).
-  const claimedAbv =
-    parseAlcoholText(claimed.alcoholContentText).abv ?? claimed.alcoholContent?.abv;
+  // The government-warning <0.5% exemption (27 CFR 16.10) is granted ONLY when BOTH the application's
+  // claimed ABV AND the label's own (extracted) ABV prove sub-0.5% — so a mis-stated/understated
+  // application value can't wave away a genuinely-missing statutory warning (matches completeness.ts).
+  const claimedAbv = parseAlcoholText(claimed.alcoholContentText).abv ?? claimed.alcoholContent?.abv;
+  const extractedAbv = parseAlcoholText(extracted.alcoholContentText).abv;
+  const warningExempt =
+    claimedAbv !== undefined &&
+    !isWarningRequired(claimedAbv) &&
+    extractedAbv !== undefined &&
+    !isWarningRequired(extractedAbv);
   const warningResult = compareWarning({
     warningText: extracted.warningText,
     warningPrefixIsAllCaps: extracted.warningPrefixIsAllCaps,
     warningPrefixIsBold: extracted.warningPrefixIsBold,
-    abv: claimedAbv,
+    // Only pass an exempting ABV when BOTH agree it's sub-0.5%; otherwise evaluate the warning normally.
+    abv: warningExempt ? claimedAbv : undefined,
   });
-  // When the product is exempt the verdict is based on the CLAIMED ABV, not the extracted warning,
-  // so it must NOT be gated on warning-read confidence.
-  const warningExempt = claimedAbv !== undefined && !isWarningRequired(claimedAbv);
+  // When exempt the verdict rests on the ABV, not the extracted warning read, so it is not gated.
   const warning = warningExempt
     ? warningResult
     : applyConfidenceGate(warningResult, extracted.confidence.warningText);

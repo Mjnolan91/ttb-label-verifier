@@ -151,6 +151,9 @@ export function compareAlcohol(args: {
   claimedText?: string;
   extractedText?: string;
   claimedClass?: string;
+  /** The class/type read OFF THE LABEL. The "low/reduced alcohol" 2.5% cap (27 CFR 7.65(d)) is tied
+   *  to the LABEL's own designation, so this must be consulted, not just the application's claim. */
+  extractedClass?: string;
   beverageClass?: BeverageClass;
 }): FieldResult {
   const claimedDisplay = args.claimedText ?? "(none)";
@@ -207,7 +210,7 @@ export function compareAlcohol(args: {
   }
   if (
     cls === "maltBeverage" &&
-    isLowOrReducedAlcoholClaim(args.claimedClass) &&
+    (isLowOrReducedAlcoholClaim(args.claimedClass) || isLowOrReducedAlcoholClaim(args.extractedClass)) &&
     extracted.abv >= MALT_LOW_ALCOHOL_CAP - EPS
   ) {
     return result(

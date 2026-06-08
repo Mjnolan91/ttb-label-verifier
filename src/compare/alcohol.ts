@@ -17,12 +17,15 @@ export interface ParsedAlcohol {
  */
 export function parseAlcoholText(text: string | undefined): ParsedAlcohol {
   if (!text) return {};
+  // Accept both decimal separators ("13.5%" and the European "13,5%") so a comma decimal is not
+  // truncated to a wrong integer (e.g. "13,5%" must parse to 13.5, not 5).
   const abvMatch =
-    text.match(/(\d+(?:\.\d+)?)\s*%/) ?? text.match(/(\d+(?:\.\d+)?)\s*(?:abv|alc)/i);
-  const proofMatch = text.match(/(\d+(?:\.\d+)?)\s*proof/i);
+    text.match(/(\d+(?:[.,]\d+)?)\s*%/) ?? text.match(/(\d+(?:[.,]\d+)?)\s*(?:abv|alc)/i);
+  const proofMatch = text.match(/(\d+(?:[.,]\d+)?)\s*proof/i);
+  const num = (s: string): number => Number(s.replace(",", "."));
   return {
-    abv: abvMatch ? Number(abvMatch[1]) : undefined,
-    proof: proofMatch ? Number(proofMatch[1]) : undefined,
+    abv: abvMatch ? num(abvMatch[1]) : undefined,
+    proof: proofMatch ? num(proofMatch[1]) : undefined,
   };
 }
 

@@ -88,8 +88,10 @@ function deriveRawFields(content: string, confidence: number): RawExtractedField
 
   const warningIdx = text.search(/government\s+warning/i);
   const warningText = warningIdx >= 0 ? text.slice(warningIdx).trim() : undefined;
-  // Exact-uppercase prefix present in the raw OCR text => all-caps; OCR can't judge bold => null.
-  const allCaps = /GOVERNMENT WARNING/.test(content);
+  // Exact-uppercase prefix => all-caps; OCR can't judge bold => null. Match case-sensitively but
+  // tolerate the inter-word whitespace OCR inserts when the prefix wraps across lines
+  // ("GOVERNMENT\nWARNING:") or is double-spaced — else a compliant caps prefix is mis-flagged false.
+  const allCaps = /GOVERNMENT\s+WARNING/.test(content);
 
   return {
     alcoholContent: alcoholMatch

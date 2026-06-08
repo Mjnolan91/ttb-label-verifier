@@ -18,6 +18,16 @@ describe("parseAlcoholText", () => {
   it("parses a decimal ABV (no proof)", () => {
     expect(parseAlcoholText("13.5% ABV")).toEqual({ abv: 13.5, proof: undefined });
   });
+  it("parses a European comma decimal without truncating it", () => {
+    expect(parseAlcoholText("13,5% Alc./Vol.")).toEqual({ abv: 13.5, proof: undefined });
+  });
+  it("parses a %-less ABV via the number-then-abv/alc fallback", () => {
+    expect(parseAlcoholText("40 ABV").abv).toBe(40);
+    expect(parseAlcoholText("13.5 alc").abv).toBe(13.5);
+  });
+  it("parses a proof-only statement (abv undefined)", () => {
+    expect(parseAlcoholText("(90 Proof)")).toEqual({ abv: undefined, proof: 90 });
+  });
   it("returns empty for missing/garbled text", () => {
     expect(parseAlcoholText("")).toEqual({});
     expect(parseAlcoholText(undefined)).toEqual({});

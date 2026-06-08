@@ -187,6 +187,17 @@ describe("compareAlcohol — the class SELECTS the tolerance (one case per class
     });
     expect(r.status).toBe("fail");
   });
+  it("maltBeverage 2.5% cap fires from the LABEL's own 'low alcohol' designation (app class benign)", () => {
+    // 27 CFR 7.65(d) ties the <2.5% cap to the label's designation — must fail even if the application
+    // class is a plain "Malt Beverage".
+    const r = compareAlcohol({
+      claimedText: "4% Alc./Vol.",
+      extractedText: "4% Alc./Vol.",
+      claimedClass: "Malt Beverage",
+      extractedClass: "Low Alcohol Malt Beverage",
+    });
+    expect(r.status).toBe("fail");
+  });
   it("cider resolves to wine ±1.5 (NOT spirits ±0.3): 7.4 passes, 7.6 fails", () => {
     expect(
       compareAlcohol({ claimedText: "6%", extractedText: "7.4%", claimedClass: "Hard Cider" }).status,

@@ -154,13 +154,20 @@ export function mergeExtracted(a: ExtractedFields, b: ExtractedFields): Extracte
           ? a
           : b
         : a;
+  // Only fall back to the OTHER image's bold flag when that image ALSO carries a warning. Otherwise a
+  // no-warning front image reporting bold=false (for an absent warning) would corrupt the warning-bearing
+  // back image's genuinely-undetectable (null) flag into a hard-fail false — falsely rejecting a clean
+  // back-label warning (the most common front/back split).
+  const otherSrc = warnSrc === a ? b : a;
+  const otherHasWarning = otherSrc.warningText != null && otherSrc.warningText.trim() !== "";
   const out: ExtractedFields = {
     warningPrefixIsAllCaps: warnSrc.warningPrefixIsAllCaps,
-    // From the warning-bearing read; if its bold is undetectable (null), prefer the other's detected value.
     warningPrefixIsBold:
       warnSrc.warningPrefixIsBold !== null
         ? warnSrc.warningPrefixIsBold
-        : (warnSrc === a ? b : a).warningPrefixIsBold,
+        : otherHasWarning
+          ? otherSrc.warningPrefixIsBold
+          : null,
     confidence,
   };
 

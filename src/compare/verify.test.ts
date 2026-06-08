@@ -71,6 +71,41 @@ describe("verifyLabel", () => {
     expect(r.overall).toBe("review");
   });
 
+  it("does NOT exempt the warning when only the CLAIMED ABV is sub-0.5% but the label's ABV is not", () => {
+    // A mis-stated/understated application ABV must not wave away a genuinely-missing statutory warning.
+    const ex: ExtractedFields = {
+      brand: "Cellar Door",
+      classType: "Red Wine",
+      alcoholContentText: "12% Alc./Vol.", // label is clearly NOT sub-0.5%
+      warningText: "", // no warning on the label
+      warningPrefixIsAllCaps: false,
+      warningPrefixIsBold: null,
+      confidence: { brand: 0.95, alcoholContent: 0.95 },
+    };
+    const r = verifyLabel(
+      { brand: "Cellar Door", classType: "Red Wine", alcoholContentText: "0.3% Alc./Vol." },
+      ex,
+    );
+    expect(r.warning.status).not.toBe("pass"); // missing warning is not exempted by the claimed value
+  });
+
+  it("exempts the warning only when BOTH claimed and label ABV prove sub-0.5%", () => {
+    const ex: ExtractedFields = {
+      brand: "Near Beer",
+      classType: "Non-Alcoholic Malt Beverage",
+      alcoholContentText: "0.3% Alc./Vol.",
+      warningText: "",
+      warningPrefixIsAllCaps: false,
+      warningPrefixIsBold: null,
+      confidence: { brand: 0.95, alcoholContent: 0.95 },
+    };
+    const r = verifyLabel(
+      { brand: "Near Beer", classType: "Non-Alcoholic Malt Beverage", alcoholContentText: "0.3% Alc./Vol." },
+      ex,
+    );
+    expect(r.warning.status).toBe("pass"); // exempt: both ABVs prove sub-0.5%
+  });
+
   it("routes a LOW-CONFIDENCE field to review via the asymmetric gate (overall review)", () => {
     const ex = extractedClean();
     ex.confidence = { ...ex.confidence, alcoholContent: 0.4 }; // below the 0.7 field threshold

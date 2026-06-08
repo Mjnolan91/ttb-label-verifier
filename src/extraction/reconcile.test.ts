@@ -110,11 +110,31 @@ describe("mergeExtracted — field rules", () => {
     expect(m.warningText).toBe("Only-B warning");
   });
 
-  it("prefers a DETECTED bold reading over an undetectable (null) one", () => {
-    const ocr = fields({ warningPrefixIsBold: null });
-    const llm = fields({ warningPrefixIsBold: true });
+  it("prefers a DETECTED bold reading over an undetectable (null) one when both read the warning", () => {
+    // Same-image ensemble: both providers read the warning; one detects bold, the other can't (null).
+    const warn = { warningText: "GOVERNMENT WARNING: (1) ...", confidence: { warningText: 0.9 } };
+    const ocr = fields({ ...warn, warningPrefixIsBold: null });
+    const llm = fields({ ...warn, warningPrefixIsBold: true });
     expect(mergeExtracted(ocr, llm).warningPrefixIsBold).toBe(true);
-    expect(mergeExtracted(fields({ warningPrefixIsBold: false }), llm).warningPrefixIsBold).toBe(false);
+    expect(mergeExtracted(fields({ ...warn, warningPrefixIsBold: false }), llm).warningPrefixIsBold).toBe(false);
+  });
+
+  it("takes the warning flags from the warning-bearing image (front no-warning / back warning split)", () => {
+    // The front carries NO warning (and a model legitimately reports allCaps:false / bold:false for the
+    // absent prefix); the back carries the real warning with undetectable bold. The merge must use the
+    // BACK's flags — a clean back-label warning must not be falsely rejected by the front's defaults.
+    const front = fields({ warningText: "", warningPrefixIsAllCaps: false, warningPrefixIsBold: false });
+    const back = fields({
+      warningText: "GOVERNMENT WARNING: (1) ...",
+      warningPrefixIsAllCaps: true,
+      warningPrefixIsBold: null,
+      confidence: { warningText: 0.95 },
+    });
+    for (const m of [mergeExtracted(front, back), mergeExtracted(back, front)]) {
+      expect(m.warningText).toContain("GOVERNMENT WARNING");
+      expect(m.warningPrefixIsAllCaps).toBe(true); // from the back, not the front's false
+      expect(m.warningPrefixIsBold).toBeNull(); // front's spurious false must NOT overwrite the back's null
+    }
   });
 
   it("treats a punctuation/spacing-only difference as agreement, not a review", () => {
