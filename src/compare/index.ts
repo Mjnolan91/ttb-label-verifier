@@ -18,6 +18,7 @@ export {
   applyConfidenceGate,
 } from "./thresholds";
 export { normalizeText, normalizeWarning, similarity, levenshtein } from "./text";
+export { combinedVerdict, worstVerdict, type CombinedVerdict } from "./reviewVerdict";
 export {
   parseAlcoholText,
   resolveBeverageClass,
