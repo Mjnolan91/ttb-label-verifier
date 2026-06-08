@@ -129,4 +129,20 @@ describe("mergeExtracted — field rules", () => {
     const b = fields({ name: "XYZ Imports", confidence: { name: 0.9 } });
     expect(mergeExtracted(a, b).confidence.name).toBeLessThanOrEqual(DISAGREEMENT_CONFIDENCE);
   });
+
+  it("treats containment of a short identity field as agreement and keeps the more complete value", () => {
+    // Front prints a shortened producer name; back prints the full one. This is the common
+    // front/back case that used to crater brand/name confidence to 0.3 and keep the shorter value.
+    const front = fields({ name: "OLD TOM", confidence: { name: 0.9 } });
+    const back = fields({ name: "Old Tom Distillery", confidence: { name: 0.9 } });
+    const merged = mergeExtracted(front, back);
+    expect(merged.name).toBe("Old Tom Distillery"); // the more complete value
+    expect(merged.confidence.name ?? 0).toBeGreaterThanOrEqual(0.9); // not cratered to review
+  });
+
+  it("prefers the more complete brand even when the shorter read has higher confidence", () => {
+    const front = fields({ brand: "OLD TOM", confidence: { brand: 0.95 } });
+    const back = fields({ brand: "Old Tom Distillery", confidence: { brand: 0.9 } });
+    expect(mergeExtracted(front, back).brand).toBe("Old Tom Distillery");
+  });
 });

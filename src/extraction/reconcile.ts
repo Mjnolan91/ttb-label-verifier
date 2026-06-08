@@ -104,15 +104,34 @@ function canonical(s: string | undefined): string {
 const AGREEMENT_SIMILARITY = 0.9;
 
 /**
+ * Identity fields where one read is often a SHORTER form of the other across front/back labels
+ * (e.g. brand "OLD TOM" on the front vs producer "Old Tom Distillery" on the back). For these we
+ * treat containment as agreement and keep the more complete value, rather than down-weighting to review.
+ */
+const IDENTITY_FIELDS = new Set<ValueField>(["brand", "name", "address"]);
+
+/** Whether one canonical string contains the other (and the shorter is substantial, >= 3 chars). */
+function isContainment(a: string, b: string): boolean {
+  const ca = canonical(a);
+  const cb = canonical(b);
+  if (ca === "" || cb === "") return false;
+  const [shorter, longer] = ca.length <= cb.length ? [ca, cb] : [cb, ca];
+  return shorter.length >= 3 && longer.includes(shorter);
+}
+
+/**
  * Whether two provider reads of the same field should be treated as AGREEMENT. Exact-after-normalization
  * agrees; so does a punctuation/spacing-only difference ("750 mL" vs "750ml", "ABC Co, Frederick MD" vs
- * "ABC Co Frederick MD") or a high normalized-similarity read (a one-character OCR slip). This keeps the
- * ensemble from over-routing benign formatting noise to review while still flagging genuine divergence.
+ * "ABC Co Frederick MD"), a containment case (one read is a more complete version of the other, e.g.
+ * "OLD TOM" ⊂ "OLD TOM DISTILLERY"), or a high normalized-similarity read (a one-character OCR slip).
+ * This keeps the ensemble/front-back merge from over-routing benign noise to review while still
+ * flagging genuine divergence.
  */
 function valuesAgree(a: string, b: string): boolean {
   if (norm(a) === norm(b)) return true;
   const ca = canonical(a);
   if (ca !== "" && ca === canonical(b)) return true;
+  if (isContainment(a, b)) return true;
   return similarity(norm(a), norm(b)) >= AGREEMENT_SIMILARITY;
 }
 
@@ -158,9 +177,19 @@ export function mergeExtracted(a: ExtractedFields, b: ExtractedFields): Extracte
     const hb = vb != null && vb.trim() !== "";
 
     if (ha && hb) {
-      out[f] = ca >= cb ? va : vb;
-      confidence[key] = valuesAgree(va, vb)
-        ? Math.max(ca, cb) // agree (incl. punctuation/spacing/typo tolerance) -> confident
+      const agree = valuesAgree(va, vb);
+      // For identity fields, an agreeing pair often differs only in completeness (front prints a
+      // shortened brand/producer); keep the MORE COMPLETE value rather than the higher-confidence one.
+      out[f] =
+        agree && IDENTITY_FIELDS.has(f)
+          ? canonical(va).length >= canonical(vb).length
+            ? va
+            : vb
+          : ca >= cb
+            ? va
+            : vb;
+      confidence[key] = agree
+        ? Math.max(ca, cb) // agree (incl. punctuation/spacing/containment/typo tolerance) -> confident
         : Math.min(DISAGREEMENT_CONFIDENCE, Math.min(ca, cb)); // disagree -> review
     } else if (ha) {
       out[f] = va;
