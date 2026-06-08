@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 /**
  * CompletenessView.test.tsx — the completeness section is the headline result when no application
- * values are entered, so it must give the same plain "what do I do now" guidance ResultView gives.
+ * values are entered, so it must give the same plain "what do I do now" guidance the verdict banner gives.
  */
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, render, within } from "@testing-library/react";

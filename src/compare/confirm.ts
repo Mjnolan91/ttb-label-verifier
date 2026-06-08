@@ -189,7 +189,8 @@ export function confirmVerdict(
       return { ...base, value: "", flagged: true, needsConfirmation: true, status: "review",
         reason: "Not read from the label — type it if it's there, or mark it missing." };
     }
-    return { ...base, value: "", flagged: false, needsConfirmation: false, status: "pass", reason: spec.note };
+    return { ...base, value: "", flagged: false, needsConfirmation: false, status: "pass",
+      reason: "Only required in certain cases — not on this label." };
   });
 
   const statuses = fields.map((f) => f.status);

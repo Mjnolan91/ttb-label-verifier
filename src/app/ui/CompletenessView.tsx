@@ -28,7 +28,7 @@ const OVERALL_TONE: Record<CompletenessResult["overall"], Tone> = {
   review: "review",
 };
 /** A plain "what do I do now" line under the completeness headline — this section is the headline
- *  result when no application values are entered, so it needs the same guidance ResultView gives. */
+ *  result when no application values are entered, so it needs the same guidance the verdict banner gives. */
 const NEXT_STEP: Record<CompletenessResult["overall"], string> = {
   complete: "Every element TTB requires for this beverage type was found on the label.",
   incomplete:
