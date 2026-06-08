@@ -1,8 +1,7 @@
 /**
  * index.test.ts — Smoke test for the public surface re-exported from ./index, and a
  * type-level check that ClaimedFields / ExtractedFields (incl. the tri-state bold flag)
- * are usable as documented. Cannot run until US-001 adds the toolchain; written in Vitest
- * style for a strict-TS project.
+ * are usable as documented. Written in Vitest style for a strict-TS project.
  */
 
 import { describe, it, expect } from "vitest";

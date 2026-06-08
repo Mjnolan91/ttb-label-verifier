@@ -1,5 +1,5 @@
 /**
- * LlmVisionProvider.ts — real fast-tier multimodal extractor (US-009).
+ * LlmVisionProvider.ts — real fast-tier multimodal extractor.
  *
  * The reference implementation targets **Azure OpenAI** (a vision-capable chat deployment). This
  * is the in-tenant "firewall-survival" path: it runs inside the Azure tenant rather than calling a
@@ -18,7 +18,7 @@ import {
   type RawConfidencedValue,
   type RawExtractedFields,
 } from "./extractedShape";
-import { defaultFetch, type FetchLike } from "./http";
+import { defaultFetch, fetchWithRetry, withHardTimeout, type FetchLike } from "./http";
 
 /** Resolved Azure OpenAI connection config. */
 export interface AzureOpenAIConfig {
@@ -29,6 +29,62 @@ export interface AzureOpenAIConfig {
 }
 
 const DEFAULT_API_VERSION = "2024-10-21";
+
+/**
+ * Completion-token ceiling. Generous because the full verbatim government warning (~30+ words) plus
+ * 15 confidenced fields must fit; truncation is detected explicitly (finish_reason === "length")
+ * rather than surfacing as a confusing JSON parse error.
+ */
+const MAX_OUTPUT_TOKENS = 1500;
+
+/**
+ * Strict Structured Outputs schema (the 15 confidenced fields + the two warning flags). Sent as
+ * `response_format: json_schema` so the model is CONSTRAINED to this exact shape — eliminating the
+ * class of silent malformed-output bugs that loose json_object mode allows. parseModelJson remains a
+ * thin defensive guard for any provider/api-version that doesn't honor the constraint. Supported on
+ * the default Azure api-version (2024-10-21) and on gpt-4o-2024-08-06+ / gpt-4.1 / gpt-5.x.
+ */
+const CONFIDENCED_VALUE = {
+  type: "object",
+  properties: { value: { type: "string" }, confidence: { type: "number" } },
+  required: ["value", "confidence"],
+  additionalProperties: false,
+} as const;
+
+const CONFIDENCED_FIELDS = [
+  "brand",
+  "class",
+  "classType",
+  "alcoholContent",
+  "netContents",
+  "name",
+  "address",
+  "countryOfOrigin",
+  "appellation",
+  "vintage",
+  "varietal",
+  "sulfiteDeclaration",
+  "ageStatement",
+  "commodityStatement",
+  "warningText",
+] as const;
+
+const EXTRACTION_JSON_SCHEMA = {
+  type: "object",
+  properties: {
+    ...Object.fromEntries(CONFIDENCED_FIELDS.map((f) => [f, CONFIDENCED_VALUE])),
+    warningPrefixIsAllCaps: { type: "boolean" },
+    warningPrefixIsBold: { type: ["boolean", "null"] },
+  },
+  required: [...CONFIDENCED_FIELDS, "warningPrefixIsAllCaps", "warningPrefixIsBold"],
+  additionalProperties: false,
+} as const;
+
+/** The Chat Completions `response_format` requesting strict structured output to the schema above. */
+export const EXTRACTION_RESPONSE_FORMAT = {
+  type: "json_schema",
+  json_schema: { name: "ttb_label_fields", strict: true, schema: EXTRACTION_JSON_SCHEMA },
+} as const;
 
 /**
  * Read + validate Azure OpenAI config from env vars. Throws an actionable error listing any that
@@ -130,26 +186,29 @@ function extractFirstJsonObject(content: string): string | null {
   return content.slice(start, end + 1);
 }
 
-/** Parse the model's JSON content defensively into ExtractedFields. */
+/**
+ * Parse the model's JSON content defensively into ExtractedFields. Shared by all real providers
+ * (Azure OpenAI, OpenAI-direct, Gemini); strict structured outputs make the happy path reliable,
+ * but this stays as a guard that also recovers JSON a model may wrap in fences/prose.
+ */
 export function parseModelJson(content: string): ExtractedFields {
   let parsed: unknown;
   try {
     parsed = JSON.parse(content);
   } catch {
-    // The model occasionally wraps JSON in fences/prose despite json_object mode — recover the
-    // first balanced object before giving up.
+    // Recover the first balanced object before giving up (in case a model wraps it in fences/prose).
     const candidate = extractFirstJsonObject(content);
     if (candidate === null) {
-      throw new Error("Azure OpenAI returned content that was not valid JSON.");
+      throw new Error("The model returned content that was not valid JSON.");
     }
     try {
       parsed = JSON.parse(candidate);
     } catch {
-      throw new Error("Azure OpenAI returned content that was not valid JSON.");
+      throw new Error("The model returned content that was not valid JSON.");
     }
   }
   if (typeof parsed !== "object" || parsed === null) {
-    throw new Error("Azure OpenAI returned an unexpected payload.");
+    throw new Error("The model returned an unexpected payload.");
   }
   const p = parsed as Record<string, unknown>;
   const raw: RawExtractedFields = {
@@ -225,10 +284,10 @@ export class LlmVisionProvider implements VisionProvider {
       `${this.config.endpoint.replace(/\/+$/, "")}/openai/deployments/` +
       `${this.config.deployment}/chat/completions?api-version=${this.config.apiVersion}`;
 
-    const res = await this.fetchImpl(url, {
+    const res = await fetchWithRetry(this.fetchImpl, url, {
       method: "POST",
       headers: { "api-key": this.config.apiKey, "content-type": "application/json" },
-      signal,
+      signal: withHardTimeout(signal),
       body: JSON.stringify({
         messages: [
           { role: "system", content: SYSTEM_PROMPT },
@@ -244,8 +303,8 @@ export class LlmVisionProvider implements VisionProvider {
           },
         ],
         temperature: 0,
-        max_tokens: 800,
-        response_format: { type: "json_object" },
+        max_tokens: MAX_OUTPUT_TOKENS,
+        response_format: EXTRACTION_RESPONSE_FORMAT,
       }),
     });
 
@@ -263,6 +322,9 @@ export class LlmVisionProvider implements VisionProvider {
     const choice = json.choices?.[0];
     if (choice?.finish_reason === "content_filter") {
       throw new Error("Azure OpenAI declined to read this image (content filter).");
+    }
+    if (choice?.finish_reason === "length") {
+      throw new Error("Azure OpenAI response was truncated (raise max_tokens).");
     }
     const content = choice?.message?.content;
     if (typeof content !== "string" || content.trim() === "") {

@@ -48,10 +48,10 @@ describe("readOpenAIConfig", () => {
     expect(() => readOpenAIConfig({})).toThrow(/mock/i);
   });
 
-  it("defaults the model to gpt-4o and honors OPENAI_MODEL", () => {
-    expect(readOpenAIConfig({ OPENAI_API_KEY: "sk-x" }).model).toBe("gpt-4o");
-    expect(readOpenAIConfig({ OPENAI_API_KEY: "sk-x", OPENAI_MODEL: "gpt-4o-mini" }).model).toBe(
-      "gpt-4o-mini",
+  it("defaults the model to a current multimodal model and honors OPENAI_MODEL", () => {
+    expect(readOpenAIConfig({ OPENAI_API_KEY: "sk-x" }).model).toBe("gpt-4.1");
+    expect(readOpenAIConfig({ OPENAI_API_KEY: "sk-x", OPENAI_MODEL: "gpt-4.1-mini" }).model).toBe(
+      "gpt-4.1-mini",
     );
   });
 });
@@ -76,7 +76,7 @@ describe("OpenAIVisionProvider.extract — request shape + parsing (HTTP mocked)
       response_format: { type: string };
     };
     expect(body.model).toBe("gpt-4o");
-    expect(body.response_format.type).toBe("json_object");
+    expect(body.response_format.type).toBe("json_schema");
     const userContent = body.messages[1].content as { type: string; image_url?: { url: string } }[];
     expect(userContent.find((c) => c.type === "image_url")?.image_url?.url).toMatch(
       /^data:image\/jpeg;base64,/,

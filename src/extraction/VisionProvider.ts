@@ -3,14 +3,17 @@
  *
  * Architecture ("AI extracts, code compares"): every way of reading fields off a label image
  * lives behind this single interface. The extraction is probabilistic (per-field confidence);
- * the deterministic comparator (US-004) consumes the returned `ExtractedFields` and produces
+ * the deterministic comparator consumes the returned `ExtractedFields` and produces
  * the auditable verdict. Concrete providers:
  *   - `mock` (default) — hermetic, keys off the image FILENAME, runs offline with no keys.
- *   - `llm` (US-009)   — Azure OpenAI multimodal (in-tenant; firewall-survival path).
- *   - `ocr` (US-010)   — Azure AI Document Intelligence.
+ *   - `llm`            — Azure OpenAI multimodal (in-tenant; firewall-survival path).
+ *   - `ocr`            — Azure AI Document Intelligence.
  *   - `openai`         — OpenAI API directly (api.openai.com); a drop-in demo path that needs no
  *                        Azure resource/quota. The interface staying generic is what makes this
  *                        a small addition; Azure (`llm`) remains the in-tenant production target.
+ *   - `gemini`         — Google Gemini (generativelanguage.googleapis.com); another drop-in demo
+ *                        path, useful for comparing a different model's reads (e.g. the warning
+ *                        bold/all-caps flags) or running it in an ensemble.
  *
  * The interface stays GENERIC; only the concrete providers are vendor-specific. The mock stays
  * the default so the app and the entire test suite run with no network and no API keys.
@@ -18,7 +21,7 @@
 import type { ExtractedFields } from "@/domain";
 
 /** The set of provider names selectable via the `VISION_PROVIDER` env var. */
-export type VisionProviderName = "mock" | "llm" | "ocr" | "openai";
+export type VisionProviderName = "mock" | "llm" | "ocr" | "openai" | "gemini";
 
 /**
  * The input to extraction. `filename` is the ONLY thing the mock provider keys off (hermetic
@@ -51,7 +54,7 @@ export interface VisionProvider {
   /**
    * Read the label fields from the image. Never throws for an unreadable image — it returns a
    * low-confidence result with no fabricated values (the re-upload path), not an exception.
-   * The optional `signal` lets the parallel reconciler (US-010) abort a straggler at the
+   * The optional `signal` lets the parallel reconciler abort a straggler at the
    * per-call timeout; providers that perform I/O should forward it to their request.
    */
   extract(image: ImageInput, signal?: AbortSignal): Promise<ExtractedFields>;

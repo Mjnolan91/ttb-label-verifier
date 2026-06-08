@@ -26,7 +26,7 @@
  * must be rendered in ALL CAPITAL LETTERS and in BOLD TYPE on the physical label, and
  * the colon is part of the statutory phrase as it appears at the head of 16.21's text.
  *
- * The comparator (US-004) uses this to confirm the prefix is present and all-caps, and —
+ * The comparator uses this to confirm the prefix is present and all-caps, and —
  * where the extractor can detect type weight — that it is bold. Only this prefix is bold;
  * the remainder of the warning must NOT be bold (16.22(a)(2)).
  */

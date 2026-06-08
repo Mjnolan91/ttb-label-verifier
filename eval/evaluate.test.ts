@@ -1,5 +1,5 @@
 /**
- * evaluate.test.ts (US-012) — runs the eval harness in CI (offline) and asserts the pipeline is
+ * evaluate.test.ts — runs the eval harness in CI (offline) and asserts the pipeline is
  * correct on every labeled fixture, the approve-precision floor holds, and the unreadable case is
  * never approved.
  */

@@ -1,8 +1,8 @@
 /**
- * integration.test.ts (US-002) — Proves the CFR-verified domain module is WIRED INTO THE
+ * integration.test.ts — Proves the CFR-verified domain module is WIRED INTO THE
  * PROJECT through its public barrel AND the "@/..." path alias, not merely via relative
- * imports. This is the integration guard for US-002; it EXTENDS (never replaces) the
- * per-file unit tests (warning.test.ts, alcohol.test.ts, tolerances.test.ts, index.test.ts).
+ * imports. It EXTENDS (never replaces) the per-file unit tests (warning.test.ts,
+ * alcohol.test.ts, tolerances.test.ts, index.test.ts).
  *
  * If `@/domain` ever fails to resolve (tsconfig `paths` or the Vitest alias drift apart),
  * this file fails — catching a broken single-source-of-truth wiring early.
@@ -29,7 +29,7 @@ import type { BeverageClass } from "@/domain";
 const EXPECTED_WARNING_VERBATIM =
   "GOVERNMENT WARNING: (1) According to the Surgeon General, women should not drink alcoholic beverages during pregnancy because of the risk of birth defects. (2) Consumption of alcoholic beverages impairs your ability to drive a car or operate machinery, and may cause health problems.";
 
-describe("domain wiring through the @/domain barrel (US-002)", () => {
+describe("domain wiring through the @/domain barrel", () => {
   it("re-exports the canonical government warning byte-for-byte", () => {
     expect(CANONICAL_GOVERNMENT_WARNING).toBe(EXPECTED_WARNING_VERBATIM);
     expect(CANONICAL_GOVERNMENT_WARNING.startsWith(GOVERNMENT_WARNING_PREFIX)).toBe(true);

@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Route error boundary (US-008) — ensures an unexpected render/runtime error shows a friendly,
+ * Route error boundary — ensures an unexpected render/runtime error shows a friendly,
  * recoverable message instead of a blank/crashed page. "No uncaught error crashes the page."
  */
 import { primaryButtonClass } from "./ui/fieldStyles";

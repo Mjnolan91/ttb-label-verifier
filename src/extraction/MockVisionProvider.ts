@@ -10,7 +10,7 @@
  *     values verbatim (every field's confidence ~0.3, prefix bold-ness undetectable = null).
  *   - An UNKNOWN/unrecognized filename returns a fixed below-threshold result with NO fabricated
  *     field values and NO synthesized verdict (all confidences 0).
- * Both drive the US-008 "re-upload a clearer photo" path. Neither ever auto-approves.
+ * Both drive the "re-upload a clearer photo" path. Neither ever auto-approves.
  */
 import type { ExtractedFields } from "@/domain";
 import type { ImageInput, VisionProvider } from "./VisionProvider";

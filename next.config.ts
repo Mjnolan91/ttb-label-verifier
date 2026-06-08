@@ -6,7 +6,7 @@ const nextConfig: NextConfig = {
   // environment variables only and never affect the default mock path.
 
   // Emit a self-contained server bundle (.next/standalone) for a small container image —
-  // used by the Azure Container Apps Dockerfile (US-014). Harmless for `next start` / App Service.
+  // used by the Azure Container Apps Dockerfile. Harmless for `next start` / App Service.
   output: "standalone",
 };
 

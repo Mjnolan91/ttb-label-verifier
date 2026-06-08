@@ -18,7 +18,7 @@ wrong — fix that, not the statute. This mirrors the project invariant in `AGEN
 | --- | --- | --- |
 | `warning.ts` | Canonical government warning (verbatim), the `GOVERNMENT WARNING:` prefix, and a note that the prefix must be all-caps + bold | 27 CFR 16.21 (text); 16.22(a)(2) (caps + bold) |
 | `types.ts` | `ClaimedFields`, `ExtractedFields` (with per-field confidence and the `warningPrefixIsAllCaps` / `warningPrefixIsBold` flags), `BeverageClass` union | — |
-| `tolerances.ts` | Per-`BeverageClass` tolerance table + `selectToleranceFor()` | 27 CFR 5.65(c), 4.36(b)(1)/(c), 7.65 |
+| `tolerances.ts` | Per-`BeverageClass` tolerance table + `selectToleranceFor()` | 27 CFR 5.65(c), 4.36(b)(1)/(c), 7.65(c)/(d) |
 | `alcohol.ts` | `proofToAbv` / `abvToProof` (proof = 2 × ABV) and `isWarningRequired(abv)` | 27 CFR 16.10 (0.5% exemption) |
 | `index.ts` | Public surface (re-exports) | — |
 | `*.test.ts` | Vitest unit tests: warning verbatim, proof round-trip, `selectToleranceFor` per class, exemption boundary | — |
@@ -32,7 +32,7 @@ wrong — fix that, not the statute. This mirrors the project invariant in `AGEN
 - **The symmetric ± value is not the whole rule.** Some classes carry absolute boundary
   constraints the tolerance may not cross (the wine 14% tax-class boundary, the malt
   0.5% floor and 2.5% low/reduced cap). Those are recorded in each rule's `boundaryNote`
-  and are **enforced by the comparator** (US-004), deliberately not folded into the number.
+  and are **enforced by the comparator**, deliberately not folded into the number.
 
 ## `VERIFY before production` flags
 
@@ -50,8 +50,17 @@ also flagged inline at its definition:
 
 ## Provenance
 
-CFR values were verified against eCFR and Cornell LII; the warning text matches `AGENTS.md`
-character-for-character (no discrepancy found). The 2020 "Modernization" rulemaking
-(T.D. TTB-176) renumbered several sections — e.g. distilled-spirits content moved from the
-old 27 CFR 5.37 to **5.65**, and malt-beverage content to **7.65**; those current section
-numbers are the ones cited here.
+CFR values were verified against eCFR and the Cornell LII / govinfo mirrors (re-verified
+against the in-force text as of 2026-06). TTB's **2022 "Modernization" final rule — T.D.
+TTB-176 (87 FR 7526, effective March 11, 2022)** renumbered the distilled-spirits and
+malt-beverage labeling sections — e.g. distilled-spirits alcohol content moved from the old
+27 CFR 5.37 to **5.65(c)**, and malt-beverage alcohol content to **7.65(c)**; those current
+section numbers are the ones cited here. (The earlier 2020 Phase 1 rule was a *different*
+Treasury Decision, T.D. TTB-158.) **Part 4 (wine) was not part of that reorganization**, so
+the wine sections retain their classic numbers — `4.36(b)(1)`/`(c)` are still current.
+
+The verbatim government-warning text was re-verified character-for-character against
+27 CFR 16.21 and is **unchanged as of 2026-06**. The Surgeon General's January 2025 advisory
+on alcohol and cancer risk recommended adding a cancer warning, but the ABLA statute can be
+amended only by Congress and no rule or law has changed the text — re-verify this single
+constant if a bill is enacted.

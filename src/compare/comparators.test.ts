@@ -1,5 +1,5 @@
 /**
- * comparators.test.ts (US-004) — the three deterministic checks.
+ * comparators.test.ts — the three deterministic checks.
  *
  * Expectations are grounded in eval/fixtures/cases.json and the CFR tolerances (independent of
  * the implementation): pass cases, review cases, every failure mode, and one case per beverage

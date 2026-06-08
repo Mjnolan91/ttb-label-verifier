@@ -1,5 +1,5 @@
 /**
- * MockVisionProvider.test.ts (US-003) — proves the mock is hermetic (filename-keyed, no image
+ * MockVisionProvider.test.ts — proves the mock is hermetic (filename-keyed, no image
  * bytes, no network), faithfully replays fixtures, and produces a DETERMINISTIC below-threshold
  * result (no fabricated values, no verdict) for unknown/unreadable filenames.
  */
@@ -55,7 +55,7 @@ describe("MockVisionProvider — low-confidence / unreadable paths", () => {
   it("distinguishes confidently-MISSING warning from an unreadable image", async () => {
     const missing = await mock.extract({ filename: "warning-missing.svg" });
     expect(missing.warningText).toBe(""); // absent...
-    expect(missing.confidence.warningText ?? 0).toBeGreaterThan(0.9); // ...but HIGH confidence -> US-004 fails it
+    expect(missing.confidence.warningText ?? 0).toBeGreaterThan(0.9); // ...but HIGH confidence -> the comparator fails it
 
     const unreadable = await mock.extract({ filename: "unreadable-blurry.svg" });
     expect(unreadable.confidence.warningText ?? 1).toBeLessThan(0.5); // LOW confidence -> review/re-upload
@@ -100,7 +100,7 @@ describe("getVisionProvider — env selection (mock by default, offline)", () =>
     expect(getVisionProvider("MOCK").name).toBe("mock");
   });
 
-  // llm (US-009) and ocr (US-010) are both wired; their config/selection live in their own
+  // llm and ocr are both wired; their config/selection live in their own
   // test files (LlmVisionProvider.test.ts, OcrVisionProvider.test.ts).
 
   it("rejects an unknown provider name", () => {

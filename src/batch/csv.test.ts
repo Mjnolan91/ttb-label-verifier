@@ -1,5 +1,5 @@
 /**
- * csv.test.ts (US-013) — CSV parse/serialize helpers for batch mode.
+ * csv.test.ts — CSV parse/serialize helpers for batch mode.
  */
 import { describe, it, expect } from "vitest";
 import { parseCsv, parseClaimedCsv, resultsToCsv, analysisToCsv } from "./csv";

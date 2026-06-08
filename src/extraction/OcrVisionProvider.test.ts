@@ -1,5 +1,5 @@
 /**
- * OcrVisionProvider.test.ts (US-010) — Azure Document Intelligence provider with the HTTP layer
+ * OcrVisionProvider.test.ts — Azure Document Intelligence provider with the HTTP layer
  * mocked (analyze POST -> poll GET). No live network. Asserts the request shape, that OCR text is
  * derived into ExtractedFields (with bold = null), and that missing config errors cleanly.
  */

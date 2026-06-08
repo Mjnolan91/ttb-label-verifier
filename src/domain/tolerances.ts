@@ -15,7 +15,7 @@
  * boundary in 4.36(c), the malt-beverage 0.5% floor and 2.5% low/reduced cap in 7.65).
  * Those boundary constraints are documented per-entry below and flagged for the comparator;
  * they are intentionally NOT collapsed into the single numeric tolerance, because doing so
- * would be wrong. The comparator (US-004) is responsible for enforcing the boundary clamps.
+ * would be wrong. The comparator is responsible for enforcing the boundary clamps.
  */
 
 import type { BeverageClass } from "./types";
@@ -56,7 +56,8 @@ export const TOLERANCE_TABLE: { readonly [K in BeverageClass]: ToleranceRule } =
    * points is allowed for actual alcohol content that is above or below the labeled
    * alcohol content." Symmetric +/-0.3 pp, no conditions attached in the section text.
    * An alcohol-content statement is MANDATORY on all spirits regardless of ABV (5.65(a)).
-   * (Section renumbered from the old 27 CFR 5.37 by the 2020 modernization, T.D. TTB-176.)
+   * (Section renumbered from the old 27 CFR 5.37 by the 2022 modernization — T.D. TTB-176,
+   * 87 FR 7526, eff. Mar 11, 2022; the earlier 2020 Phase 1 rule was T.D. TTB-158.)
    */
   distilledSpirits: {
     beverageClass: "distilledSpirits",
@@ -103,23 +104,25 @@ export const TOLERANCE_TABLE: { readonly [K in BeverageClass]: ToleranceRule } =
   },
 
   /**
-   * MALT BEVERAGES / BEER — 27 CFR 7.65: "a tolerance of 0.3 percentage points will be
+   * MALT BEVERAGES / BEER — 27 CFR 7.65(c): "a tolerance of 0.3 percentage points will be
    * permitted, either above or below the stated alcohol content." Symmetric +/-0.3 pp.
    *
    * ABSOLUTE LIMITS the tolerance does NOT soften (comparator must respect): (1) hard 0.5%
-   * floor — a malt beverage labeled >=0.5% ABV may not actually be <0.5%; (2) "low
+   * floor — a malt beverage labeled >=0.5% ABV may not actually be <0.5% (7.65(c)); (2) "low
    * alcohol"/"reduced alcohol" only for products <2.5% ABV, and actual content may not
-   * reach 2.5% regardless of tolerance; (3) products under 0.5% ABV may be expressed to
-   * 0.1/0.01 pp and are NOT subject to any tolerance. A numeric statement is OPTIONAL
-   * federally (mandatory only where State law requires). (Renumbered from old 7.71/7.26.)
+   * reach 2.5% regardless of tolerance (7.65(d)); (3) products under 0.5% ABV may be expressed
+   * to 0.1/0.01 pp and are NOT subject to any tolerance. A numeric statement is OPTIONAL
+   * federally (mandatory only when alcohol derives from added nonbeverage flavors/ingredients
+   * other than hops extract, or where State law requires — 7.63(a)(3)/7.65(a)). (Renumbered
+   * from old Part 7 by the 2022 modernization, T.D. TTB-176, 87 FR 7605, eff. Mar 11, 2022.)
    */
   maltBeverage: {
     beverageClass: "maltBeverage",
     value: 0.3,
-    cfrCitation: "27 CFR 7.65",
+    cfrCitation: "27 CFR 7.65(c)",
     boundaryNote:
-      "27 CFR 7.65: absolute limits not softened by the tolerance — 0.5% ABV floor for " +
-      'products labeled >=0.5%, and the 2.5% ABV cap on "low/reduced alcohol".',
+      "Absolute limits not softened by the tolerance — 0.5% ABV floor for products labeled " +
+      '>=0.5% (27 CFR 7.65(c)), and the 2.5% ABV cap on "low/reduced alcohol" (27 CFR 7.65(d)).',
   },
 
   /**

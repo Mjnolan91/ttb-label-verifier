@@ -4,8 +4,8 @@ import type { ExtractedFields } from "@/domain";
 /**
  * ExtractedFieldsView — the extraction-first headline output: what the AI read off the label,
  * field by field, each with the model's confidence, plus the raw JSON. Read-only and verdict-free
- * (compliance pass/fail lives in the optional ResultView). The section is an aria-live status and its
- * heading is focusable so the form can move focus here on completion.
+ * (compliance pass/fail lives in the optional ResultView). The form moves focus to this section's
+ * heading on completion, so focus is the single announcement channel (no overlapping aria-live).
  */
 
 function confidenceColor(v: number | undefined): string {
@@ -66,7 +66,7 @@ export function ExtractedFieldsView({
         ? "no"
         : "undetectable";
   return (
-    <section role="status" aria-live="polite" aria-atomic="true" className="mt-6 flex flex-col gap-4">
+    <section aria-label="Extracted from the label" className="mt-6 flex flex-col gap-4">
       <h2
         ref={headingRef}
         tabIndex={-1}

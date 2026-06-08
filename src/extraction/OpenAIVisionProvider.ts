@@ -9,10 +9,14 @@
  */
 import type { ExtractedFields } from "@/domain";
 import type { ImageInput, VisionProvider } from "./VisionProvider";
-import { SYSTEM_PROMPT, USER_PROMPT, parseModelJson } from "./LlmVisionProvider";
-import { defaultFetch, type FetchLike } from "./http";
+import { SYSTEM_PROMPT, USER_PROMPT, parseModelJson, EXTRACTION_RESPONSE_FORMAT } from "./LlmVisionProvider";
+import { defaultFetch, fetchWithRetry, withHardTimeout, type FetchLike } from "./http";
 
-const DEFAULT_MODEL = "gpt-4o";
+// A current, generally-available multimodal model (gpt-4o is the older generation and on a 2026
+// retirement path). Override with OPENAI_MODEL — e.g. gpt-4.1-mini for lower cost/latency, or a
+// gpt-5.x model. Whatever you choose must support image input + json_schema structured outputs.
+const DEFAULT_MODEL = "gpt-4.1";
+const MAX_OUTPUT_TOKENS = 1500;
 const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
 
 /** Resolved OpenAI connection config. */
@@ -80,13 +84,13 @@ export class OpenAIVisionProvider implements VisionProvider {
     const base64 = Buffer.from(image.data).toString("base64");
     const dataUrl = `data:${image.contentType ?? "image/jpeg"};base64,${base64}`;
 
-    const res = await this.fetchImpl(OPENAI_URL, {
+    const res = await fetchWithRetry(this.fetchImpl, OPENAI_URL, {
       method: "POST",
       headers: {
         authorization: `Bearer ${this.config.apiKey}`,
         "content-type": "application/json",
       },
-      signal,
+      signal: withHardTimeout(signal),
       body: JSON.stringify({
         model: this.config.model,
         messages: [
@@ -103,8 +107,8 @@ export class OpenAIVisionProvider implements VisionProvider {
           },
         ],
         temperature: 0,
-        max_tokens: 800,
-        response_format: { type: "json_object" },
+        max_tokens: MAX_OUTPUT_TOKENS,
+        response_format: EXTRACTION_RESPONSE_FORMAT,
       }),
     });
 
@@ -121,6 +125,9 @@ export class OpenAIVisionProvider implements VisionProvider {
     const choice = json.choices?.[0];
     if (choice?.finish_reason === "content_filter") {
       throw new Error("OpenAI declined to read this image (content filter).");
+    }
+    if (choice?.finish_reason === "length") {
+      throw new Error("OpenAI response was truncated (raise max_tokens).");
     }
     const content = choice?.message?.content;
     if (typeof content !== "string" || content.trim() === "") {

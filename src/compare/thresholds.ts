@@ -6,8 +6,8 @@
  * NOTHING could be read, to the "re-upload a clearer photo" path. Never auto-approve what we could
  * not read.
  *
- * US-008 uses the readability floor below. US-011 EXTENDS this file with the per-field review gate
- * (downgrade an individual low-confidence field to `review`) and its boundary tests.
+ * The readability floor below drives the re-upload path; the per-field review gate (downgrade an
+ * individual low-confidence field to `review`) extends it with its own boundary tests.
  */
 import type { ExtractedFields } from "@/domain";
 import type { FieldResult } from "./types";
@@ -22,9 +22,9 @@ import type { FieldResult } from "./types";
 export const MIN_READABLE_CONFIDENCE = 0.5;
 
 /**
- * Is there ANY confidently-read field? false => unreadable/low-confidence => re-upload path
- * (US-008), never a verdict. true => proceed to comparison (individual low-confidence fields are
- * routed to review by the US-011 gate).
+ * Is there ANY confidently-read field? false => unreadable/low-confidence => re-upload path,
+ * never a verdict. true => proceed to comparison (individual low-confidence fields are
+ * routed to review by the per-field gate).
  */
 export function isExtractionReadable(
   extracted: ExtractedFields,

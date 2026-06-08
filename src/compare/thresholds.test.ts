@@ -1,5 +1,5 @@
 /**
- * thresholds.test.ts (US-008) — the readability floor that drives the re-upload path.
+ * thresholds.test.ts — the readability floor that drives the re-upload path.
  */
 import { describe, it, expect } from "vitest";
 import {

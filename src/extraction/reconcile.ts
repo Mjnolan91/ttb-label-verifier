@@ -1,14 +1,15 @@
 /**
  * reconcile.ts — run multiple VisionProviders in PARALLEL with a per-call timeout and merge
- * their readings (US-010). This module OWNS the timeout/abort machinery that the /api/verify
- * route surfaces to the user as the "provider timeout" message (US-008).
+ * their readings. This module OWNS the timeout/abort machinery that the /api/verify
+ * route surfaces to the user as the "provider timeout" message.
  *
  * Reconciliation philosophy: agreement = confidence; disagreement = uncertainty. Fields where
  * providers agree get high confidence; fields where they disagree get LOW confidence so the
- * threshold gate (US-011) routes them to human review. If one provider times out, we reconcile
+ * threshold gate routes them to human review. If one provider times out, we reconcile
  * from whatever returned rather than failing the whole verify — never block on a straggler.
  */
 import type { ExtractedFields, FieldConfidence } from "@/domain";
+import { similarity } from "@/compare";
 import type { ImageInput, VisionProvider } from "./VisionProvider";
 
 /** Per-call extraction timeout (~3s) — the mock/offline default; keeps tests fast and deterministic. */
@@ -121,6 +122,28 @@ function norm(s: string | undefined): string {
   return (s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+/** Strip case + every non-alphanumeric, so "750 mL" and "750ml" (or "ABC Co, MD" and "ABC Co MD")
+ *  compare equal — formatting differences are not disagreements. */
+function canonical(s: string | undefined): string {
+  return (s ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "");
+}
+
+/** Tolerance threshold above which two reads count as the SAME value, not a disagreement. */
+const AGREEMENT_SIMILARITY = 0.9;
+
+/**
+ * Whether two provider reads of the same field should be treated as AGREEMENT. Exact-after-normalization
+ * agrees; so does a punctuation/spacing-only difference ("750 mL" vs "750ml", "ABC Co, Frederick MD" vs
+ * "ABC Co Frederick MD") or a high normalized-similarity read (a one-character OCR slip). This keeps the
+ * ensemble from over-routing benign formatting noise to review while still flagging genuine divergence.
+ */
+function valuesAgree(a: string, b: string): boolean {
+  if (norm(a) === norm(b)) return true;
+  const ca = canonical(a);
+  if (ca !== "" && ca === canonical(b)) return true;
+  return similarity(norm(a), norm(b)) >= AGREEMENT_SIMILARITY;
+}
+
 /**
  * Merge two extractions field-by-field: agree -> max confidence; disagree -> low confidence
  * (review); only one provided a value -> use it as-is.
@@ -164,10 +187,9 @@ export function mergeExtracted(a: ExtractedFields, b: ExtractedFields): Extracte
 
     if (ha && hb) {
       out[f] = ca >= cb ? va : vb;
-      confidence[key] =
-        norm(va) === norm(vb)
-          ? Math.max(ca, cb) // agree -> confident
-          : Math.min(DISAGREEMENT_CONFIDENCE, Math.min(ca, cb)); // disagree -> review
+      confidence[key] = valuesAgree(va, vb)
+        ? Math.max(ca, cb) // agree (incl. punctuation/spacing/typo tolerance) -> confident
+        : Math.min(DISAGREEMENT_CONFIDENCE, Math.min(ca, cb)); // disagree -> review
     } else if (ha) {
       out[f] = va;
       confidence[key] = ca;
@@ -181,7 +203,7 @@ export function mergeExtracted(a: ExtractedFields, b: ExtractedFields): Extracte
 
 /**
  * Run all providers in parallel (each with a per-call timeout) and reconcile whatever returned.
- * - 0 returned: if every failure was a timeout, throw a TimeoutError (surfaced by US-008);
+ * - 0 returned: if every failure was a timeout, throw a TimeoutError (surfaced by the re-upload path);
  *   otherwise rethrow the first real error.
  * - 1 returned: use it (a timed-out partner doesn't fail the verify).
  * - 2+ returned: merge field-by-field (agree/disagree).

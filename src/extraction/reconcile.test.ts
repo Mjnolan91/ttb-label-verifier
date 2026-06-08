@@ -1,5 +1,5 @@
 /**
- * reconcile.test.ts (US-010) — the parallel reconciler, proven with two MOCK providers (no network).
+ * reconcile.test.ts — the parallel reconciler, proven with two MOCK providers (no network).
  *
  * Covers: agree -> confident, disagree -> low confidence (review), a slow provider aborted at the
  * per-call timeout (reconcile from the one that returned), all-timeout -> TimeoutError, and the
@@ -115,5 +115,18 @@ describe("mergeExtracted — field rules", () => {
     const llm = fields({ warningPrefixIsBold: true });
     expect(mergeExtracted(ocr, llm).warningPrefixIsBold).toBe(true);
     expect(mergeExtracted(fields({ warningPrefixIsBold: false }), llm).warningPrefixIsBold).toBe(false);
+  });
+
+  it("treats a punctuation/spacing-only difference as agreement, not a review", () => {
+    const a = fields({ netContents: "750 mL", confidence: { netContents: 0.9 } });
+    const b = fields({ netContents: "750ml", confidence: { netContents: 0.85 } });
+    // Tolerant agreement -> keep the max confidence rather than down-weighting to review.
+    expect(mergeExtracted(a, b).confidence.netContents).toBe(0.9);
+  });
+
+  it("still routes a genuinely divergent read to review", () => {
+    const a = fields({ name: "ABC Distillery", confidence: { name: 0.9 } });
+    const b = fields({ name: "XYZ Imports", confidence: { name: 0.9 } });
+    expect(mergeExtracted(a, b).confidence.name).toBeLessThanOrEqual(DISAGREEMENT_CONFIDENCE);
   });
 });

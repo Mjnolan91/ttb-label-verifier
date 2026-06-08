@@ -87,4 +87,63 @@ describe("checkCompleteness", () => {
     expect(statusOf(r, "brand")).toBe("present");
     expect(r.overall).toBe("review");
   });
+
+  it("a malt beverage may omit alcohol content (optional by default, 27 CFR 7.63(a)(3)) -> not incomplete", () => {
+    const r = checkCompleteness(
+      ds({
+        beverageClass: "maltBeverage",
+        classType: "India Pale Ale",
+        alcoholContentText: undefined,
+        confidence: { ...ds().confidence, alcoholContent: undefined },
+      }),
+    );
+    expect(r.beverageClass).toBe("maltBeverage");
+    expect(statusOf(r, "alcoholContent")).toBe("unverifiable");
+    expect(r.overall).toBe("complete");
+  });
+
+  it("a <=14% table wine may omit numeric ABV when a 'table wine' designation is present (27 CFR 4.36(a))", () => {
+    const r = checkCompleteness(
+      ds({
+        beverageClass: "wineUnder14",
+        classType: "California Table Wine",
+        alcoholContentText: undefined,
+        sulfiteDeclaration: "Contains Sulfites",
+        confidence: { ...ds().confidence, alcoholContent: undefined, sulfiteDeclaration: 0.95 },
+      }),
+    );
+    expect(statusOf(r, "alcoholContent")).toBe("present");
+    expect(r.overall).toBe("complete");
+  });
+
+  it("a <=14% wine with neither ABV nor a table-wine designation is incomplete", () => {
+    const r = checkCompleteness(
+      ds({
+        beverageClass: "wineUnder14",
+        classType: "Cabernet Sauvignon",
+        alcoholContentText: undefined,
+        sulfiteDeclaration: "Contains Sulfites",
+        confidence: { ...ds().confidence, alcoholContent: undefined, sulfiteDeclaration: 0.95 },
+      }),
+    );
+    expect(statusOf(r, "alcoholContent")).toBe("missing");
+    expect(r.overall).toBe("incomplete");
+  });
+
+  it("a sub-0.5% ABV product is exempt from the government warning (27 CFR 16.10); absent warning -> not incomplete", () => {
+    const r = checkCompleteness(
+      ds({
+        beverageClass: "maltBeverage",
+        classType: "Non-Alcoholic Malt Beverage",
+        alcoholContentText: "0.3% Alc./Vol.",
+        alcoholContent: { abv: 0.3 },
+        warningText: undefined,
+        warningPrefixIsAllCaps: false,
+        warningPrefixIsBold: null,
+        confidence: { ...ds().confidence, warningText: undefined },
+      }),
+    );
+    expect(statusOf(r, "governmentWarning")).toBe("unverifiable");
+    expect(r.overall).not.toBe("incomplete");
+  });
 });

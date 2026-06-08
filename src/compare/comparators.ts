@@ -5,7 +5,7 @@
  * src/domain (the CFR-verified single source of truth); this module only applies the rules.
  *
  * Confidence is deliberately NOT consulted here — low-confidence routing to `review` is a
- * separate concern (US-011 thresholds) applied as a gate over these value-based verdicts.
+ * separate concern (the threshold gate) applied as a gate over these value-based verdicts.
  */
 import {
   CANONICAL_GOVERNMENT_WARNING,

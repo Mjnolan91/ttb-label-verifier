@@ -4,11 +4,12 @@ import { StatusBadge } from "./ui/StatusBadge";
 import { toneForStatus, TONE_TINT, TONE_ICON } from "./ui/status";
 
 /**
- * ResultView (US-007) — at-a-glance verdict.
+ * ResultView — at-a-glance claimed-vs-label verdict.
  *
  * Status is NEVER conveyed by color alone (WCAG 1.4.1): the banner and each card pair the color
  * with an icon AND a text label (PASS/REVIEW/FAIL, Approve/Needs review/Reject) via the shared tone
- * system. The whole region is an aria-live status, and focus is moved to its heading on completion.
+ * system. The verdict is shown in response to an explicit "Check" action, and focus is moved to its
+ * heading — so a single announcement channel (focus) is used, with no overlapping aria-live region.
  */
 
 const OVERALL_LABEL: Record<VerifyResult["overall"], string> = {
@@ -61,7 +62,7 @@ export function ResultView({
   const tone = toneForStatus(result.overall);
   const OverallIcon = TONE_ICON[tone];
   return (
-    <section role="status" aria-live="polite" aria-atomic="true" className="mt-6 flex flex-col gap-4">
+    <section aria-label="Verification result" className="mt-6 flex flex-col gap-4">
       <h2
         ref={headingRef}
         tabIndex={-1}

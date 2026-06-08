@@ -13,7 +13,7 @@ export interface VerifyApiResponse {
   /**
    * Whether the label was readable. When false, the extraction had no confident signal (a
    * blurry/glare photo or an unrecognized image): `result` is null and `message` is the
-   * "re-upload a clearer photo" prompt — never fabricated data (US-008).
+   * "re-upload a clearer photo" prompt — never fabricated data.
    */
   readable: boolean;
   /** What the AI read off the label. Always present on a readable response. */

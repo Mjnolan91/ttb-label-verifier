@@ -6,14 +6,27 @@
  * the health-warning rule (Part 16). The completeness check (src/compare/completeness.ts) reads this
  * matrix to flag each mandatory element as present / missing / malformed.
  *
- * Pragmatic simplifications (documented, like tolerances.ts — do not silently "fix" these):
- *  - `alcoholContent` is listed mandatory for all classes. Real nuance: wine <=14% ABV may substitute
- *    a "table wine"/"light wine" class designation in lieu of a numeric statement, so a missing ABV on
- *    a table wine is a reviewable flag, not a true violation.
+ * `alcoholContent` necessity is per-class, because the CFR genuinely differs (the completeness
+ * check, completeness.ts, honors these):
+ *  - distilled spirits — MANDATORY at any ABV (27 CFR 5.65).
+ *  - wine > 14% ABV — MANDATORY (27 CFR 4.36(a)).
+ *  - wine <= 14% ABV — CONDITIONAL: a numeric statement OR a "table wine"/"light wine" designation
+ *    (27 CFR 4.36(a)); a <=14% wine with neither is incomplete.
+ *  - malt beverages — CONDITIONAL: optional unless alcohol derives from added nonbeverage
+ *    flavors/ingredients other than hops extract, or State law requires (27 CFR 7.63(a)(3), 7.65(a)).
+ *
+ * Documented simplifications (like tolerances.ts — do not silently "fix" these):
+ *  - `sulfiteDeclaration` is modeled MANDATORY for wine. The strict rule is conditional (required at
+ *    >= 10 ppm SO2, 27 CFR 4.32(e)) and applies to spirits/malt too (5.63(c)(7) / 7.63(b)(3)), but it
+ *    is present on effectively all commercial wine, so we treat it as a wine requirement and surface
+ *    the spirits/malt case as out of scope (the extractor does not capture additive disclosures).
+ *  - Conditional additive disclosures (FD&C Yellow No. 5, cochineal/carmine, aspartame "PHENYLKETONURICS"
+ *    per 4.32/5.63/7.63) are NOT modeled — they are present-only and the extractor does not read them.
+ *    (Saccharin disclosure was REPEALED in 2004 and is deliberately absent.)
  *  - `countryOfOrigin` is conditional (imports only) — we can't always tell domestic vs imported from
  *    the label, so it is surfaced as conditional, never a hard "missing".
- *  - `ageStatement` is conditional (e.g., whisky < 4 years); `appellation` is conditional (required
- *    when a vintage or varietal is stated). These are surfaced for review, not failed by default.
+ *  - `ageStatement` is conditional (e.g., whisky < 4 years); `appellation` is conditional. These are
+ *    surfaced for review, not failed by default.
  *  - `cider` is treated as wine (its default resolution in tolerances.ts).
  */
 import type { BeverageClass } from "./types";
@@ -42,54 +55,77 @@ export interface RequirementSpec {
   note: string;
 }
 
-/** Universal mandatory elements for any alcohol beverage > 0.5% ABV. */
-const UNIVERSAL: RequirementSpec[] = [
+/** Mandatory elements common to every alcohol beverage >= 0.5% ABV (alcohol content is added
+ *  per class — its necessity differs — so it is NOT in this shared head/tail). */
+const COMMON_HEAD: RequirementSpec[] = [
   { key: "brand", label: "Brand name", necessity: "mandatory", note: "Required on the brand label." },
   { key: "classType", label: "Class / type designation", necessity: "mandatory", note: "Standard of identity." },
-  { key: "alcoholContent", label: "Alcohol content", necessity: "mandatory", note: "Numeric % Alc./Vol." },
+];
+const COMMON_TAIL: RequirementSpec[] = [
   { key: "netContents", label: "Net contents", necessity: "mandatory", note: "e.g. 750 mL / 12 FL OZ." },
   { key: "name", label: "Producer / bottler name", necessity: "mandatory", note: "Name of the responsible party (bottler / producer / importer)." },
   { key: "address", label: "Producer / bottler address", necessity: "mandatory", note: "City and state (and street) of the responsible party." },
   { key: "governmentWarning", label: "Government warning", necessity: "mandatory", note: "27 CFR Part 16; ALL-CAPS bold 'GOVERNMENT WARNING:' prefix." },
 ];
 
+// Alcohol content — necessity is class-specific (see the module header). Three variants:
+const ALC_MANDATORY: RequirementSpec = {
+  key: "alcoholContent",
+  label: "Alcohol content",
+  necessity: "mandatory",
+  note: "Numeric % Alc./Vol. — mandatory (27 CFR 5.65 spirits; 4.36(a) wine > 14% ABV).",
+};
+const ALC_WINE_UNDER14: RequirementSpec = {
+  key: "alcoholContent",
+  label: "Alcohol content",
+  necessity: "conditional",
+  note: 'Numeric % Alc./Vol., OR a "table wine"/"light wine" designation may stand in for it on wine <= 14% ABV (27 CFR 4.36(a)).',
+};
+const ALC_MALT: RequirementSpec = {
+  key: "alcoholContent",
+  label: "Alcohol content",
+  necessity: "conditional",
+  note: "Optional on malt beverages unless alcohol derives from added nonbeverage flavors/ingredients other than hops extract, or State law requires (27 CFR 7.63(a)(3), 7.65(a)).",
+};
+
 const COUNTRY_OF_ORIGIN: RequirementSpec = {
   key: "countryOfOrigin",
   label: "Country of origin",
   necessity: "conditional",
-  note: "Mandatory for imported products.",
+  note: "Mandatory for imported products (27 CFR 5.69 / 7.69; CBP rules 19 CFR 102/134).",
 };
 const SULFITES: RequirementSpec = {
   key: "sulfiteDeclaration",
   label: "Sulfite declaration",
   necessity: "mandatory",
-  note: "'Contains Sulfites' when >= 10 ppm (27 CFR 4.32(e)) — effectively all wine.",
+  note: "'Contains Sulfites' when >= 10 ppm SO2 (27 CFR 4.32(e)) — present on effectively all wine.",
 };
 const APPELLATION: RequirementSpec = {
   key: "appellation",
   label: "Appellation of origin",
   necessity: "conditional",
-  note: "Mandatory when a vintage date or grape varietal is stated.",
+  note: "Mandatory when the label uses a varietal, a type of varietal significance, a semi-generic designation, a vintage date, an estate-bottled claim, or a 'Brand'-qualified name (27 CFR 4.34(b), 4.26, 4.27).",
 };
 const AGE_STATEMENT: RequirementSpec = {
   key: "ageStatement",
   label: "Age statement",
   necessity: "conditional",
-  note: "Mandatory for whisky < 4 years and certain spirits (27 CFR Part 5).",
+  note: "Mandatory for whisky < 4 years and certain spirits (27 CFR 5.74).",
 };
 
-const WINE: RequirementSpec[] = [...UNIVERSAL, SULFITES, APPELLATION, COUNTRY_OF_ORIGIN];
+const WINE_UNDER14: RequirementSpec[] = [...COMMON_HEAD, ALC_WINE_UNDER14, ...COMMON_TAIL, SULFITES, APPELLATION, COUNTRY_OF_ORIGIN];
+const WINE_OVER14: RequirementSpec[] = [...COMMON_HEAD, ALC_MANDATORY, ...COMMON_TAIL, SULFITES, APPELLATION, COUNTRY_OF_ORIGIN];
 
 const REQUIREMENTS: Record<BeverageClass, RequirementSpec[]> = {
-  distilledSpirits: [...UNIVERSAL, AGE_STATEMENT, COUNTRY_OF_ORIGIN],
-  wineUnder14: WINE,
-  wineOver14: WINE,
-  cider: WINE, // resolves to wine (see tolerances.ts)
-  maltBeverage: [...UNIVERSAL, COUNTRY_OF_ORIGIN],
-  unknown: [...UNIVERSAL], // can't assert class-specific elements
+  distilledSpirits: [...COMMON_HEAD, ALC_MANDATORY, ...COMMON_TAIL, AGE_STATEMENT, COUNTRY_OF_ORIGIN],
+  wineUnder14: WINE_UNDER14,
+  wineOver14: WINE_OVER14,
+  cider: WINE_UNDER14, // resolves to wine <= 14% by default (see tolerances.ts)
+  maltBeverage: [...COMMON_HEAD, ALC_MALT, ...COMMON_TAIL, COUNTRY_OF_ORIGIN],
+  unknown: [...COMMON_HEAD, ALC_MANDATORY, ...COMMON_TAIL], // can't assert class-specific elements
 };
 
 /** The label elements TTB requires for a beverage class (mandatory + conditional). */
 export function mandatoryElementsFor(cls: BeverageClass): RequirementSpec[] {
-  return REQUIREMENTS[cls] ?? UNIVERSAL;
+  return REQUIREMENTS[cls] ?? REQUIREMENTS.unknown;
 }

@@ -1,18 +1,20 @@
 # AGENTS.md — TTB Label Verifier
 
-This file is auto-read by the AI coding tool on every iteration. It is the source of truth
-for what we are building and how. Read it fully before writing code. Append durable
-learnings to the bottom.
+This is the project bible: the source of truth for the architecture, the three compliance checks,
+the canonical government-warning text, the latency budget, the thresholds philosophy, and the
+conventions. Read it fully before writing code (humans and AI coding tools alike). `README.md` is
+the product-facing overview; `CLAUDE.md` is a thin pointer here; this file holds the "why".
 
 ## Mission
 A standalone prototype that **reads a product's label images (front/back/neck) together into the
 full set of TTB-required fields** with AI, **checks the label for completeness** against TTB's
 mandatory-information requirements for its beverage type (each element flagged present / missing /
-malformed; see `src/domain/labelRequirements.ts` + `src/compare/completeness.ts`), and exports the
-result as **JSON or CSV** with no manual data entry. A deterministic claimed-vs-label comparator —
-**brand name**, **alcohol content**, **government health warning** — is also implemented + evaluated
-and exposed via the API. **Extraction + completeness is the primary path** a human agent can trust
-or override.
+malformed / unverifiable; see `src/domain/labelRequirements.ts` + `src/compare/completeness.ts`),
+and exports the result as **JSON or CSV** with no manual data entry. **Extraction + completeness is
+the primary path** a human agent can trust or override. An **optional** deterministic claimed-vs-label
+comparator — **brand name**, **alcohol content**, **government health warning** — runs as the
+secondary path when an agent supplies an application's claimed values, returning an
+Approve / Needs-review / Reject verdict; it is fully evaluated and exposed via the API.
 
 The product goal is NOT to replace human judgment. It is to be **superhuman on the axes
 where machines win** — consistency, throughput, and tireless recall of routine checks —
@@ -23,7 +25,7 @@ consistency, not by reading images more accurately than a person.
 - No COLA integration. This is a standalone proof-of-concept.
 - No authentication, accounts, or persistence of PII. Nothing sensitive is stored.
 - No image deskewing / glare correction. Handle bad images by asking for a re-upload.
-- Not a platform. Prefer the simplest implementation that meets each story's criteria.
+- Not a platform. Prefer the simplest implementation that meets the requirements.
 
 ## Hard constraints
 - **Latency: a verification result must return in ~5 seconds.** This is the single most
@@ -36,12 +38,17 @@ consistency, not by reading images more accurately than a person.
 
 ## Architecture: "AI extracts, code compares"
 ```
-image ──> [ VisionProvider(s) ] ──> [ reconciler ] ──> [ deterministic comparator ] ──> result UI
+image ──> [ VisionProvider(s) ] ──> [ reconciler ] ──> [ completeness + optional comparator ] ──> UI
             (probabilistic)          (agree/disagree)    (pure, auditable, tested)
 ```
+The flow is **extraction-first**: the AI always reads the label, code always runs the TTB
+**completeness** check, and the claimed-vs-application comparison runs only when an agent supplies
+claimed values — it is the optional secondary path, not a gate on extraction.
 - **Extraction is probabilistic** and lives behind the `VisionProvider` interface
-  (`extract(image) => ExtractedFields` with per-field confidence). Providers: `mock`
-  (default), `llm` (fast-tier multimodal), `ocr` (dedicated OCR / second model).
+  (`extract(image) => ExtractedFields` with per-field confidence). Providers: `mock` (default,
+  offline), `openai` (OpenAI-direct), `gemini` (Google Gemini-direct), `llm` (Azure OpenAI
+  multimodal), `ocr` (Azure AI Document Intelligence), and `ensemble` (llm + ocr reconciled). The
+  three chat-model providers share one prompt + JSON parser; only the request/response dialect differs.
 - **The real providers are Azure-native, and that IS the firewall-survival story.** The
   brief's outbound firewall blocks third-party AI endpoints; running *in-tenant* on Azure
   survives it. The `llm` reference impl targets **Azure OpenAI** (multimodal); the `ocr`
@@ -83,8 +90,17 @@ human-readable summary, not a second source of truth (don't let the two drift).
 | Distilled spirits | ±0.3 | 27 CFR 5.65(c) | none (statement mandatory at any ABV, 5.65(a)) |
 | Wine, ≤14% ABV | ±1.5 | 27 CFR 4.36(b)(1) | may not cross the 14% tax-class boundary (4.36(c)) — clamp band's upper edge at 14% |
 | Wine, >14% ABV | ±1.0 | 27 CFR 4.36(b)(1) | may not cross the 14% tax-class boundary (4.36(c)) — clamp band's lower edge above 14% |
-| Malt beverage / beer | ±0.3 | 27 CFR 7.65 | 0.5% ABV floor (labeled ≥0.5% may not actually be <0.5%); "low/reduced alcohol" only <2.5% |
+| Malt beverage / beer | ±0.3 | 27 CFR 7.65(c) | 0.5% ABV floor (7.65(c); labeled ≥0.5% may not actually be <0.5%); "low/reduced alcohol" only <2.5% (7.65(d)) |
 | Cider / hard cider | resolves | (see below) | resolves to **wine** (Part 4, ±1.5) by default, or **malt** (Part 7, ±0.3) when brewed from malt |
+
+**Citations note (2022 modernization).** TTB's 2022 final rule (T.D. TTB-176, eff. Mar 11, 2022)
+renumbered Parts 5 (distilled spirits) and 7 (malt beverages) — hence `5.65`/`7.65` rather than the
+older numbers. **Part 4 (wine) was NOT renumbered**, so the wine citations remain `4.36`.
+The alcohol-content *requirement* is also per class: a numeric statement is **mandatory** for
+distilled spirits and for wine >14%, but **optional by default for malt beverages** (27 CFR
+7.63(a)(3)); on wine ≤14% a "table wine" / "light wine" designation may stand in for the numeric
+value (27 CFR 4.36(a)). The completeness check encodes these per-class rules; the tolerance matrix
+only governs *whether a stated value is within band*.
 
 - **Cider has no standalone tolerance.** It is classified by *production method*: typical
   apple/pear fruit cider is **wine** under Part 4 (±1.5 pp); a cider brewed from malted
@@ -92,8 +108,8 @@ human-readable summary, not a second source of truth (don't let the two drift).
   to wine ≤14% by default; classify malt-based cider as `maltBeverage` upstream. The 8.5%
   ABV figure is a hard-cider **tax-rate** boundary, NOT a labeling tolerance — do not encode it.
 - **The symmetric ± value is not the whole rule.** The absolute limits above (wine 14% clamp
-  per 4.36(c); malt 0.5% floor / 2.5% cap per 7.65) are carried as `boundaryNote` metadata in
-  `tolerances.ts` and **enforced by the comparator** (US-004) — deliberately not folded into
+  per 4.36(c); malt 0.5% floor per 7.65(c) / 2.5% cap per 7.65(d)) are carried as `boundaryNote`
+  metadata in `tolerances.ts` and **enforced by the comparator** — deliberately not folded into
   the number, because collapsing them would be incorrect.
 - **`unknown` class** uses the tightest band (±0.3 pp) as a conservative product default to
   bias toward review/fail over false approval; prefer routing unknown-class labels to human
@@ -114,6 +130,12 @@ The text above was re-verified character-for-character against the statute (27 C
 caps+bold prefix rule 16.22(a)(2); 0.5% threshold 16.10) and matches exactly — no edit was
 needed. The same string is mirrored as `CANONICAL_GOVERNMENT_WARNING` in
 `src/domain/warning.ts`, guarded by a verbatim unit test.
+
+**Forward-looking note.** The 27 CFR 16.21 text is **unchanged as of 2026-06**, but it is under
+advocacy pressure: the Surgeon General's January 2025 advisory on alcohol and cancer risk has
+prompted calls to add a cancer warning. That is a proposal only — Congress has not amended the ABLA
+statute and no rule has changed the text. The verbatim-comparison design absorbs any future change
+by editing that single canonical constant.
 
 ## Thresholds (asymmetric, compliance-aware)
 Optimize to minimize **false approvals**. A missed violation is far worse than an
@@ -139,49 +161,15 @@ and latency p50/p95. It fails if precision on "approve" drops below a floor.
   with no fabricated field value (handed to the re-upload path), reproducible from the
   filename alone.
 - **Real label images are user-supplied later.** `eval/fixtures/images/MANIFEST.md` lists the
-  exact paths + required specs; the loop must PROMPT the user to drop real images at those
-  paths (keeping filenames in lockstep with `cases.json`) when it reaches a real provider
-  (`VISION_PROVIDER=llm`/`ocr`) or a live demo. Everything passes offline without them.
+  exact paths + required specs; drop real images at those paths (keeping filenames in lockstep
+  with `cases.json`) to exercise a real provider (`VISION_PROVIDER=openai`/`llm`/`ocr`) or a live
+  demo. Everything passes offline without them.
 - **`src/domain/` is pre-seeded and CFR-verified — do not silently change it.** It is the one
   human-trusted, hand-written module (canonical warning, tolerance matrix, 0.5% exemption,
   proof helpers). Treat its constants as statutory: extend/integrate, never reword or retune
   to make a test pass. See `src/domain/README.md`.
-- Commit one story per iteration; message format `US-00X: <title>`.
-
-## Learnings (append-only — add patterns, gotchas, and context for future iterations)
-- **Domain/fixtures hardening pass (pre-seed).** Three things were locked in and the rest of
-  the repo should build toward them: (1) the alcohol check now encodes the FULL beverage
-  matrix (spirits ±0.3 / wine ≤14% ±1.5 / wine >14% ±1.0 / malt ±0.3 / cider→resolves) with
-  CFR citations and asymmetric boundary notes, and `beverageClass` is an INPUT that selects
-  the rule — values live in `src/domain/tolerances.ts`, not hard-coded in the comparator.
-  (2) Real extraction is Azure-native (Azure OpenAI for `llm`, Azure AI Document Intelligence
-  for `ocr`) — that is the firewall-survival story (in-tenant) — while `mock` stays default
-  and the suite stays offline. (3) Fixtures are hermetic: the mock keys off the image
-  FILENAME, so no real images are needed to test; real images are user-supplied later per
-  `eval/fixtures/images/MANIFEST.md`, and the loop must prompt for them at the real-provider /
-  live-demo stage.
-- **Canonical warning verified, not changed.** Re-checked the warning text against 27 CFR
-  16.21 character-for-character (283 chars) — it already matched AGENTS.md and
-  `src/domain/warning.ts` exactly, so nothing was reconciled. The caps+bold prefix rule is
-  16.22(a)(2); the 0.5% exemption is 16.10.
-- **`src/domain/` is pre-seeded + CFR-verified.** It is the one hand-written, human-trusted
-  module. Its asymmetric boundary limits (wine 14% clamp 4.36(c); malt 0.5% floor / 2.5% cap
-  7.65) are carried as metadata and are the COMPARATOR's job to enforce (US-004) — the domain
-  module only supplies the data. Do not retune its constants to pass a test.
-- **Toolchain (US-001 scaffold).** Next 16 (App Router, Turbopack) + React 19.2 + TypeScript
-  (strict) + Tailwind v4 + Vitest 4. Commands: `npm run dev|build|typecheck|lint|test`.
-  Non-obvious bits the next iteration must respect:
-  - **Lint = `eslint .`, NOT `next lint`** (removed in Next 16). Config is the flat
-    `eslint.config.mjs` (`eslint-config-next/core-web-vitals` + `/typescript`). ESLint is pinned
-    `^9.34`; TypeScript is pinned `^5.9.3` (both deliberate — newer majors risk
-    `typescript-eslint` / tsconfig incompatibilities mid-loop). Don't bump them casually.
-  - **Tailwind v4**: `@tailwindcss/postcss` in `postcss.config.mjs` + `@import "tailwindcss"` in
-    `src/app/globals.css`. No `tailwind.config.*` and no `autoprefixer` needed (auto content
-    detection). Add a `@theme` block in `globals.css` if you need design tokens.
-  - **`next build` self-edits config**: it sets `tsconfig.compilerOptions.jsx` to `react-jsx`
-    and rewrites `next-env.d.ts` to import `./.next/types/routes.d.ts`. Keep both — cold
-    `tsc --noEmit` still passes with `.next/` absent, so `npm run typecheck` is fresh-checkout safe.
-  - **Tests**: `vitest run`, scoped to `src/**` + `eval/**`, `environment: node`, `@`→`src`
-    alias mirrors tsconfig `paths`. Tests use explicit `import { ... } from "vitest"` (no
-    globals). For React component tests later, switch that file to jsdom with a
-    `// @vitest-environment jsdom` docblock and add `@vitejs/plugin-react` + `@testing-library/react`.
+- **Toolchain.** Next.js (App Router) + React + TypeScript (strict) + Tailwind v4 + Vitest. Lint is
+  `eslint .`, **not** `next lint` (removed in Next 16); config is the flat `eslint.config.mjs`. Tests
+  run with `vitest run`, scoped to `src/**` + `eval/**` (`@`→`src` alias mirrors tsconfig `paths`);
+  React component tests opt into jsdom via a `// @vitest-environment jsdom` docblock with
+  `@testing-library/react`. See `CLAUDE.md` for the full command set and gotchas.

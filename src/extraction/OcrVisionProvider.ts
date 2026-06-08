@@ -1,5 +1,5 @@
 /**
- * OcrVisionProvider.ts — second extractor (US-010), reference impl targets **Azure AI Document
+ * OcrVisionProvider.ts — second extractor, reference impl targets **Azure AI Document
  * Intelligence** (prebuilt-read OCR). Like the LLM provider this is the in-tenant firewall-survival
  * path; the VisionProvider interface stays generic. Config is env-only; the HTTP layer is injectable
  * so unit tests run with no live network. Selecting it without config errors cleanly; the default
@@ -13,7 +13,7 @@
 import type { ExtractedFields } from "@/domain";
 import type { ImageInput, VisionProvider } from "./VisionProvider";
 import { mapRawExtracted, type RawExtractedFields } from "./extractedShape";
-import { defaultFetch, type FetchLike } from "./http";
+import { defaultFetch, fetchWithRetry, withHardTimeout, type FetchLike } from "./http";
 
 export interface AzureDocIntelConfig {
   endpoint: string;
@@ -122,11 +122,14 @@ export class OcrVisionProvider implements VisionProvider {
       `${base}/documentintelligence/documentModels/${this.config.model}:analyze` +
       `?api-version=${this.config.apiVersion}`;
 
-    const submit = await this.fetchImpl(analyzeUrl, {
+    // One self-limiting signal covers the whole submit-then-poll operation (defense-in-depth on top
+    // of the reconciler's per-call race), and transient submit failures are retried.
+    const hardSignal = withHardTimeout(signal);
+    const submit = await fetchWithRetry(this.fetchImpl, analyzeUrl, {
       method: "POST",
       headers: { "api-key": this.config.apiKey, "content-type": "application/json" },
       body: JSON.stringify({ base64Source: base64 }),
-      signal,
+      signal: hardSignal,
     });
     if (!submit.ok) {
       throw new Error(`Azure Document Intelligence analyze failed with status ${submit.status}.`);
@@ -136,15 +139,18 @@ export class OcrVisionProvider implements VisionProvider {
       throw new Error("Azure Document Intelligence did not return an operation-location.");
     }
 
-    const result = await this.poll(opLocation, signal);
+    const result = await this.poll(opLocation, hardSignal);
     const raw = deriveRawFields(result.content ?? "", averageConfidence(result));
     return mapRawExtracted(raw);
   }
 
+  // 14 x 500ms = 7s of polling stays under the ~8s real-provider straggler cap (REAL_PROVIDER_TIMEOUT_MS)
+  // so OCR is a real cross-check in ensemble mode, not always the abandoned straggler. The poll also
+  // honors a Retry-After hint from the service when present.
   private async poll(
     url: string,
     signal: AbortSignal | undefined,
-    attempts = 20,
+    attempts = 14,
     intervalMs = 500,
   ): Promise<AnalyzeResult> {
     for (let i = 0; i < attempts; i++) {
@@ -160,7 +166,8 @@ export class OcrVisionProvider implements VisionProvider {
       const data = (await res.json()) as { status?: string; analyzeResult?: AnalyzeResult };
       if (data.status === "succeeded") return data.analyzeResult ?? {};
       if (data.status === "failed") throw new Error("Azure Document Intelligence analysis failed.");
-      await sleep(intervalMs, signal);
+      const retryAfter = Number(res.headers?.get("retry-after"));
+      await sleep(Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : intervalMs, signal);
     }
     throw new DOMException("Azure Document Intelligence polling timed out.", "TimeoutError");
   }

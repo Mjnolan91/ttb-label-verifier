@@ -1,14 +1,13 @@
 # Fixture Image MANIFEST — TTB Label Verifier
 
-This manifest is the contract between the hermetic test fixtures and the real label images a
-human supplies later. Every `imageFilename` in [`../cases.json`](../cases.json) maps to exactly
-one file in this directory. Rows #1–#7 are lightweight **`.svg` PLACEHOLDERS** that depict the
-intended label so the suite is fully self-contained and needs no real image bytes; **row #8 is a
-real supplied image** (the ABC clean-pass demo case); **rows #9–#11 are REAL generated raster
-labels** (`.png`) wired to the demo's sample buttons, so the live Azure-vision demo extracts genuine
-pixels — regenerate them with `node scripts/generate-demo-labels.cjs`. When a story needs a real
-raster image (the real `llm` / `ocr` provider, or a live demo), drop the real file in at the exact
-path below.
+This manifest is the contract between the hermetic test fixtures and any real label images supplied
+later. Every `imageFilename` in [`../cases.json`](../cases.json) maps to exactly one file in this
+directory. Rows #1–#7 are lightweight **`.svg` PLACEHOLDERS** that depict the intended label so the
+suite is fully self-contained and needs no real image bytes; **row #8 is a real supplied image** (the
+ABC clean-pass demo case); **rows #9–#11 are REAL generated raster labels** (`.png`) wired to the
+demo's sample buttons, so the live vision demo extracts genuine pixels — regenerate them with
+`node scripts/generate-demo-labels.cjs`. To exercise a real provider (`openai` / `llm` / `ocr`) on
+the placeholder scenarios, drop a real raster at the exact path below.
 
 > **Dual role of these files.** The offline mock keys off the *filename* (pixels irrelevant), so the
 > suite stays hermetic; but on the deployed `llm` demo the *same files' bytes* are sent to Azure. The
@@ -47,24 +46,23 @@ hermetic-keying explanation.
 
 ---
 
-## ACTION REQUIRED: replace these placeholders with real images at these exact paths
+## Supplying real images (optional)
 
-Rows **#1–#7** above are **`.svg` placeholders**, not real label photographs (row **#8** is already
-a real supplied image — the ABC clean-pass demo case). The hermetic suite
-(unit tests, the `/api/verify` integration test, and `npm run eval`) passes WITHOUT real images
-because the mock provider keys off the filename. **But** the moment a story exercises a real
-extraction provider (`VISION_PROVIDER=llm` or `ocr`) or a live demo/screenshot is needed, real
-images must exist at these exact paths.
+The `.svg` rows above (#1–#7) are **hermetic placeholders**: the mock provider keys off the
+filename, so the entire offline suite (unit tests, the `/api/verify` integration test, and
+`npm run eval`) passes without any real image bytes. Real rasters are needed only to exercise a live
+extraction provider (`VISION_PROVIDER=openai`/`llm`/`ocr`) or to capture a demo screenshot — and even
+then only for whichever scenario you want to run live (row #8 is already a real image, and the demo
+sample buttons already point at the real `.png` rows #9–#11).
 
-To supply them:
+To drop in your own:
 
-1. Generate or photograph the label images that depict **exactly** what each row's "What the label
-   MUST depict" column describes — one clean, the five deliberate defects, and one deliberately
-   unreadable (blurry/glare) capture. An AI image tool is fine (per `specs/PROJECT_SPEC.md` ->
-   "Test labels").
-2. Save each real image at the **exact path** in the table's "Exact path" column. If you supply a
-   raster format (e.g. `.png`/`.jpg`) instead of `.svg`, update the matching `imageFilename` values
-   in [`../cases.json`](../cases.json) AND the paths here so the filenames stay in lockstep — the
+1. Generate or photograph a label that depicts **exactly** what the row's "What the label MUST
+   depict" column describes — one clean, the deliberate defects, and one deliberately unreadable
+   (blurry/glare) capture. An AI image tool is fine (per `specs/PROJECT_SPEC.md` → "Test labels").
+2. Save it at the **exact path** in the table's "Exact path" column. If you use a raster format
+   (e.g. `.png`/`.jpg`) instead of `.svg`, update the matching `imageFilename` in
+   [`../cases.json`](../cases.json) AND the path here so the filenames stay in lockstep — the
    filename is the only key the mock uses, so a name mismatch silently breaks the mapping.
 3. Keep the defects faithful: the title-case prefix, the 46%/92-proof ABV, the curly-apostrophe
    `STONE’S THROW`, the `Old Tomm` typo, and the missing warning are the whole point — they prove

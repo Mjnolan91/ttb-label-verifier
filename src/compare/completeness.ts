@@ -8,9 +8,13 @@
  * the strict format check (ALL-CAPS prefix; bold when detectable).
  */
 import type { BeverageClass, ExtractedFields, RequirementKey, RequirementSpec } from "@/domain";
-import { mandatoryElementsFor } from "@/domain";
+import { mandatoryElementsFor, isWarningRequired } from "@/domain";
 import { resolveBeverageClass } from "./alcohol";
 import { FIELD_REVIEW_CONFIDENCE } from "./thresholds";
+
+/** A "table wine"/"light wine" class designation can stand in for a numeric ABV on wine <= 14% ABV
+ *  (27 CFR 4.36(a)). */
+const TABLE_WINE_DESIGNATION = /\b(?:table|light)\s+wine\b/i;
 
 export type ElementStatus = "present" | "missing" | "malformed" | "unverifiable";
 export type CompletenessOverall = "complete" | "incomplete" | "review";
@@ -64,6 +68,17 @@ function evalWarning(spec: RequirementSpec, e: ExtractedFields): CompletenessEle
   const w = e.warningText;
   const has = typeof w === "string" && w.trim() !== "";
   if (!has) {
+    // Products below 0.5% ABV are outside the Part 16 definition of "alcoholic beverage" and are
+    // exempt (27 CFR 16.10) — an absent warning there is not a violation. Only treat it as exempt
+    // when we actually have a numeric ABV proving sub-0.5%; an unknown ABV stays conservatively required.
+    const abv = e.alcoholContent?.abv;
+    if (typeof abv === "number" && !isWarningRequired(abv)) {
+      return {
+        ...base(spec),
+        status: "unverifiable",
+        detail: "Not required below 0.5% ABV (27 CFR 16.10); none found.",
+      };
+    }
     return { ...base(spec), status: "missing", detail: "Government warning not found on the label." };
   }
   // ALL-CAPS is a reliable transcription judgment, so a title/mixed-case prefix is a hard fail.
@@ -84,6 +99,35 @@ function evalWarning(spec: RequirementSpec, e: ExtractedFields): CompletenessEle
 
 function base(spec: RequirementSpec): Pick<CompletenessElement, "key" | "label" | "necessity"> {
   return { key: spec.key, label: spec.label, necessity: spec.necessity };
+}
+
+/**
+ * Resolve a MISSING (absent-value) alcohol-content element, where the CFR is class-specific:
+ *  - wine <= 14% (and cider, which resolves to it): a "table wine"/"light wine" designation may
+ *    stand in for a numeric ABV (27 CFR 4.36(a)); without it, a <= 14% wine omitting ABV is missing.
+ *  - malt beverages: ABV is optional by default (27 CFR 7.63(a)(3)/7.65(a)) — neutral when absent.
+ *  - spirits, wine > 14%, unknown: a numeric statement is mandatory — missing.
+ * (The PRESENT case is handled inline by the generic loop, including low-confidence -> review.)
+ */
+function evalAbsentAlcohol(spec: RequirementSpec, e: ExtractedFields, cls: BeverageClass): CompletenessElement {
+  if (cls === "wineUnder14" || cls === "cider") {
+    if (TABLE_WINE_DESIGNATION.test(e.classType ?? "")) {
+      return {
+        ...base(spec),
+        status: "present",
+        detail: 'Numeric ABV omitted, but a "table/light wine" designation stands in for it (27 CFR 4.36(a)).',
+      };
+    }
+    return {
+      ...base(spec),
+      status: "missing",
+      detail: 'Wine <= 14% ABV must state alcohol content unless labeled "table wine"/"light wine" (27 CFR 4.36(a)).',
+    };
+  }
+  if (cls === "maltBeverage") {
+    return { ...base(spec), status: "unverifiable", detail: spec.note };
+  }
+  return { ...base(spec), status: "missing", detail: "Alcohol content statement required but not found on the label." };
 }
 
 /**
@@ -110,19 +154,22 @@ export function checkCompleteness(extracted: ExtractedFields): CompletenessResul
         detail: lowConf ? `Found (low confidence — verify): "${value}"` : `Found: "${value}"`,
       };
     }
+    // Absent value. Alcohol content is class-specific (table-wine substitution; malt optional).
+    if (spec.key === "alcoholContent") {
+      return evalAbsentAlcohol(spec, extracted, beverageClass);
+    }
     if (spec.necessity === "mandatory") {
       return { ...base(spec), status: "missing", detail: "Required but not found on the label." };
     }
     return { ...base(spec), status: "unverifiable", detail: spec.note };
   });
 
-  // A mandatory element missing or malformed => incomplete. A merely uncertain READ (low confidence
-  // on something we did find) => review. Conditional elements that are simply absent are neutral
-  // (a domestic spirit with no age statement is complete, not a problem).
-  const mandatoryIssue = elements.some(
-    (el) => el.necessity === "mandatory" && (el.status === "missing" || el.status === "malformed"),
-  );
-  const overall: CompletenessOverall = mandatoryIssue
+  // Any element resolved to missing or malformed => incomplete (an element is only marked "missing"
+  // once we've decided it is genuinely required-and-absent; a conditionally-absent element is
+  // "unverifiable" and neutral). A merely uncertain READ (low confidence on something we did find)
+  // => review.
+  const hardIssue = elements.some((el) => el.status === "missing" || el.status === "malformed");
+  const overall: CompletenessOverall = hardIssue
     ? "incomplete"
     : lowConfidencePresent
       ? "review"

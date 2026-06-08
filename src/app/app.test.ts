@@ -1,5 +1,5 @@
 /**
- * Trivial scaffold smoke test (US-001): proves the Vitest runner is wired up and the
+ * Trivial scaffold smoke test: proves the Vitest runner is wired up and the
  * app's single source of truth for its title is correct. Runs in the node environment
  * with no DOM and no network.
  */

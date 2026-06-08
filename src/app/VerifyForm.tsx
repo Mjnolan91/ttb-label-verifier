@@ -11,13 +11,16 @@
 import { useEffect, useId, useRef, useState } from "react";
 import type { VerifyApiResponse, VerifyApiError } from "./api/verify/contract";
 import type { LabelPosition } from "@/extraction";
+import { verifyLabel, type VerifyResult } from "@/compare";
 import { ExtractedFieldsView } from "./ui/ExtractedFieldsView";
 import { CompletenessView } from "./ui/CompletenessView";
+import { ResultView } from "./ResultView";
+import { FormField } from "./ui/FormField";
 import { downscaleForUpload } from "./imageDownscale";
 import { DropZone } from "./ui/DropZone";
 import { ErrorAlert } from "./ui/ErrorAlert";
 import { ResultSkeleton } from "./ui/ResultSkeleton";
-import { secondaryButtonClass } from "./ui/fieldStyles";
+import { inputClass, primaryButtonClass, secondaryButtonClass } from "./ui/fieldStyles";
 import { downloadJson, downloadCsv } from "./ui/download";
 import { analysisToCsv } from "@/batch/csv";
 import { IconReview, IconSpinner } from "./ui/icons";
@@ -37,9 +40,24 @@ export function VerifyForm() {
   const [state, setState] = useState<SubmitState>("idle");
   const [formError, setFormError] = useState<string | null>(null);
   const [response, setResponse] = useState<VerifyApiResponse | null>(null);
+  // Optional "verify against an application" values + the deterministic verdict (computed client-side
+  // against the already-read extraction, so it always matches what's shown and costs no extra read).
+  const [claimed, setClaimed] = useState({ brand: "", alcohol: "", classType: "" });
+  const [verdict, setVerdict] = useState<VerifyResult | null>(null);
 
-  const ids = { image: useId(), imageHelp: useId(), err: useId(), heading: useId() };
+  const ids = {
+    image: useId(),
+    imageHelp: useId(),
+    err: useId(),
+    heading: useId(),
+    verifyHeading: useId(),
+    vBrand: useId(),
+    vAlcohol: useId(),
+    vClass: useId(),
+  };
   const resultHeadingRef = useRef<HTMLHeadingElement>(null);
+  const verdictHeadingRef = useRef<HTMLHeadingElement>(null);
+  const justVerified = useRef(false);
   // Monotonic token so an in-flight read whose image set has since changed is ignored.
   const readToken = useRef(0);
 
@@ -48,6 +66,31 @@ export function VerifyForm() {
     if (state === "done") resultHeadingRef.current?.focus();
   }, [state]);
 
+  // Move focus to the verdict only when the agent explicitly ran a check (not on background recompute).
+  useEffect(() => {
+    if (verdict && justVerified.current) {
+      justVerified.current = false;
+      verdictHeadingRef.current?.focus();
+    }
+  }, [verdict]);
+
+  const canVerify = state === "done" && Boolean(response?.readable) && claimed.brand.trim() !== "" && claimed.alcohol.trim() !== "";
+
+  function runVerify() {
+    if (!response?.readable) return;
+    justVerified.current = true;
+    setVerdict(
+      verifyLabel(
+        {
+          brand: claimed.brand.trim(),
+          alcoholContentText: claimed.alcohol.trim(),
+          classType: claimed.classType.trim() || undefined,
+        },
+        response.extracted,
+      ),
+    );
+  }
+
   // Read the current image set (front/back/...) together. Triggered from the handlers, not an
   // effect, so the AI reads automatically the moment images change — with no manual "go" button.
   async function read(imgs: LabelImage[]) {
@@ -55,6 +98,7 @@ export function VerifyForm() {
     const token = ++readToken.current;
     setState("loading");
     setFormError(null);
+    setVerdict(null); // a fresh extraction invalidates any prior claimed-comparison verdict
     try {
       const body = new FormData();
       for (const img of imgs) {
@@ -105,6 +149,7 @@ export function VerifyForm() {
       readToken.current++; // cancel any in-flight read
       setState("idle");
       setResponse(null);
+      setVerdict(null);
     } else {
       void read(next);
     }
@@ -113,12 +158,13 @@ export function VerifyForm() {
   const exportBase = (images[0]?.file.name ?? "label").replace(/\.[^.]+$/, "");
   function onDownloadJson() {
     if (!response) return;
+    const result = verdict ?? response.result;
     downloadJson(`${exportBase}.json`, {
       images: images.map((i) => ({ filename: i.file.name, position: i.position })),
       provider: response.provider,
       extracted: response.extracted,
       completeness: response.completeness,
-      ...(response.result ? { result: response.result } : {}),
+      ...(result ? { result } : {}),
     });
   }
   function onDownloadCsv() {
@@ -129,7 +175,7 @@ export function VerifyForm() {
         {
           filename: exportBase,
           extracted: response.extracted,
-          result: response.result,
+          result: verdict ?? response.result,
           completeness: response.completeness,
         },
       ]),
@@ -233,6 +279,75 @@ export function VerifyForm() {
               Download CSV
             </button>
           </div>
+
+          <form
+            className="mt-8 border-t border-border pt-6"
+            onSubmit={(e) => {
+              e.preventDefault();
+              runVerify();
+            }}
+          >
+            <h3 className="text-lg font-semibold text-ink">
+              Verify against an application{" "}
+              <span className="font-normal text-ink-muted">(optional)</span>
+            </h3>
+            <p className="mt-1 text-ink-muted">
+              Enter the values from the COLA application to check the label matches. Brand name, alcohol
+              content, and the government warning are compared against what was read above.
+            </p>
+            <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <FormField label="Brand name" htmlFor={ids.vBrand} required>
+                <input
+                  id={ids.vBrand}
+                  className={inputClass}
+                  value={claimed.brand}
+                  onChange={(e) => setClaimed((c) => ({ ...c, brand: e.target.value }))}
+                  placeholder="e.g. Old Tom Distillery"
+                  autoComplete="off"
+                  aria-required="true"
+                />
+              </FormField>
+              <FormField label="Alcohol content" htmlFor={ids.vAlcohol} required>
+                <input
+                  id={ids.vAlcohol}
+                  className={inputClass}
+                  value={claimed.alcohol}
+                  onChange={(e) => setClaimed((c) => ({ ...c, alcohol: e.target.value }))}
+                  placeholder="e.g. 45% Alc./Vol. (90 Proof)"
+                  autoComplete="off"
+                  aria-required="true"
+                />
+              </FormField>
+              <div className="sm:col-span-2">
+                <FormField
+                  label="Class / type"
+                  htmlFor={ids.vClass}
+                  hint="Optional — helps select the right ABV tolerance (e.g. Bourbon, Table Wine, IPA)."
+                >
+                  <input
+                    id={ids.vClass}
+                    className={inputClass}
+                    value={claimed.classType}
+                    onChange={(e) => setClaimed((c) => ({ ...c, classType: e.target.value }))}
+                    placeholder="e.g. Kentucky Straight Bourbon Whiskey"
+                    autoComplete="off"
+                  />
+                </FormField>
+              </div>
+            </div>
+            <div className="mt-4 flex flex-wrap items-center gap-3">
+              <button type="submit" className={primaryButtonClass} disabled={!canVerify}>
+                Check against the application
+              </button>
+              {verdict && (
+                <button type="button" className={secondaryButtonClass} onClick={() => setVerdict(null)}>
+                  Clear
+                </button>
+              )}
+            </div>
+          </form>
+
+          {verdict && <ResultView result={verdict} headingRef={verdictHeadingRef} />}
         </>
       )}
 

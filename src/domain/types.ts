@@ -8,7 +8,7 @@
  *   - ClaimedFields = what the APPLICATION asserts. No confidence — a human typed it.
  *   - ExtractedFields = what a VisionProvider read OFF THE IMAGE. Probabilistic, so every
  *     field carries a per-field confidence and the raw values may be absent/garbled.
- *   The deterministic comparator (US-004) consumes both and emits pass/review/fail.
+ *   The deterministic comparator consumes both and emits pass/review/fail.
  */
 
 /**
@@ -140,7 +140,7 @@ export interface ExtractedFields {
   /**
    * Raw, AS-WRITTEN alcohol statement read off the label, e.g. "45% Alc./Vol. (90 Proof)" or
    * "45% Alc./Vol." (proof absent). Added for the extraction->comparison pipeline: extraction
-   * stays raw/probabilistic and the deterministic comparator (US-004) PARSES this into ABV +
+   * stays raw/probabilistic and the deterministic comparator PARSES this into ABV +
    * proof and cross-checks proof = 2 x ABV ("AI extracts, code compares"). The structured
    * `alcoholContent` above is an optional already-parsed convenience; providers populate this
    * text field and leave parsing/interpretation to the comparator.

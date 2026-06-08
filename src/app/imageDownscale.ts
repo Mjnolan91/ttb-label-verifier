@@ -1,7 +1,7 @@
 /**
  * imageDownscale.ts — shrink a large label photo in the browser BEFORE upload.
  *
- * Phone photos are 3–12 MP; a vision model reads a label fine at ~1400px on the long edge, and the
+ * Phone photos are 3–12 MP; a vision model reads a label fine at ~2000px on the long edge, and the
  * smaller payload cuts upload time, model latency, and token cost together (helping the ~5s budget).
  * The pure decision logic (`computeTargetSize` / `shouldSkipDownscale`) is separated from the canvas
  * work so it can be unit-tested without a DOM. `downscaleForUpload` NEVER throws — on any failure it

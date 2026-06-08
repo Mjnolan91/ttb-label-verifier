@@ -4,7 +4,7 @@ import { linkClass } from "../ui/fieldStyles";
 
 export default function BatchPage() {
   return (
-    <main className="mx-auto flex min-h-screen max-w-4xl flex-col gap-8 px-4 py-10 sm:py-14">
+    <main id="main-content" tabIndex={-1} className="mx-auto flex min-h-screen max-w-4xl flex-col gap-8 px-4 py-10 sm:py-14 focus:outline-none">
       <header>
         <p className="text-sm font-semibold uppercase tracking-wide text-brand-700">
           TTB compliance · prototype

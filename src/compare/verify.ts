@@ -3,7 +3,7 @@
  *
  * Pure and deterministic: given the claimed application values and the extracted label fields,
  * run compareBrand / compareAlcohol / compareWarning and reduce to an overall verdict. Reused by
- * the /api/verify route (US-005) and the eval harness (US-012). The confidence gate (US-011) is
+ * the /api/verify route and the eval harness. The confidence gate is
  * layered on top of this value-based result, not baked in here.
  */
 import { isWarningRequired, type ClaimedFields, type ExtractedFields } from "@/domain";

@@ -21,9 +21,6 @@ coverage/
 # typescript incremental build cache
 *.tsbuildinfo
 
-# ralph local state
-scripts/ralph/.last-branch
-
 # os / editor
 .DS_Store
 *.log

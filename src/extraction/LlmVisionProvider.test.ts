@@ -1,5 +1,5 @@
 /**
- * LlmVisionProvider.test.ts (US-009) — Azure OpenAI provider with the HTTP layer mocked.
+ * LlmVisionProvider.test.ts — Azure OpenAI provider with the HTTP layer mocked.
  *
  * No live network: a fake FetchLike captures the request and returns a canned Azure response.
  * Asserts the request is shaped for Azure OpenAI, the response parses into ExtractedFields, and a
@@ -101,7 +101,7 @@ describe("LlmVisionProvider.extract — request shape + parsing (HTTP mocked)", 
       messages: { role: string; content: unknown }[];
       response_format: { type: string };
     };
-    expect(body.response_format.type).toBe("json_object");
+    expect(body.response_format.type).toBe("json_schema");
     const userContent = body.messages[1].content as { type: string; image_url?: { url: string } }[];
     const imagePart = userContent.find((c) => c.type === "image_url");
     expect(imagePart?.image_url?.url).toMatch(/^data:image\/jpeg;base64,/);
@@ -273,5 +273,37 @@ describe("LlmVisionProvider.extract — error/refusal handling (HTTP mocked)", (
       fetchImpl: fetchReturning({ error: { message: "quota exceeded", code: "429" } }),
     });
     await expect(p.extract(img)).rejects.toThrow(/quota exceeded/i);
+  });
+
+  it("retries a transient 429 (honoring Retry-After) and then succeeds", async () => {
+    let calls = 0;
+    const fetchImpl: FetchLike = () => {
+      calls++;
+      if (calls === 1) {
+        return Promise.resolve({
+          ok: false,
+          status: 429,
+          json: () => Promise.resolve({}),
+          headers: { get: (n: string) => (n.toLowerCase() === "retry-after" ? "0" : null) },
+        });
+      }
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ choices: [{ message: { content: JSON.stringify(MODEL_OUTPUT) } }] }),
+      });
+    };
+    const p = new LlmVisionProvider({ config: CONFIG, fetchImpl });
+    const r = await p.extract(img);
+    expect(calls).toBe(2); // one retry after the 429
+    expect(r.brand).toBe("OLD TOM DISTILLERY");
+  });
+
+  it("throws a clear error when the response is truncated (finish_reason = length)", async () => {
+    const p = new LlmVisionProvider({
+      config: CONFIG,
+      fetchImpl: fetchReturning({ choices: [{ finish_reason: "length", message: { content: "{" } }] }),
+    });
+    await expect(p.extract(img)).rejects.toThrow(/truncated/i);
   });
 });

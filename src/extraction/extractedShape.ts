@@ -1,7 +1,7 @@
 /**
  * extractedShape.ts — the on-the-wire "raw extraction" shape and its mapping to ExtractedFields.
  *
- * Both the mock (reading eval/fixtures/cases.json) and the real LLM provider (US-009, parsing the
+ * Both the mock (reading eval/fixtures/cases.json) and the real LLM provider (parsing the
  * model's JSON) produce this same `{ value, confidence }`-per-field shape, so the mapping lives
  * once here. This is the boundary where probabilistic extraction becomes the typed domain object
  * the deterministic comparator consumes.

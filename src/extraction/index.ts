@@ -21,6 +21,11 @@ export {
   type OpenAIConfig,
 } from "./OpenAIVisionProvider";
 export {
+  GeminiVisionProvider,
+  readGeminiConfig,
+  type GeminiConfig,
+} from "./GeminiVisionProvider";
+export {
   OcrVisionProvider,
   readAzureDocIntelConfig,
   type AzureDocIntelConfig,
@@ -40,6 +45,7 @@ import { MockVisionProvider } from "./MockVisionProvider";
 import { LlmVisionProvider } from "./LlmVisionProvider";
 import { OcrVisionProvider } from "./OcrVisionProvider";
 import { OpenAIVisionProvider } from "./OpenAIVisionProvider";
+import { GeminiVisionProvider } from "./GeminiVisionProvider";
 
 /**
  * Resolve a single configured vision provider.
@@ -61,9 +67,13 @@ export function getVisionProvider(name?: string): VisionProvider {
     case "openai":
       // OpenAI API directly (no Azure resource needed); errors cleanly if OPENAI_API_KEY is unset.
       return new OpenAIVisionProvider();
+    case "gemini":
+    case "google":
+      // Google Gemini directly; errors cleanly if GEMINI_API_KEY / GOOGLE_API_KEY is unset.
+      return new GeminiVisionProvider();
     default:
       throw new Error(
-        `Unknown VISION_PROVIDER='${selected}'. Use one of: mock|llm|ocr|openai|ensemble (default: mock).`,
+        `Unknown VISION_PROVIDER='${selected}'. Use one of: mock|llm|ocr|openai|gemini|ensemble (default: mock).`,
       );
   }
 }

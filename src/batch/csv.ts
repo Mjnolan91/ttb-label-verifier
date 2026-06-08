@@ -1,5 +1,5 @@
 /**
- * batch/csv.ts — pure CSV helpers for the batch screen (US-013). Parsing the claimed-values CSV
+ * batch/csv.ts — pure CSV helpers for the batch screen. Parsing the claimed-values CSV
  * (filename -> claimed) and serializing results to CSV. No DOM, fully unit-testable.
  */
 import type { ExtractedFields } from "@/domain";
