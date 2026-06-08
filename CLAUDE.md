@@ -26,9 +26,12 @@ headline. Offline by default; no PII, no auth, no COLA.
 - `npm run typecheck` / `npm run lint` — strict TypeScript (`tsc --noEmit`) + `eslint .`
   (NOT `next lint` — removed in Next 16; flat config in `eslint.config.mjs`)
 - `npm run build` — production build (Next `output: "standalone"`)
-- `npm run eval` — per-field precision/recall + latency p50/p95 over `eval/fixtures` (tsx CLI).
-  It is a GATE: exits non-zero if approve-precision drops below `APPROVE_PRECISION_FLOOR` (0.98,
-  in `eval/evaluate.ts`) — a false approval is the one error class we refuse to ship.
+- `npm run eval` — per-field precision/recall + latency p50/p95 over `eval/fixtures` (tsx CLI;
+  entry `eval/run.ts`, which calls `runEval` from `eval/evaluate.ts`). It is a GATE: exits non-zero
+  if approve-precision drops below `APPROVE_PRECISION_FLOOR` (0.98, in `eval/evaluate.ts`) — a false
+  approval is the one error class we refuse to ship.
+
+Requires Node ≥20.9 (`package.json` `engines`); a wrong major version fails confusingly.
 
 `typecheck` → `lint` → `test` is the load-bearing feedback loop; keep all three green (plus
 `npm run eval`) before any commit. The suite runs offline on the mock provider — no keys, no network.
