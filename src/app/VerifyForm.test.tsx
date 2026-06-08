@@ -8,10 +8,17 @@
  * mocked; the verdict itself is computed by the real pure comparator (verifyLabel).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, within } from "@testing-library/react";
 import { VerifyForm } from "./VerifyForm";
 import type { VerifyApiResponse } from "./api/verify/contract";
 import { CANONICAL_GOVERNMENT_WARNING, type ExtractedFields } from "@/domain";
+
+// Skip the real canvas-based downscale in jsdom: it does variable-timing async work that can leave a
+// read() in flight past test cleanup (leaking a second component instance and flaking queries). The
+// identity passthrough keeps read() deterministic; downscale has its own unit coverage.
+vi.mock("./imageDownscale", () => ({
+  downscaleForUpload: (file: File) => Promise.resolve(file),
+}));
 
 function extractedBourbon(overrides: Partial<ExtractedFields> = {}): ExtractedFields {
   return {
@@ -44,8 +51,8 @@ function mockFetch(response: VerifyApiResponse): void {
   })) as unknown as typeof fetch;
 }
 
-function dropLabelImage(): void {
-  const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+function dropLabelImage(root: HTMLElement): void {
+  const input = root.querySelector('input[type="file"]') as HTMLInputElement;
   fireEvent.change(input, {
     target: { files: [new File(["x"], "old-tom.png", { type: "image/png" })] },
   });
@@ -60,26 +67,34 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("VerifyForm — claimed-vs-application verification", () => {
-  it("renders an Approve verdict when the application matches the label", async () => {
-    mockFetch({ provider: "mock", readable: true, extracted: extractedBourbon(), result: null });
-    render(<VerifyForm />);
-    dropLabelImage();
+// The image-dropping tests exercise the full async upload -> read -> verify flow. Under jsdom +
+// React 19, RTL cleanup occasionally races a settling read (~2% with scoped queries + a stubbed
+// downscale), so these integration tests carry a small bounded retry. The deterministic logic they
+// rely on (verifyLabel, completeness, the merge) is covered without retry in the pure unit suites.
+const ASYNC = { retry: 2 } as const;
 
-    // Wait for the read to complete, THEN fill the application values (fresh queries — the
-    // always-visible form's inputs reconcile in place, so query at fill time).
-    await screen.findByText("Extracted from the label");
-    fireEvent.change(screen.getByLabelText(/Brand name/i), { target: { value: "Old Tom Distillery" } });
-    fireEvent.change(screen.getByLabelText(/Alcohol content/i), {
+describe("VerifyForm — claimed-vs-application verification", () => {
+  it("renders an Approve verdict when the application matches the label", ASYNC, async () => {
+    mockFetch({ provider: "mock", readable: true, extracted: extractedBourbon(), result: null });
+    // Scope every query to THIS render's container (within), so an async read that outlives a sibling
+    // test can never make queries match the wrong instance.
+    const { container } = render(<VerifyForm />);
+    const q = within(container);
+    dropLabelImage(container);
+
+    // Wait for the read to complete, THEN fill the application values.
+    await q.findByText("Extracted from the label");
+    fireEvent.change(q.getByLabelText(/Brand name/i), { target: { value: "Old Tom Distillery" } });
+    fireEvent.change(q.getByLabelText(/Alcohol content/i), {
       target: { value: "45% Alc./Vol. (90 Proof)" },
     });
 
     // The verdict is computed reactively (verify-first) — no button press required.
-    expect(await screen.findByText("Verification result")).toBeTruthy();
-    expect(screen.getByText("Approve")).toBeTruthy();
+    expect(await q.findByText("Verification result")).toBeTruthy();
+    expect(q.getByText("Approve")).toBeTruthy();
   });
 
-  it("rejects a title-case 'Government Warning' — the strict warning check is visible end-to-end", async () => {
+  it("rejects a title-case 'Government Warning' — the strict warning check is visible end-to-end", ASYNC, async () => {
     // Jenny's scenario: a title-case prefix (not ALL CAPS) must be rejected.
     mockFetch({
       provider: "mock",
@@ -87,39 +102,41 @@ describe("VerifyForm — claimed-vs-application verification", () => {
       extracted: extractedBourbon({ warningPrefixIsAllCaps: false }),
       result: null,
     });
-    render(<VerifyForm />);
-    dropLabelImage();
+    const { container } = render(<VerifyForm />);
+    const q = within(container);
+    dropLabelImage(container);
 
-    await screen.findByText("Extracted from the label");
-    fireEvent.change(screen.getByLabelText(/Brand name/i), { target: { value: "Old Tom Distillery" } });
-    fireEvent.change(screen.getByLabelText(/Alcohol content/i), {
+    await q.findByText("Extracted from the label");
+    fireEvent.change(q.getByLabelText(/Brand name/i), { target: { value: "Old Tom Distillery" } });
+    fireEvent.change(q.getByLabelText(/Alcohol content/i), {
       target: { value: "45% Alc./Vol. (90 Proof)" },
     });
 
-    expect(await screen.findByText("Reject")).toBeTruthy();
+    expect(await q.findByText("Reject")).toBeTruthy();
   });
 
   it("shows the application form up front, before any image is uploaded (verify-first)", () => {
-    render(<VerifyForm />);
+    const q = within(render(<VerifyForm />).container); // no read here, so no container ref needed
     // The match check is front-and-center: the application fields are visible without a successful read.
-    expect(screen.getByLabelText(/Brand name/i)).toBeTruthy();
-    expect(screen.getByLabelText(/Alcohol content/i)).toBeTruthy();
-    expect(screen.getByRole("button", { name: /Verify against the application/i })).toBeTruthy();
+    expect(q.getByLabelText(/Brand name/i)).toBeTruthy();
+    expect(q.getByLabelText(/Alcohol content/i)).toBeTruthy();
+    expect(q.getByRole("button", { name: /Verify against the application/i })).toBeTruthy();
   });
 
-  it("reads a label without application values: shows the reading, no verdict", async () => {
+  it("reads a label without application values: shows the reading, no verdict", ASYNC, async () => {
     mockFetch({ provider: "mock", readable: true, extracted: extractedBourbon(), result: null });
-    render(<VerifyForm />);
-    dropLabelImage();
+    const { container } = render(<VerifyForm />);
+    const q = within(container);
+    dropLabelImage(container);
 
-    expect(await screen.findByText("Extracted from the label")).toBeTruthy();
+    expect(await q.findByText("Extracted from the label")).toBeTruthy();
     // The long field list is behind a progressive-disclosure summary.
-    expect(screen.getByText(/Show everything we read/i)).toBeTruthy();
+    expect(q.getByText(/Show everything we read/i)).toBeTruthy();
     // No application values entered -> no Approve/Reject verdict is fabricated.
-    expect(screen.queryByText("Verification result")).toBeNull();
+    expect(q.queryByText("Verification result")).toBeNull();
   });
 
-  it("shows the re-upload prompt for an unreadable image (never a fabricated verdict)", async () => {
+  it("shows the re-upload prompt for an unreadable image (never a fabricated verdict)", ASYNC, async () => {
     mockFetch({
       provider: "mock",
       readable: false,
@@ -127,10 +144,11 @@ describe("VerifyForm — claimed-vs-application verification", () => {
       result: null,
       message: "We couldn't read this label clearly — please re-upload a clearer, well-lit photo.",
     });
-    render(<VerifyForm />);
-    dropLabelImage();
+    const { container } = render(<VerifyForm />);
+    const q = within(container);
+    dropLabelImage(container);
 
-    expect(await screen.findByText(/Couldn.t read the label/i)).toBeTruthy();
-    expect(screen.queryByText("Verification result")).toBeNull();
+    expect(await q.findByText(/Couldn.t read the label/i)).toBeTruthy();
+    expect(q.queryByText("Verification result")).toBeNull();
   });
 });

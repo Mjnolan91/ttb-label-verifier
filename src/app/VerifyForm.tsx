@@ -24,6 +24,7 @@ import { inputClass, primaryButtonClass, secondaryButtonClass } from "./ui/field
 import { downloadJson, downloadCsv } from "./ui/download";
 import { analysisToCsv } from "@/batch/csv";
 import { ImageLightbox } from "./ui/ImageLightbox";
+import { ForwardLookingNote } from "./ui/ForwardLookingNote";
 import { IconReview, IconSpinner, IconZoom } from "./ui/icons";
 
 type SubmitState = "idle" | "loading" | "done" | "error";
@@ -385,6 +386,8 @@ export function VerifyForm() {
           <p className="mt-2 text-review-900">{response.message ?? "Please re-upload a clearer photo."}</p>
         </section>
       )}
+
+      <ForwardLookingNote />
 
       <ImageLightbox
         open={zoom !== null}
