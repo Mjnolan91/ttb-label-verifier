@@ -9,6 +9,7 @@
 import { MockVisionProvider } from "@/extraction";
 import { runVerification } from "@/pipeline";
 import type { ClaimedFields } from "@/domain";
+import { combinedVerdict } from "@/compare";
 import casesJson from "./fixtures/cases.json";
 
 /**
@@ -112,7 +113,9 @@ export async function runEval(): Promise<EvalReport> {
       actualOverall = "review";
       actualFields = { brand: "review", alcohol: "review", warning: "review" };
     } else {
-      actualOverall = outcome.result.overall;
+      // The PRODUCTION headline verdict gates the 3-check result on per-type completeness.
+      const combined = combinedVerdict(claimed, outcome.extracted);
+      actualOverall = combined.overall ?? "review";
       actualFields = {
         brand: outcome.result.brand.status,
         alcohol: outcome.result.alcohol.status,

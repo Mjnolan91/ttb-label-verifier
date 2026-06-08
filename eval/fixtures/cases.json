@@ -418,6 +418,35 @@
         "overall": "approve"
       },
       "notes": "MALT-BEVERAGE class-selected-tolerance case. Class/type 'India Pale Ale' resolves to maltBeverage, selecting the +/-0.3 pp band (27 CFR 7.65(c)). The application claims 6.5% and the label reads 6.7% -- a 0.2 pp gap, inside the band -> alcohol PASS. Above the 0.5% floor and not a 'low/reduced alcohol' product, so neither 7.65 absolute limit fires. Brand and the canonical all-caps/bold warning pass -> approve. Pairs with the wine cases so the eval exercises every concrete tolerance row, not just distilled spirits."
+    },
+    {
+      "id": "missing-net-contents-review",
+      "imageFilename": "old-tom-no-net-contents.svg",
+      "claimed": {
+        "brand": "OLD TOM DISTILLERY",
+        "classType": "distilled-spirits",
+        "beverageClass": "Distilled spirits",
+        "alcoholContent": "45% Alc./Vol. (90 Proof)",
+        "netContents": "750 mL"
+      },
+      "extracted": {
+        "brand": { "value": "OLD TOM DISTILLERY", "confidence": 0.98 },
+        "classType": { "value": "Kentucky Straight Bourbon Whiskey", "confidence": 0.97 },
+        "alcoholContent": { "value": "45% Alc./Vol. (90 Proof)", "confidence": 0.98 },
+        "name": { "value": "Old Tom Distillery", "confidence": 0.95 },
+        "address": { "value": "Louisville, KY", "confidence": 0.93 },
+        "warningText": {
+          "value": "GOVERNMENT WARNING: (1) According to the Surgeon General, women should not drink alcoholic beverages during pregnancy because of the risk of birth defects. (2) Consumption of alcoholic beverages impairs your ability to drive a car or operate machinery, and may cause health problems.",
+          "confidence": 0.97
+        },
+        "warningPrefixIsAllCaps": true,
+        "warningPrefixIsBold": true
+      },
+      "expected": {
+        "perField": { "brand": "pass", "alcohol": "pass", "warning": "pass" },
+        "overall": "review"
+      },
+      "notes": "COMPLETENESS GATE case. Brand, alcohol, and the government warning all pass the three claimed-vs-label checks — under the old 3-check model this approved. But net contents is a MANDATORY element for distilled spirits (27 CFR Part 5) and is absent from the read, so the per-type completeness check is incomplete. combinedVerdict takes the worse of {3-check approve, completeness review} -> overall REVIEW. Proves a label can no longer be approved while missing a TTB-required field, without auto-rejecting on a possible misread."
     }
   ]
 }

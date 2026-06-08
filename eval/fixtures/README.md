@@ -52,6 +52,7 @@ placeholders are human-viewable documentation of each scenario; they are not con
 | `wine-under14-approve` | `marisol-table-wine-clean.svg` | pass | pass | pass | **approve** |
 | `wine-over14-boundary-reject` | `oakmoor-port-over14-boundary.svg` | pass | **fail** | pass | **reject** |
 | `malt-beverage-approve` | `granite-peak-ipa-clean.svg` | pass | pass | pass | **approve** |
+| `missing-net-contents-review` | `old-tom-no-net-contents.svg` | pass | pass | pass | **review** |
 
 ### Verdict model (must match the comparator in `src/compare/`)
 - Per-field status is one of `pass` | `review` | `fail`.
@@ -103,6 +104,10 @@ placeholders are human-viewable documentation of each scenario; they are not con
   (27 CFR 7.65(c)); claimed 6.5% vs label 6.7% = 0.2 pp (inside), above the 0.5% floor and not a
   "low/reduced alcohol" product, so neither 7.65 absolute limit fires. Brand + canonical warning
   pass -> approve. Together the three non-spirits cases exercise every concrete tolerance row.
+- **Missing mandatory field -> review (completeness gate)** — brand/alcohol/warning all pass, but net
+  contents (mandatory for spirits) is absent, so `combinedVerdict` takes the worse of {approve,
+  completeness-review} -> **review**. Proves a label can't be approved while missing a TTB-required
+  field, without auto-rejecting a possible misread.
 
 ## Real images are user-supplied (per the MANIFEST)
 
