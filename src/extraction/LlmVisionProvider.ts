@@ -237,20 +237,14 @@ export function parseModelJson(content: string): ExtractedFields {
 }
 
 /**
- * Best-effort actionable detail for a non-OK Azure response. The injectable FetchLike only exposes
- * json(), so read it defensively and surface the structured `error.message`, plus a hint for the
- * common 401/429 cases. Never throws — a result of "" is fine.
+ * Best-effort actionable detail for a non-OK chat-completions response. The injectable FetchLike only
+ * exposes json(), so read it defensively and surface the structured `error.message`, plus the caller's
+ * status hint. Never throws — a result of "" is fine.
  */
-async function azureErrorDetail(res: {
-  status: number;
-  json: () => Promise<unknown>;
-}): Promise<string> {
-  const hint =
-    res.status === 401
-      ? " (check AZURE_OPENAI_API_KEY)"
-      : res.status === 429
-        ? " (rate limited — retry shortly)"
-        : "";
+async function chatCompletionErrorDetail(
+  res: { status: number; json: () => Promise<unknown> },
+  hint: string,
+): Promise<string> {
   let message = "";
   try {
     const body = await res.json();
@@ -262,6 +256,82 @@ async function azureErrorDetail(res: {
     // Body wasn't JSON — status + hint is enough.
   }
   return `${message}${hint}`;
+}
+
+/** The shared multimodal request body (system + user-with-image). `extra` lets OpenAI add `model`. */
+export function buildExtractionBody(
+  image: ImageInput,
+  dataUrl: string,
+  extra?: Record<string, unknown>,
+): object {
+  return {
+    ...extra,
+    messages: [
+      { role: "system", content: SYSTEM_PROMPT },
+      {
+        role: "user",
+        content: [
+          ...(image.position
+            ? [{ type: "text", text: `This image is the ${image.position} label of the product.` }]
+            : []),
+          { type: "text", text: USER_PROMPT },
+          { type: "image_url", image_url: { url: dataUrl, detail: "high" } },
+        ],
+      },
+    ],
+    temperature: 0,
+    max_tokens: MAX_OUTPUT_TOKENS,
+    response_format: EXTRACTION_RESPONSE_FORMAT,
+  };
+}
+
+/**
+ * Shared OpenAI-dialect chat-completions call: POST (with retry + hard timeout), then surface non-OK /
+ * HTTP-200-error / content-filter / length / empty-content failures with the given provider `label`,
+ * else parse the JSON. OpenAI-direct and Azure OpenAI differ ONLY in url/headers/body and the status
+ * hint, so the response handling lives here once. (Gemini uses a different dialect and stays separate.)
+ */
+export async function callChatCompletion(opts: {
+  fetchImpl: FetchLike;
+  url: string;
+  headers: Record<string, string>;
+  body: object;
+  label: string;
+  hintFor: (status: number) => string;
+  signal?: AbortSignal;
+}): Promise<ExtractedFields> {
+  const { fetchImpl, url, headers, body, label, hintFor, signal } = opts;
+  const res = await fetchWithRetry(fetchImpl, url, {
+    method: "POST",
+    headers: { ...headers, "content-type": "application/json" },
+    signal: withHardTimeout(signal),
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    throw new Error(
+      `${label} request failed with status ${res.status}${await chatCompletionErrorDetail(res, hintFor(res.status))}.`,
+    );
+  }
+  const json = (await res.json()) as {
+    error?: { message?: string; code?: string };
+    choices?: { finish_reason?: string; message?: { content?: unknown } }[];
+  };
+  // Some failures arrive as HTTP 200 with a top-level error object — surface them, don't parse.
+  if (json.error) {
+    throw new Error(`${label} error: ${json.error.message ?? json.error.code ?? "unknown"}.`);
+  }
+  const choice = json.choices?.[0];
+  if (choice?.finish_reason === "content_filter") {
+    throw new Error(`${label} declined to read this image (content filter).`);
+  }
+  if (choice?.finish_reason === "length") {
+    throw new Error(`${label} response was truncated (raise max_tokens).`);
+  }
+  const content = choice?.message?.content;
+  if (typeof content !== "string" || content.trim() === "") {
+    throw new Error(`${label} response did not include message content.`);
+  }
+  return parseModelJson(content);
 }
 
 export class LlmVisionProvider implements VisionProvider {
@@ -279,59 +349,20 @@ export class LlmVisionProvider implements VisionProvider {
     if (!image.data || image.data.length === 0) {
       throw new Error("The llm provider requires image bytes (image.data).");
     }
-    const base64 = Buffer.from(image.data).toString("base64");
-    const dataUrl = `data:${image.contentType ?? "image/jpeg"};base64,${base64}`;
-
+    const dataUrl = `data:${image.contentType ?? "image/jpeg"};base64,${Buffer.from(image.data).toString("base64")}`;
     const url =
       `${this.config.endpoint.replace(/\/+$/, "")}/openai/deployments/` +
       `${this.config.deployment}/chat/completions?api-version=${this.config.apiVersion}`;
 
-    const res = await fetchWithRetry(this.fetchImpl, url, {
-      method: "POST",
-      headers: { "api-key": this.config.apiKey, "content-type": "application/json" },
-      signal: withHardTimeout(signal),
-      body: JSON.stringify({
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          {
-            role: "user",
-            content: [
-              ...(image.position
-                ? [{ type: "text", text: `This image is the ${image.position} label of the product.` }]
-                : []),
-              { type: "text", text: USER_PROMPT },
-              { type: "image_url", image_url: { url: dataUrl, detail: "high" } },
-            ],
-          },
-        ],
-        temperature: 0,
-        max_tokens: MAX_OUTPUT_TOKENS,
-        response_format: EXTRACTION_RESPONSE_FORMAT,
-      }),
+    return callChatCompletion({
+      fetchImpl: this.fetchImpl,
+      url,
+      headers: { "api-key": this.config.apiKey },
+      body: buildExtractionBody(image, dataUrl),
+      label: "Azure OpenAI",
+      hintFor: (status) =>
+        status === 401 ? " (check AZURE_OPENAI_API_KEY)" : status === 429 ? " (rate limited — retry shortly)" : "",
+      signal,
     });
-
-    if (!res.ok) {
-      throw new Error(`Azure OpenAI request failed with status ${res.status}${await azureErrorDetail(res)}.`);
-    }
-    const json = (await res.json()) as {
-      error?: { message?: string; code?: string };
-      choices?: { finish_reason?: string; message?: { content?: unknown } }[];
-    };
-    // Some failures arrive as HTTP 200 with a top-level error object — surface them, don't parse.
-    if (json.error) {
-      throw new Error(`Azure OpenAI error: ${json.error.message ?? json.error.code ?? "unknown"}.`);
-    }
-    const choice = json.choices?.[0];
-    if (choice?.finish_reason === "content_filter") {
-      throw new Error("Azure OpenAI declined to read this image (content filter).");
-    }
-    if (choice?.finish_reason === "length") {
-      throw new Error("Azure OpenAI response was truncated (raise max_tokens).");
-    }
-    const content = choice?.message?.content;
-    if (typeof content !== "string" || content.trim() === "") {
-      throw new Error("Azure OpenAI response did not include message content.");
-    }
-    return parseModelJson(content);
   }
 }
