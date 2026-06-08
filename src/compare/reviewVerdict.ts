@@ -55,6 +55,9 @@ export function combinedVerdict(
   const completeness = checkCompleteness(extracted);
   const completenessVerdict = COMPLETENESS_VERDICT[completeness.overall];
 
+  // Safety net: callers (VerifyForm/BatchVerify) should pre-validate before passing a non-null
+  // `claimed`, but if a partially-filled application object arrives we treat it as "no comparison"
+  // rather than running verifyLabel with a blank brand/alcohol.
   const hasClaimed =
     claimed != null &&
     (claimed.brand ?? "").trim() !== "" &&

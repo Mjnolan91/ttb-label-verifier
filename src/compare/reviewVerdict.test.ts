@@ -34,9 +34,11 @@ function completeSpirits(overrides: Partial<ExtractedFields> = {}): ExtractedFie
 }
 
 describe("worstVerdict", () => {
-  it("returns the more conservative of two verdicts", () => {
+  it("returns the more conservative of two verdicts (both argument orders)", () => {
     expect(worstVerdict("approve", "review")).toBe("review");
+    expect(worstVerdict("review", "approve")).toBe("review");
     expect(worstVerdict("reject", "review")).toBe("reject");
+    expect(worstVerdict("review", "reject")).toBe("reject");
     expect(worstVerdict("approve", "approve")).toBe("approve");
   });
 });
@@ -56,6 +58,21 @@ describe("combinedVerdict", () => {
     } }));
     expect(r.verify?.overall).toBe("approve"); // the 3 checks alone would approve
     expect(r.overall).toBe("review");          // but completeness blocks it
+    expect(r.gatedByCompleteness).toBe(true);
+  });
+
+  it("GATES approve -> review when a mandatory field is present but read with LOW confidence", () => {
+    // net contents is present but below FIELD_REVIEW_CONFIDENCE (0.7) -> completeness "review" ->
+    // the combined verdict is gated even though no field is missing and the 3 checks pass.
+    const r = combinedVerdict(CLAIMED, completeSpirits({
+      confidence: {
+        brand: 0.98, classType: 0.97, alcoholContent: 0.98,
+        netContents: 0.6, name: 0.95, address: 0.95, warningText: 0.96,
+      },
+    }));
+    expect(r.verify?.overall).toBe("approve");
+    expect(r.completeness.overall).toBe("review");
+    expect(r.overall).toBe("review");
     expect(r.gatedByCompleteness).toBe(true);
   });
 
