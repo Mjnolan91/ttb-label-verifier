@@ -7,6 +7,7 @@
  * the deterministic comparator consumes.
  */
 import type { ExtractedFields, FieldConfidence } from "@/domain";
+import { FIELD_CATALOG } from "./fieldCatalog";
 
 /** A single read field: the value plus the provider's confidence in it. */
 export interface RawConfidencedValue {
@@ -43,40 +44,21 @@ export interface RawExtractedFields {
  */
 export function mapRawExtracted(raw: RawExtractedFields): ExtractedFields {
   const confidence: FieldConfidence = {};
-  if (raw.brand) confidence.brand = raw.brand.confidence;
-  if (raw.classType) confidence.classType = raw.classType.confidence;
-  if (raw.alcoholContent) confidence.alcoholContent = raw.alcoholContent.confidence;
-  if (raw.netContents) confidence.netContents = raw.netContents.confidence;
-  if (raw.warningText) confidence.warningText = raw.warningText.confidence;
-  if (raw.class) confidence.class = raw.class.confidence;
-  if (raw.name) confidence.name = raw.name.confidence;
-  if (raw.address) confidence.address = raw.address.confidence;
-  if (raw.countryOfOrigin) confidence.countryOfOrigin = raw.countryOfOrigin.confidence;
-  if (raw.appellation) confidence.appellation = raw.appellation.confidence;
-  if (raw.vintage) confidence.vintage = raw.vintage.confidence;
-  if (raw.varietal) confidence.varietal = raw.varietal.confidence;
-  if (raw.sulfiteDeclaration) confidence.sulfiteDeclaration = raw.sulfiteDeclaration.confidence;
-  if (raw.ageStatement) confidence.ageStatement = raw.ageStatement.confidence;
-  if (raw.commodityStatement) confidence.commodityStatement = raw.commodityStatement.confidence;
-
-  return {
-    brand: raw.brand?.value,
-    classType: raw.classType?.value,
-    alcoholContentText: raw.alcoholContent?.value,
-    netContents: raw.netContents?.value,
-    warningText: raw.warningText?.value,
-    class: raw.class?.value,
-    name: raw.name?.value,
-    address: raw.address?.value,
-    countryOfOrigin: raw.countryOfOrigin?.value,
-    appellation: raw.appellation?.value,
-    vintage: raw.vintage?.value,
-    varietal: raw.varietal?.value,
-    sulfiteDeclaration: raw.sulfiteDeclaration?.value,
-    ageStatement: raw.ageStatement?.value,
-    commodityStatement: raw.commodityStatement?.value,
+  // The warning format flags are booleans (not confidenced values), so they're carried explicitly;
+  // every confidenced value field is mapped generically from the catalog.
+  const out: ExtractedFields = {
     warningPrefixIsAllCaps: raw.warningPrefixIsAllCaps,
     warningPrefixIsBold: raw.warningPrefixIsBold,
     confidence,
   };
+  const rawByKey = raw as unknown as Record<string, RawConfidencedValue | undefined>;
+  const outByKey = out as unknown as Record<string, unknown>;
+  for (const d of FIELD_CATALOG) {
+    const cell = rawByKey[d.rawKey];
+    if (cell) {
+      outByKey[d.key] = cell.value;
+      confidence[d.confKey] = cell.confidence;
+    }
+  }
+  return out;
 }
