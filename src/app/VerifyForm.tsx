@@ -33,12 +33,12 @@ interface LabelImage {
   preview: string;
   position: LabelPosition;
 }
-const POSITIONS: LabelPosition[] = ["front", "back", "neck", "other"];
-const guessPosition = (index: number): LabelPosition =>
-  index === 0 ? "front" : index === 1 ? "back" : "other";
+type SlotKey = "front" | "back";
 
 export function VerifyForm() {
-  const [images, setImages] = useState<LabelImage[]>([]);
+  // The label is uploaded into two explicit slots — Front (required) and Back (optional) — so the
+  // agent says what each image is; position is fixed by the slot (no order-guessing, no dropdown).
+  const [slots, setSlots] = useState<{ front?: LabelImage; back?: LabelImage }>({});
   const [state, setState] = useState<SubmitState>("idle");
   const [formError, setFormError] = useState<string | null>(null);
   const [response, setResponse] = useState<VerifyApiResponse | null>(null);
@@ -137,46 +137,47 @@ export function VerifyForm() {
     }
   }
 
-  function addFiles(files: File[]) {
-    const next = [
-      ...images,
-      ...files.map((file, i) => ({
-        file,
-        preview: URL.createObjectURL(file),
-        position: guessPosition(images.length + i),
-      })),
-    ];
-    setImages(next);
-    void read(next);
+  const orderedImages = [slots.front, slots.back].filter(Boolean) as LabelImage[];
+
+  // Put an image in a slot (replacing any existing one), then re-read the fused front+back pair.
+  function setSlot(key: SlotKey, file: File) {
+    setSlots((prev) => {
+      const old = prev[key];
+      if (old) {
+        if (zoom?.src === old.preview) setZoom(null);
+        URL.revokeObjectURL(old.preview); // replacing -> revoke the old object URL
+      }
+      const next = { ...prev, [key]: { file, preview: URL.createObjectURL(file), position: key as LabelPosition } };
+      void read([next.front, next.back].filter(Boolean) as LabelImage[]);
+      return next;
+    });
   }
-  function setPosition(index: number, position: LabelPosition) {
-    const next = images.map((img, i) => (i === index ? { ...img, position } : img));
-    setImages(next);
-    void read(next);
-  }
-  function removeImage(index: number) {
-    const target = images[index];
-    if (target) {
-      if (zoom?.src === target.preview) setZoom(null); // don't leave the lightbox on a revoked URL
-      URL.revokeObjectURL(target.preview);
-    }
-    const next = images.filter((_, i) => i !== index);
-    setImages(next);
-    if (next.length === 0) {
-      readToken.current++; // cancel any in-flight read
-      setState("idle");
-      setResponse(null);
-    } else {
-      void read(next);
-    }
+  function clearSlot(key: SlotKey) {
+    setSlots((prev) => {
+      const target = prev[key];
+      if (target) {
+        if (zoom?.src === target.preview) setZoom(null); // don't leave the lightbox on a revoked URL
+        URL.revokeObjectURL(target.preview);
+      }
+      const next = { ...prev, [key]: undefined };
+      const imgs = [next.front, next.back].filter(Boolean) as LabelImage[];
+      if (imgs.length === 0) {
+        readToken.current++; // cancel any in-flight read
+        setState("idle");
+        setResponse(null);
+      } else {
+        void read(imgs);
+      }
+      return next;
+    });
   }
 
-  const exportBase = (images[0]?.file.name ?? "label").replace(/\.[^.]+$/, "");
+  const exportBase = (orderedImages[0]?.file.name ?? "label").replace(/\.[^.]+$/, "");
   function onDownloadJson() {
     if (!response) return;
     const result = verdict ?? response.result;
     downloadJson(`${exportBase}.json`, {
-      images: images.map((i) => ({ filename: i.file.name, position: i.position })),
+      images: orderedImages.map((i) => ({ filename: i.file.name, position: i.position })),
       provider: response.provider,
       extracted: response.extracted,
       completeness: response.completeness,
@@ -210,69 +211,63 @@ export function VerifyForm() {
         Read &amp; verify a label
       </h2>
       <p className="mt-1 text-ink-muted">
-        Drop a product&apos;s label image(s) — front, back, neck — and the AI reads them together. Add
-        the application values to check the label matches; or just read the label and export the data.
-        No typing required to read.
+        Upload the product&apos;s front label (and the back, if you have it) and the AI reads them
+        together. Add the application values to check the label matches; or just read the label and
+        export the data. No typing required to read.
       </p>
 
-      {/* Step 1 — upload */}
+      {/* Step 1 — upload into explicit Front / Back slots */}
       <div className="mt-6">
-        <span className="mb-1.5 block font-medium text-ink">
-          1. Label images <span className="font-normal text-ink-muted">(one or more; required)</span>
-        </span>
-        <DropZone id={ids.image} onFiles={addFiles} describedById={ids.imageHelp} />
+        <span className="mb-1.5 block font-medium text-ink">1. Label images</span>
         <p id={ids.imageHelp} className="sr-only">
-          Add the front and any back or neck label images for a single product. Click a thumbnail to
-          enlarge it.
+          Upload the front label (required) and optionally the back label. Click a thumbnail to enlarge it.
         </p>
-      </div>
-
-      {images.length > 0 && (
-        <ul className="mt-4 flex flex-col gap-3">
-          {images.map((img, i) => (
-            <li
-              key={`${img.file.name}-${i}`}
-              className="flex items-center gap-3 rounded-card border border-border bg-surface-muted p-3"
-            >
-              <button
-                type="button"
-                onClick={() => setZoom({ src: img.preview, alt: `${img.position} label — ${img.file.name}` })}
-                aria-label={`Enlarge ${img.file.name}`}
-                className="group relative h-28 w-28 shrink-0 cursor-zoom-in overflow-hidden rounded border border-border bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2"
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element -- local object URL preview */}
-                <img src={img.preview} alt="" className="h-full w-full object-contain" />
-                <span className="absolute bottom-1 right-1 inline-flex h-7 w-7 items-center justify-center rounded-full bg-black/65 text-base text-white opacity-90 transition group-hover:opacity-100">
-                  <IconZoom />
+        <div className="grid gap-4 sm:grid-cols-2">
+          {(["front", "back"] as const).map((key) => {
+            const img = slots[key];
+            const label = key === "front" ? "Front label" : "Back label";
+            return (
+              <div key={key}>
+                <span className="mb-1.5 block text-sm font-medium text-ink">
+                  {label}{" "}
+                  <span className="font-normal text-ink-muted">{key === "front" ? "(required)" : "(optional)"}</span>
                 </span>
-              </button>
-              <span className="min-w-0 flex-1 truncate text-sm text-ink">{img.file.name}</span>
-              <label className="sr-only" htmlFor={`${ids.image}-pos-${i}`}>
-                Label position for {img.file.name}
-              </label>
-              <select
-                id={`${ids.image}-pos-${i}`}
-                value={img.position}
-                onChange={(e) => setPosition(i, e.target.value as LabelPosition)}
-                className="min-h-[44px] rounded-field border-2 border-border-strong bg-surface px-2 text-sm text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2"
-              >
-                {POSITIONS.map((p) => (
-                  <option key={p} value={p}>
-                    {p}
-                  </option>
-                ))}
-              </select>
-              <button
-                type="button"
-                onClick={() => removeImage(i)}
-                className="min-h-[44px] rounded-field border-2 border-border-strong px-3 text-sm font-semibold text-ink transition hover:border-fail-600 hover:text-fail-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2"
-              >
-                Remove
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+                {img ? (
+                  <div className="flex items-center gap-3 rounded-card border border-border bg-surface-muted p-3">
+                    <button
+                      type="button"
+                      onClick={() => setZoom({ src: img.preview, alt: `${label} — ${img.file.name}` })}
+                      aria-label={`Enlarge ${img.file.name}`}
+                      className="group relative h-24 w-24 shrink-0 cursor-zoom-in overflow-hidden rounded border border-border bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2"
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element -- local object URL preview */}
+                      <img src={img.preview} alt="" className="h-full w-full object-contain" />
+                      <span className="absolute bottom-1 right-1 inline-flex h-6 w-6 items-center justify-center rounded-full bg-black/65 text-sm text-white opacity-90 transition group-hover:opacity-100">
+                        <IconZoom />
+                      </span>
+                    </button>
+                    <span className="min-w-0 flex-1 truncate text-sm text-ink">{img.file.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => clearSlot(key)}
+                      className="min-h-[44px] rounded-field border-2 border-border-strong px-3 text-sm font-semibold text-ink transition hover:border-fail-600 hover:text-fail-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ) : (
+                  <DropZone
+                    id={`${ids.image}-${key}`}
+                    multiple={false}
+                    onFiles={(files) => files[0] && setSlot(key, files[0])}
+                    describedById={ids.imageHelp}
+                  />
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
 
       {/* Step 2 — the application values to verify against (always visible; this IS the check) */}
       <form
@@ -367,7 +362,7 @@ export function VerifyForm() {
             <button type="button" onClick={onDownloadCsv} className={secondaryButtonClass}>
               Download CSV
             </button>
-            <button type="button" onClick={() => void read(images)} className={secondaryButtonClass}>
+            <button type="button" onClick={() => void read(orderedImages)} className={secondaryButtonClass}>
               Read again
             </button>
           </div>

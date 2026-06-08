@@ -115,6 +115,15 @@ describe("VerifyForm — claimed-vs-application verification", () => {
     expect(await q.findByText("Reject")).toBeTruthy();
   });
 
+  it("shows two explicit upload slots (front + back), each with its own file input", () => {
+    const { container } = render(<VerifyForm />);
+    // Two empty slots each render a file input before anything is uploaded (front + back).
+    expect(container.querySelectorAll('input[type="file"]')).toHaveLength(2);
+    // Visible slot labels (appear in both the visible heading and sr-only help, so use getAllByText).
+    expect(within(container).getAllByText(/Front label/i).length).toBeGreaterThan(0);
+    expect(within(container).getAllByText(/Back label/i).length).toBeGreaterThan(0);
+  });
+
   it("shows the application form up front, before any image is uploaded (verify-first)", () => {
     const q = within(render(<VerifyForm />).container); // no read here, so no container ref needed
     // The match check is front-and-center: the application fields are visible without a successful read.
