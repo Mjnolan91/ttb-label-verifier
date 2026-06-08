@@ -32,3 +32,6 @@ us0*-*.png
 
 # claude code local config (launch profiles, local settings)
 .claude/
+
+# superpowers brainstorming companion (local mockups)
+.superpowers/
