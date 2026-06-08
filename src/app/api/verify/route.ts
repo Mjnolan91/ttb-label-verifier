@@ -85,6 +85,12 @@ export async function POST(request: Request): Promise<Response> {
       return Response.json({ error: "Only image files are accepted." }, { status: 415 });
     }
   }
+  // Enforce the per-request total on the ACTUAL bytes, not just the declared content-length header
+  // (which a client can omit or under-report) — the header check above is only an early-out.
+  const totalBytes = paired.reduce((sum, { file }) => sum + file.size, 0);
+  if (totalBytes > MAX_TOTAL_BYTES) {
+    return Response.json({ error: "Upload too large." }, { status: 413 });
+  }
 
   // Verification is OPTIONAL: it runs only when the application's brand AND alcohol are supplied.
   const wantVerify = Boolean(brand && alcoholContent);

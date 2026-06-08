@@ -78,8 +78,18 @@ export function parseClaimedCsv(text: string): Map<string, ClaimedRow> {
   return map;
 }
 
+/**
+ * Serialize one CSV cell with two layers of safety:
+ *  - CSV-injection defang (CWE-1236): a cell beginning with `=`, `+`, `-`, `@`, tab, or CR is a
+ *    spreadsheet formula trigger. Extracted values originate from importer-supplied label images and
+ *    a non-technical agent opens this export in Excel/LibreOffice, so we prefix such a cell with a
+ *    single quote to force it to be treated as text (never evaluated as a formula).
+ *  - RFC-4180 quoting: wrap and double internal quotes when the value contains a comma, quote, or
+ *    newline. Applied AFTER defanging so the protective leading quote is preserved.
+ */
 function csvCell(v: string): string {
-  return /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+  const defanged = /^[=+\-@\t\r]/.test(v) ? `'${v}` : v;
+  return /[",\n]/.test(defanged) ? `"${defanged.replace(/"/g, '""')}"` : defanged;
 }
 
 /** One analysis row: the extracted fields for an image, plus an optional verification verdict. */

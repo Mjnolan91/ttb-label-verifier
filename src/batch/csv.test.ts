@@ -104,6 +104,24 @@ describe("analysisToCsv (extraction-first export)", () => {
     expect(lines[2].split(",").slice(-4)).toEqual(["", "", "", ""]); // no result -> blank verdict
   });
 
+  it("defangs spreadsheet formula triggers in cell values (CSV injection, CWE-1236)", () => {
+    // Extracted values come from importer-supplied label images; a value that opens with =,+,-,@
+    // must not execute as a formula when the agent opens the export in Excel/LibreOffice.
+    const malicious: ExtractedFields = {
+      brand: "=cmd|'/C calc'!A1",
+      classType: "+1+1",
+      netContents: "@SUM(A1:A9)",
+      warningPrefixIsAllCaps: true,
+      warningPrefixIsBold: true,
+      confidence: {},
+    };
+    const row = parseCsv(analysisToCsv([{ filename: "-pwn.png", extracted: malicious }]))[0];
+    expect(row.brand.startsWith("'=")).toBe(true);
+    expect(row.type.startsWith("'+")).toBe(true);
+    expect(row.net_contents.startsWith("'@")).toBe(true);
+    expect(row.filename.startsWith("'-")).toBe(true);
+  });
+
   it("blanks missing values, renders null bold as empty, and quotes commas", () => {
     const sparse: ExtractedFields = {
       warningPrefixIsAllCaps: false,

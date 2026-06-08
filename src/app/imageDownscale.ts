@@ -46,7 +46,10 @@ export async function downscaleForUpload(
 ): Promise<File> {
   if (shouldSkipDownscale(file.type)) return file;
   try {
-    const bitmap = await createImageBitmap(file);
+    // `imageOrientation: "from-image"` bakes the EXIF orientation into the bitmap BEFORE we draw to
+    // the canvas and re-encode (which drops the orientation tag). Without it, a portrait phone photo
+    // would be sent to the model sideways — self-inflicted "bad image" on the brief's primary input.
+    const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
     const target = computeTargetSize(bitmap.width, bitmap.height, maxEdge);
     if (!target) {
       bitmap.close();
