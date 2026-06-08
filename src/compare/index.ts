@@ -25,3 +25,10 @@ export {
   isLowOrReducedAlcoholClaim,
   type ParsedAlcohol,
 } from "./alcohol";
+export {
+  confirmVerdict,
+  type ConfirmState,
+  type FieldConfirmation,
+  type ConfirmFieldResult,
+  type ConfirmVerdict,
+} from "./confirm";
