@@ -145,9 +145,11 @@ export const USER_PROMPT =
   "Transcribe verbatim. Field rules:\n" +
   "- brand: the FANCIFUL product/brand mark — usually the largest text or a logo wordmark (e.g. " +
   '"Single Barrel", "Stone\'s Throw"). This is NOT automatically the bottling company: the legally ' +
-  "responsible company belongs in `name`. If the SAME words serve as both the brand mark AND the " +
-  'responsible company (e.g. a label whose only large text is "OLD TOM DISTILLERY"), populate BOTH ' +
-  "`brand` and `name` with them.\n" +
+  "responsible company belongs in `name`. Two decisive cases: (a) if the label shows a SHORT mark AND " +
+  'a longer producer name that CONTAINS it (mark "ABC" + producer "ABC Distillery"), `brand` is the ' +
+  'SHORT mark ("ABC") and `name` is the producer ("ABC Distillery") — never put the producer in ' +
+  "`brand`; (b) if the SAME words are the ONLY prominent name (a label whose only large text is " +
+  '"OLD TOM DISTILLERY"), populate BOTH `brand` and `name` with them.\n' +
   "- class: the BROAD category. This is the ONE field you may DERIVE rather than transcribe verbatim " +
   '(an explicit exception to Hard Rule #2): infer it from the printed designation, e.g. classType ' +
   '"Kentucky Straight Bourbon Whiskey" -> class "Whisky", "India Pale Ale" -> "Malt beverage", ' +

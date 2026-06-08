@@ -32,6 +32,32 @@ const EPS = 1e-6;
  */
 const BRAND_REVIEW_SIMILARITY = 0.8;
 
+/**
+ * Producer/entity suffixes a label often appends to the brand mark, so the brand "ABC" and the
+ * producer "ABC Distillery" are the same brand family. Stripped ONLY for the brand comparison so a
+ * model that reads the producer instead of the mark resolves to a close match (review), never a hard
+ * fail. Order-independent; applied repeatedly to catch multi-word suffixes like "brewing co".
+ */
+const BRAND_ENTITY_SUFFIX =
+  /\s+(distilleries|distillery|distilling|distillers|distiller|wineries|winery|vineyards|vineyard|breweries|brewery|brewing|brewers|brewer|cellars|cellar|spirits|company|co|inc|llc|ltd|corporation|corp|estates|estate)$/;
+
+function stripBrandEntitySuffixes(s: string): string {
+  let out = s;
+  while (BRAND_ENTITY_SUFFIX.test(out)) out = out.replace(BRAND_ENTITY_SUFFIX, "").trim();
+  return out;
+}
+
+/** Whether `longer` contains `shorter` on WORD boundaries, e.g. "abc distillery" contains "abc". */
+function wordBoundaryContains(longer: string, shorter: string): boolean {
+  if (shorter === "") return false;
+  return (
+    longer === shorter ||
+    longer.startsWith(`${shorter} `) ||
+    longer.endsWith(` ${shorter}`) ||
+    longer.includes(` ${shorter} `)
+  );
+}
+
 /** Malt-beverage absolute limits the ±0.3 pp tolerance may NOT soften (27 CFR 7.65). */
 const MALT_ABV_FLOOR = 0.5;
 const MALT_LOW_ALCOHOL_CAP = 2.5;
@@ -80,6 +106,28 @@ export function compareBrand(args: {
       claimed,
       extracted,
       "Brand matches after normalizing case, spacing, punctuation and smart quotes.",
+    );
+  }
+  // Brand mark vs producer name: "ABC" and "ABC Distillery" are the same brand family. Equal after
+  // stripping a producer suffix, or one read containing the other, is a CLOSE MATCH -> review (not a
+  // hard fail) — so the verdict is stable whether the model reads the mark or the producer. Review
+  // (not pass) keeps a human in the loop, matching the minimize-false-approvals philosophy.
+  const coreC = stripBrandEntitySuffixes(nc);
+  const coreE = stripBrandEntitySuffixes(ne);
+  if (coreC !== "" && coreC === coreE) {
+    return result(
+      "review",
+      claimed,
+      extracted,
+      'Brand matches once a producer suffix (e.g. "Distillery") is set aside — confirm the brand mark vs. the producer name.',
+    );
+  }
+  if (wordBoundaryContains(ne, nc) || wordBoundaryContains(nc, ne)) {
+    return result(
+      "review",
+      claimed,
+      extracted,
+      "One brand name contains the other (e.g. a brand mark vs. the fuller printed name) — confirm they refer to the same brand.",
     );
   }
   const sim = similarity(nc, ne);

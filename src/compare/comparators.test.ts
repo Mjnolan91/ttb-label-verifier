@@ -18,6 +18,18 @@ describe("compareBrand", () => {
     const r = compareBrand({ claimed: "Old Tom Distillery", extracted: "Old Tomm Distillery" });
     expect(r.status).toBe("review");
   });
+  it("REVIEW: brand mark vs producer name ('ABC' vs 'ABC Distillery') — not a hard fail", () => {
+    // The model wavers between the fanciful mark and the producer on labels that print both; this
+    // must not flap to Reject. Both directions resolve to a close match -> review.
+    expect(compareBrand({ claimed: "ABC", extracted: "ABC Distillery" }).status).toBe("review");
+    expect(compareBrand({ claimed: "ABC Distillery", extracted: "ABC" }).status).toBe("review");
+  });
+  it("REVIEW: one brand contains the other ('ABC' vs 'ABC Single Barrel')", () => {
+    expect(compareBrand({ claimed: "ABC", extracted: "ABC Single Barrel" }).status).toBe("review");
+  });
+  it("PASS: identical brand with a producer suffix stays a pass", () => {
+    expect(compareBrand({ claimed: "Old Tom Distillery", extracted: "OLD TOM DISTILLERY" }).status).toBe("pass");
+  });
   it("FAIL: a different brand", () => {
     const r = compareBrand({ claimed: "Old Tom Distillery", extracted: "New Barrel Co" });
     expect(r.status).toBe("fail");
