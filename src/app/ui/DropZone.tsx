@@ -15,6 +15,7 @@ export function DropZone({
   onFiles,
   inputRef,
   describedById,
+  ariaLabel,
   accept = "image/*",
   multiple = true,
 }: {
@@ -22,6 +23,8 @@ export function DropZone({
   onFiles: (files: File[]) => void;
   inputRef?: Ref<HTMLInputElement>;
   describedById?: string;
+  /** Accessible name for the file input — distinguishes otherwise-identical drop targets (e.g. Front vs Back). */
+  ariaLabel?: string;
   accept?: string;
   multiple?: boolean;
 }) {
@@ -79,6 +82,7 @@ export function DropZone({
             e.target.value = "";
           }}
           aria-required="true"
+          aria-label={ariaLabel}
           aria-describedby={describedById}
           className="sr-only"
         />

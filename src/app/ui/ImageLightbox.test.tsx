@@ -37,6 +37,15 @@ describe("ImageLightbox", () => {
     expect(document.activeElement).toBe(trigger);
   });
 
+  it("locks body scroll while open and restores it on close", () => {
+    render(<Harness />);
+    expect(document.body.style.overflow).not.toBe("hidden");
+    fireEvent.click(screen.getByRole("button", { name: /enlarge front label/i }));
+    expect(document.body.style.overflow).toBe("hidden");
+    fireEvent.keyDown(screen.getByRole("dialog", { name: /front label/i }), { key: "Escape" });
+    expect(document.body.style.overflow).not.toBe("hidden");
+  });
+
   it("closes on a backdrop click but not on a click inside the dialog", () => {
     render(<Harness />);
     fireEvent.click(screen.getByRole("button", { name: /enlarge front label/i }));

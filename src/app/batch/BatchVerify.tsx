@@ -242,7 +242,7 @@ export function BatchVerify() {
                       type="button"
                       onClick={() => removeImage(i)}
                       aria-label={`Remove ${img.file.name}`}
-                      className="absolute -right-2 -top-2 inline-flex h-6 w-6 items-center justify-center rounded-full border border-border-strong bg-surface text-sm font-semibold text-ink shadow-card hover:border-fail-600 hover:text-fail-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700"
+                      className="absolute -right-2 -top-2 inline-flex h-11 w-11 items-center justify-center rounded-full border border-border-strong bg-surface text-base font-semibold text-ink shadow-card hover:border-fail-600 hover:text-fail-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700"
                     >
                       ×
                     </button>
@@ -312,7 +312,12 @@ export function BatchVerify() {
       </div>
 
       {rows.length > 0 && (
-        <div className="mt-5 max-h-[32rem] overflow-auto rounded-card border border-border">
+        <div
+          tabIndex={0}
+          role="region"
+          aria-label="Batch extraction results"
+          className="mt-5 max-h-[32rem] overflow-auto rounded-card border border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2"
+        >
           <table className="w-full border-collapse text-left text-sm">
             <caption className="sr-only">Batch extraction results</caption>
             <thead>

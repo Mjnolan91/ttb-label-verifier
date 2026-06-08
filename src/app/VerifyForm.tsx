@@ -259,6 +259,7 @@ export function VerifyForm() {
                   <DropZone
                     id={`${ids.image}-${key}`}
                     multiple={false}
+                    ariaLabel={key === "front" ? "Upload front label (required)" : "Upload back label (optional)"}
                     onFiles={(files) => files[0] && setSlot(key, files[0])}
                     describedById={ids.imageHelp}
                   />

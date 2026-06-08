@@ -27,12 +27,24 @@ export function ImageLightbox({
 }) {
   const closeRef = useRef<HTMLButtonElement>(null);
 
-  // Move focus into the dialog on open and restore it to the trigger on close.
+  // On open: move focus into the dialog, make the rest of the page inert (so the virtual cursor and
+  // pointer can't reach background content — aria-modal alone is only a hint), and lock body scroll.
+  // On close: restore everything and return focus to the trigger.
   useEffect(() => {
     if (!open) return;
     const previouslyFocused = document.activeElement as HTMLElement | null;
+    const main = document.getElementById("main-content");
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    main?.setAttribute("inert", "");
+    main?.setAttribute("aria-hidden", "true");
     closeRef.current?.focus();
-    return () => previouslyFocused?.focus?.();
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      main?.removeAttribute("inert");
+      main?.removeAttribute("aria-hidden");
+      previouslyFocused?.focus?.();
+    };
   }, [open]);
 
   if (!open) return null;

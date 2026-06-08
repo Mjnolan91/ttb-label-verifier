@@ -46,7 +46,7 @@ export function CompletenessView({
   const o = OVERALL[completeness.overall];
   const OverallIcon = TONE_ICON[o.tone];
   return (
-    <section role="status" aria-live="polite" aria-atomic="true" className="mt-6 flex flex-col gap-4">
+    <section aria-label="TTB completeness check" className="mt-6 flex flex-col gap-4">
       <h2
         ref={headingRef}
         tabIndex={-1}
