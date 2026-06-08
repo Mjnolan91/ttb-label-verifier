@@ -97,10 +97,22 @@ function evalWarning(spec: RequirementSpec, e: ExtractedFields): CompletenessEle
       detail: 'The "GOVERNMENT WARNING:" prefix must be in ALL CAPITAL LETTERS (27 CFR 16.22(a)(2)).',
     };
   }
-  // Bold-ness is hard to judge reliably from an image, so it's ADVISORY — surfaced, not failed
-  // (failing a compliant label on an uncertain bold read would not be effective).
+  // Bold is a real CFR requirement (16.22(a)(2)) and a documented agent rejection criterion. A
+  // CONFIDENTLY not-bold prefix (false) is a hard fail — consistent with the comparator (compareWarning)
+  // and the "minimize false approvals" philosophy. UNDETECTABLE bold (null) is not asserted either way;
+  // we surface it for human confirmation rather than failing on absence of evidence.
+  if (e.warningPrefixIsBold === false) {
+    return {
+      ...base(spec),
+      status: "malformed",
+      value: w,
+      detail: 'The "GOVERNMENT WARNING:" prefix must be in BOLD type (27 CFR 16.22(a)(2)).',
+    };
+  }
   const boldNote =
-    e.warningPrefixIsBold === false ? " Also verify the prefix is BOLD (27 CFR 16.22(a)(2))." : "";
+    e.warningPrefixIsBold === null
+      ? " Bold type could not be verified from the image — confirm the prefix is bold (27 CFR 16.22(a)(2))."
+      : "";
   return { ...base(spec), status: "present", value: w, detail: `Present with an ALL-CAPS prefix.${boldNote}` };
 }
 

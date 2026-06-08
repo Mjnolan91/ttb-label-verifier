@@ -57,6 +57,20 @@ describe("checkCompleteness", () => {
     expect(r.overall).toBe("incomplete");
   });
 
+  it("flags a detectably NON-BOLD warning prefix as malformed (27 CFR 16.22(a)(2)) -> incomplete", () => {
+    // Consistent with the comparator (compareWarning fails on bold===false) and the law/Jenny's
+    // practice: a confidently not-bold prefix is a real violation, not a mere advisory.
+    const r = checkCompleteness(ds({ warningPrefixIsBold: false }));
+    expect(statusOf(r, "governmentWarning")).toBe("malformed");
+    expect(r.overall).toBe("incomplete");
+  });
+
+  it("treats UNDETECTABLE bold (null) as present (no assertion), not a violation", () => {
+    const r = checkCompleteness(ds({ warningPrefixIsBold: null }));
+    expect(statusOf(r, "governmentWarning")).toBe("present");
+    expect(r.overall).toBe("complete");
+  });
+
   it("does not fail a sulfite-free wine: sulfite is conditional (>=10 ppm SO2, 27 CFR 4.32(e))", () => {
     const wine = ds({
       classType: "Cabernet Sauvignon Red Wine", // class derived from this text + ABV
