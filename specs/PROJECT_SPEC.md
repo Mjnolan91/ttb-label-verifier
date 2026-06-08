@@ -90,7 +90,7 @@ to review. We prove all of this with an evaluation harness, not assertions.
   supplied application, an accessibility-first single-screen UI, and graceful handling of unreadable
   images (re-upload prompt, never a fabricated verdict).
 - **Differentiators:** real Azure-native providers (Azure OpenAI for `llm`, Azure AI Document
-  Intelligence for `ocr`, plus an OpenAI-direct path for the live demo) behind the generic
+  Intelligence for `ocr`, plus OpenAI- and Gemini-direct paths for the hosted demo) behind the generic
   `VisionProvider` interface, a parallel reconciler that routes disagreements to review, asymmetric
   compliance-aware thresholds (minimize false approvals), and an evaluation harness that turns
   "better than human" into measured precision/recall + latency.
@@ -108,5 +108,6 @@ network. Real label images are **user-supplied later** at the exact paths in
 
 ## Deliverables
 Source repo + README (approach, tools, assumptions, trade-offs, and a mapping of build
-decisions back to the stakeholder needs above), and a deployed URL reviewers can test (Azure
-App Service or Container Apps; the app also runs end-to-end in mock mode with zero keys).
+decisions back to the stakeholder needs above), and a deployed URL reviewers can test (the public
+demo is hosted on Vercel; Azure App Service / Container Apps is the in-tenant production target; the
+app also runs end-to-end in mock mode with zero keys).

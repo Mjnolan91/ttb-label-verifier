@@ -80,18 +80,21 @@ pipeline and the "why". As built, the load-bearing pieces are:
 - **Reading arbitrary images needs a real provider; the default mock only knows the built-in test
   fixtures.** The mock (default, zero keys) keys off the FILENAME and returns the `extracted` block
   from `eval/fixtures/cases.json` — so it only "reads" those fixture filenames, not arbitrary uploads.
-  To read ANY uploaded image, set `VISION_PROVIDER` to a real provider — `openai` (simplest, an OpenAI
-  API key) or `llm`/`ocr`/`ensemble` (Azure in-tenant). OpenAI-direct is the live-demo path; Azure is
-  the documented production target; the deployed URL runs a real provider. (There is no bundled
-  in-app sample picker — that earlier `public/samples/` feature was never built and has been removed.)
+  To read ANY uploaded image, set `VISION_PROVIDER` to a real provider — `openai`/`gemini` (simplest;
+  one API key, no Azure resource) or `llm`/`ocr`/`ensemble` (Azure in-tenant). The hosted Vercel demo
+  runs a real provider (Gemini, via env vars); Azure is the documented in-tenant production target;
+  the deployed URL runs a real provider. (There is no bundled in-app sample picker — that earlier
+  `public/samples/` feature was never built and has been removed.)
 - **Uploads are downscaled in the browser first.** `src/app/imageDownscale.ts` shrinks phone photos
   to ~2000px longest edge (JPEG) to fit the latency/token budget. It NEVER throws (falls back to the
   original) and PRESERVES the filename — so the filename-keyed mock still resolves. Don't rename the
   file on that path; tune the cap via `DEFAULT_MAX_EDGE` there.
-- **Deployment is Azure, on purpose (in-tenant = the firewall-survival story).** Multi-stage
-  `Dockerfile` + Next `output: "standalone"`; ships to Azure App Service or Container Apps. The app
-  runs end-to-end in mock mode with ZERO keys. Step-by-step `az` commands live in the README
-  ("Deploying to Azure") — the source of truth; don't duplicate them here.
+- **Deployment: the public demo is on Vercel; Azure is the in-tenant production target.** Vercel
+  hosts the public demo (auto-deploys from `main`, runs a real provider via env vars) — the quick way
+  to share a working URL. Azure is the production story *on purpose* (in-tenant = the firewall-survival
+  story): multi-stage `Dockerfile` + Next `output: "standalone"`, shipping to Azure App Service or
+  Container Apps. The app runs end-to-end in mock mode with ZERO keys. Step-by-step commands for both
+  live in the README ("Deploying") — the source of truth; don't duplicate them here.
 - **The government-warning text is statutory (27 CFR 16.21) and verbatim** — never reword it to pass
   a test. It was re-verified unchanged as of 2026-06 (the 2025 Surgeon General cancer advisory is a
   proposal, not law). It lives once in `src/domain/warning.ts`, guarded by a verbatim unit test.

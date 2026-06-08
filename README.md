@@ -122,6 +122,11 @@ Honest accounting of the choices and what they cost:
   out-of-the-box runs exercise the *pipeline and verdict logic*, not a real model's reading accuracy.
   Real extraction is opt-in. Reviewers see the deterministic logic working end-to-end immediately;
   judging real OCR/vision accuracy requires supplying a key.
+- **One build-time network dependency: the web font.** `npm test`, `npm run dev`, and the running
+  app are fully offline, but `next/font/google` fetches the **Inter** font once during `npm run build`
+  (then caches it). On Vercel and any CI/Azure pipeline with build-time internet this is a non-issue;
+  for a strictly air-gapped in-tenant build, swap `next/font/google` for `next/font/local` with a
+  self-hosted Inter file. Left as a documented caveat rather than committing font binaries to the repo.
 - **Test fixtures are hermetic and key off the image *filename*, not pixels.** The defect/edge-case
   fixtures stay lightweight `.svg` placeholders (their pixels are never read); a few demo rasters in
   `eval/fixtures/images/` are real images, so a live provider extracts genuine pixels from them. Their
