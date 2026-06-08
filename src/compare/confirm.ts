@@ -11,6 +11,7 @@
 import type { BeverageClass, ExtractedFields, RequirementKey } from "@/domain";
 import { mandatoryElementsFor } from "@/domain";
 import type { FieldStatus } from "./types";
+import { overallVerdict } from "./verify";
 import type { OverallVerdict } from "./verify";
 import { fieldFor, evaluateWarningElement, evaluateAbsentAlcohol } from "./completeness";
 import { compareBrand, compareAlcohol } from "./comparators";
@@ -60,8 +61,6 @@ export interface ConfirmVerdict {
   awaitingConfirmation: boolean;
 }
 
-const abvFromText = (e: ExtractedFields) => parseAlcoholText(e.alcoholContentText).abv;
-
 /** Compare a human EDIT (claimed) against the AI reading (extracted) using the field's comparator. */
 function statusForEdit(
   key: RequirementKey,
@@ -99,7 +98,7 @@ export function confirmVerdict(
   confirmations: Partial<Record<RequirementKey, FieldConfirmation>> = {},
 ): ConfirmVerdict {
   const classText = extracted.classType?.trim() ? extracted.classType : extracted.class;
-  const beverageClass: BeverageClass = resolveBeverageClass(classText, abvFromText(extracted));
+  const beverageClass: BeverageClass = resolveBeverageClass(classText, parseAlcoholText(extracted.alcoholContentText).abv);
 
   const fields: ConfirmFieldResult[] = mandatoryElementsFor(beverageClass).map((spec): ConfirmFieldResult => {
     const c = confirmations[spec.key] ?? { state: "unconfirmed" as ConfirmState };
@@ -128,6 +127,7 @@ export function confirmVerdict(
     const { value: aiRaw, confidence } = fieldFor(spec.key, extracted);
     const aiValue = (aiRaw ?? "").trim();
     const present = aiValue !== "";
+    // A present field with no confidence entry is treated as low-confidence (conservative; matches completeness.ts).
     const lowConf = present && (confidence === undefined || confidence < FIELD_REVIEW_CONFIDENCE);
     const base = {
       key: spec.key, label: spec.label, necessity: spec.necessity,
@@ -138,7 +138,7 @@ export function confirmVerdict(
       const edited = (c.editedValue ?? "").trim();
       if (edited === "") {
         const status: FieldStatus = spec.necessity === "mandatory" ? "fail" : "pass";
-        return { ...base, value: "", flagged: true, needsConfirmation: false, status,
+        return { ...base, value: "", flagged: spec.necessity === "mandatory", needsConfirmation: false, status,
           reason: spec.necessity === "mandatory"
             ? "Confirmed not on the label — a required element for this beverage type is missing."
             : "Not present (only required in certain cases)." };
@@ -152,17 +152,18 @@ export function confirmVerdict(
       return { ...base, value: edited, flagged: status !== "pass", needsConfirmation: false, status, reason };
     }
 
-    if (c.state === "missing") {
-      const status: FieldStatus = spec.necessity === "mandatory" ? "fail" : "pass";
-      return { ...base, value: "", flagged: true, needsConfirmation: false, status,
-        reason: spec.necessity === "mandatory"
-          ? "Confirmed not on the label — a required element for this beverage type is missing."
-          : "Not present (only required in certain cases)." };
-    }
-
     if (c.state === "accepted" && present) {
       return { ...base, value: aiValue, flagged: lowConf, needsConfirmation: false, status: "pass",
         reason: "Confirmed: matches the application." };
+    }
+
+    if (c.state === "missing" || c.state === "accepted") {
+      // "accepted" reaches here only for an absent field (present is handled above) -> confirmed nothing is there.
+      const status: FieldStatus = spec.necessity === "mandatory" ? "fail" : "pass";
+      return { ...base, value: "", flagged: spec.necessity === "mandatory", needsConfirmation: false, status,
+        reason: spec.necessity === "mandatory"
+          ? "Confirmed not on the label — a required element for this beverage type is missing."
+          : "Not present (only required in certain cases)." };
     }
 
     // ---- Unconfirmed (the AI's suggestion). ----
@@ -192,11 +193,7 @@ export function confirmVerdict(
   });
 
   const statuses = fields.map((f) => f.status);
-  const overall: OverallVerdict = statuses.includes("fail")
-    ? "reject"
-    : statuses.includes("review")
-      ? "review"
-      : "approve";
+  const overall = overallVerdict(statuses);
   const awaitingConfirmation = fields.some((f) => f.needsConfirmation);
   return { beverageClass, fields, overall, awaitingConfirmation };
 }

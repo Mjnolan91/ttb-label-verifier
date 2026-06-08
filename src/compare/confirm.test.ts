@@ -85,6 +85,15 @@ describe("confirmVerdict — missing mandatory fields", () => {
     expect(net.status).toBe("pass");
     expect(v.awaitingConfirmation).toBe(false);
   });
+
+  it("accepting an absent mandatory field (nothing to confirm) escalates to reject", () => {
+    const e = spirits({ netContents: undefined });
+    const v = confirmVerdict(e, { netContents: { state: "accepted" } });
+    const net = v.fields.find((f) => f.key === "netContents")!;
+    expect(net.status).toBe("fail");
+    expect(net.needsConfirmation).toBe(false);
+    expect(v.overall).toBe("reject");
+  });
 });
 
 describe("confirmVerdict — edits re-run the field comparator", () => {
@@ -102,6 +111,13 @@ describe("confirmVerdict — edits re-run the field comparator", () => {
     const brand = v.fields.find((f) => f.key === "brand")!;
     expect(brand.status).toBe("review");
     expect(v.overall).toBe("review");
+  });
+
+  it("editing a low-confidence present field re-runs the comparator (match -> pass)", () => {
+    const e = spirits({ confidence: { ...spirits().confidence, netContents: 0.4 } });
+    const v = confirmVerdict(e, { netContents: { state: "edited", editedValue: "750 mL" } });
+    const net = v.fields.find((f) => f.key === "netContents")!;
+    expect(net.status).toBe("pass");
   });
 });
 
