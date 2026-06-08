@@ -321,6 +321,103 @@
         "overall": "review"
       },
       "notes": "DEMO sample (real raster, demo-brand-typo.png). Mirrors brand-typo-review: the label prints brand 'Old Tomm Distillery' (one extra 'm') vs claimed 'Old Tom Distillery' -- a genuine near-miss that survives normalization but is highly similar, so it routes to REVIEW (not pass, not fail). One review, no fail -> review."
+    },
+    {
+      "id": "wine-under14-approve",
+      "imageFilename": "marisol-table-wine-clean.svg",
+      "claimed": {
+        "brand": "Marisol",
+        "classType": "Table Wine",
+        "beverageClass": "Wine (<=14% ABV)",
+        "alcoholContent": "12.5% Alc./Vol.",
+        "netContents": "750 mL"
+      },
+      "extracted": {
+        "brand": { "value": "Marisol", "confidence": 0.97 },
+        "classType": { "value": "Table Wine", "confidence": 0.95 },
+        "alcoholContent": { "value": "13.5% Alc./Vol.", "confidence": 0.96 },
+        "netContents": { "value": "750 mL", "confidence": 0.95 },
+        "class": { "value": "Wine", "confidence": 0.9 },
+        "name": { "value": "Marisol Vineyards", "confidence": 0.93 },
+        "address": { "value": "Sonoma, CA", "confidence": 0.92 },
+        "appellation": { "value": "Sonoma County", "confidence": 0.9 },
+        "sulfiteDeclaration": { "value": "Contains Sulfites", "confidence": 0.92 },
+        "warningText": {
+          "value": "GOVERNMENT WARNING: (1) According to the Surgeon General, women should not drink alcoholic beverages during pregnancy because of the risk of birth defects. (2) Consumption of alcoholic beverages impairs your ability to drive a car or operate machinery, and may cause health problems.",
+          "confidence": 0.97
+        },
+        "warningPrefixIsAllCaps": true,
+        "warningPrefixIsBold": true
+      },
+      "expected": {
+        "perField": { "brand": "pass", "alcohol": "pass", "warning": "pass" },
+        "overall": "approve"
+      },
+      "notes": "NON-SPIRITS class-selected-tolerance case. The application claims 12.5% and the label reads 13.5% Alc./Vol. -- a 1.0 pp gap. That is OUTSIDE the distilled-spirits +/-0.3 pp band but INSIDE the wine <=14% +/-1.5 pp band (27 CFR 4.36(b)(1)), so the verdict turns entirely on the beverage class selecting the right tolerance row. Class/type 'Table Wine' resolves to wineUnder14; 13.5% stays under the 14% tax-class boundary (no 4.36(c) clamp); brand and the canonical all-caps/bold warning pass -> approve. This is the wine approve that proves the +/-1.5 pp band is actually exercised (a spirits-only test suite would never reach it)."
+    },
+    {
+      "id": "wine-over14-boundary-reject",
+      "imageFilename": "oakmoor-port-over14-boundary.svg",
+      "claimed": {
+        "brand": "Oakmoor",
+        "classType": "Tawny Port",
+        "beverageClass": "Wine (>14% ABV)",
+        "alcoholContent": "14.5% Alc./Vol.",
+        "netContents": "750 mL"
+      },
+      "extracted": {
+        "brand": { "value": "Oakmoor", "confidence": 0.97 },
+        "classType": { "value": "Tawny Port", "confidence": 0.95 },
+        "alcoholContent": { "value": "14.0% Alc./Vol.", "confidence": 0.96 },
+        "netContents": { "value": "750 mL", "confidence": 0.95 },
+        "class": { "value": "Wine", "confidence": 0.9 },
+        "name": { "value": "Oakmoor Cellars", "confidence": 0.93 },
+        "address": { "value": "Napa, CA", "confidence": 0.92 },
+        "appellation": { "value": "Napa Valley", "confidence": 0.9 },
+        "sulfiteDeclaration": { "value": "Contains Sulfites", "confidence": 0.92 },
+        "warningText": {
+          "value": "GOVERNMENT WARNING: (1) According to the Surgeon General, women should not drink alcoholic beverages during pregnancy because of the risk of birth defects. (2) Consumption of alcoholic beverages impairs your ability to drive a car or operate machinery, and may cause health problems.",
+          "confidence": 0.97
+        },
+        "warningPrefixIsAllCaps": true,
+        "warningPrefixIsBold": true
+      },
+      "expected": {
+        "perField": { "brand": "pass", "alcohol": "fail", "warning": "pass" },
+        "overall": "reject"
+      },
+      "notes": "The 14% TAX-CLASS BOUNDARY clamp (27 CFR 4.36(c)) -- the asymmetric rule the symmetric +/- value cannot express. The application claims 14.5% (a >14% wine, so the +/-1.0 pp band per 4.36(b)(1) applies) but the label reads 14.0%. Numerically |14.5 - 14.0| = 0.5 pp is INSIDE the +/-1.0 band, so a naive tolerance check would APPROVE it. But a wine stated over 14% may not ride the tolerance down across the 14% tax-class boundary: actual 14.0% falls to/below 14%, which 4.36(c) forbids -> hard alcohol FAIL -> reject. 'Tawny Port' resolves to wineOver14. This is the boundary case that proves the clamp is enforced, not folded into the number."
+    },
+    {
+      "id": "malt-beverage-approve",
+      "imageFilename": "granite-peak-ipa-clean.svg",
+      "claimed": {
+        "brand": "Granite Peak",
+        "classType": "India Pale Ale",
+        "beverageClass": "Malt beverage",
+        "alcoholContent": "6.5% Alc./Vol.",
+        "netContents": "12 FL OZ"
+      },
+      "extracted": {
+        "brand": { "value": "Granite Peak", "confidence": 0.97 },
+        "classType": { "value": "India Pale Ale", "confidence": 0.95 },
+        "alcoholContent": { "value": "6.7% Alc./Vol.", "confidence": 0.96 },
+        "netContents": { "value": "12 FL OZ", "confidence": 0.95 },
+        "class": { "value": "Malt beverage", "confidence": 0.9 },
+        "name": { "value": "Granite Peak Brewing Co.", "confidence": 0.93 },
+        "address": { "value": "Portland, OR", "confidence": 0.92 },
+        "warningText": {
+          "value": "GOVERNMENT WARNING: (1) According to the Surgeon General, women should not drink alcoholic beverages during pregnancy because of the risk of birth defects. (2) Consumption of alcoholic beverages impairs your ability to drive a car or operate machinery, and may cause health problems.",
+          "confidence": 0.97
+        },
+        "warningPrefixIsAllCaps": true,
+        "warningPrefixIsBold": true
+      },
+      "expected": {
+        "perField": { "brand": "pass", "alcohol": "pass", "warning": "pass" },
+        "overall": "approve"
+      },
+      "notes": "MALT-BEVERAGE class-selected-tolerance case. Class/type 'India Pale Ale' resolves to maltBeverage, selecting the +/-0.3 pp band (27 CFR 7.65(c)). The application claims 6.5% and the label reads 6.7% -- a 0.2 pp gap, inside the band -> alcohol PASS. Above the 0.5% floor and not a 'low/reduced alcohol' product, so neither 7.65 absolute limit fires. Brand and the canonical all-caps/bold warning pass -> approve. Pairs with the wine cases so the eval exercises every concrete tolerance row, not just distilled spirits."
     }
   ]
 }

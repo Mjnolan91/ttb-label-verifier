@@ -49,6 +49,9 @@ placeholders are human-viewable documentation of each scenario; they are not con
 | `demo-clean-approve` | `demo-old-tom-clean.png` (real demo raster) | pass | pass | pass | **approve** |
 | `demo-warning-title-case-reject` | `demo-warning-title-case.png` (real demo raster) | pass | pass | **fail** | **reject** |
 | `demo-brand-typo-review` | `demo-brand-typo.png` (real demo raster) | **review** | pass | pass | **review** |
+| `wine-under14-approve` | `marisol-table-wine-clean.svg` | pass | pass | pass | **approve** |
+| `wine-over14-boundary-reject` | `oakmoor-port-over14-boundary.svg` | pass | **fail** | pass | **reject** |
+| `malt-beverage-approve` | `granite-peak-ipa-clean.svg` | pass | pass | pass | **approve** |
 
 ### Verdict model (must match the comparator in `src/compare/`)
 - Per-field status is one of `pass` | `review` | `fail`.
@@ -86,6 +89,20 @@ placeholders are human-viewable documentation of each scenario; they are not con
   optional — the comparator must not require the proof = 2x ABV cross-check when it is absent), and
   the canonical warning with a bold all-caps prefix. All fields pass -> approve. This is the label a
   reviewer can actually upload at the live demo and see verified end to end in mock mode.
+- **Wine ≤14% -> approve** — `Table Wine`, claimed 12.5% vs label 13.5% = **1.0 pp**. Outside the
+  spirits **+/-0.3 pp** band but inside the wine ≤14% **+/-1.5 pp** band (27 CFR 4.36(b)(1)), so the
+  verdict turns on the class selecting the right tolerance row. 13.5% stays under the 14% boundary,
+  brand + canonical warning pass -> approve. Proves the +/-1.5 pp band is actually exercised — a
+  spirits-only suite never reaches it.
+- **Wine >14% (14% boundary) -> reject** — a `Tawny Port` claimed at 14.5% (so the **+/-1.0 pp**
+  >14% band applies) but the label reads **14.0%**. Numerically |14.5 − 14.0| = 0.5 pp is *inside*
+  the band, yet a wine stated over 14% may not ride the tolerance down across the 14% tax-class
+  boundary (**27 CFR 4.36(c)**): actual 14.0% falls to/below 14% -> hard alcohol **fail** -> reject.
+  This is the asymmetric boundary clamp the symmetric +/- value can't express.
+- **Malt beverage -> approve** — `India Pale Ale` resolves to malt, selecting the **+/-0.3 pp** band
+  (27 CFR 7.65(c)); claimed 6.5% vs label 6.7% = 0.2 pp (inside), above the 0.5% floor and not a
+  "low/reduced alcohol" product, so neither 7.65 absolute limit fires. Brand + canonical warning
+  pass -> approve. Together the three non-spirits cases exercise every concrete tolerance row.
 
 ## Real images are user-supplied (per the MANIFEST)
 
@@ -95,8 +112,8 @@ only required once a story exercises a real extraction provider (`VISION_PROVIDE
 live demo. Until then, the `.svg` placeholders keep the whole offline suite green. If you replace an
 `.svg` with a raster image, keep the `imageFilename` in `cases.json` and the path in the MANIFEST in
 lockstep — the filename is the only key the mock uses. (One real image is already wired in:
-`abc-single-barrel-clean.jpg`, the ABC clean-pass demo case; the other seven remain `.svg`
-placeholders.)
+`abc-single-barrel-clean.jpg`, the ABC clean-pass demo case, plus three generated demo rasters
+(`demo-*.png`); the other ten remain `.svg` placeholders.)
 
 ## Editing rules
 
