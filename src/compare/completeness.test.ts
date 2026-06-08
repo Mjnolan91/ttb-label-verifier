@@ -96,6 +96,18 @@ describe("checkCompleteness", () => {
     expect(r.overall).toBe("complete");
   });
 
+  it("falls back to the broad class when classType is empty (benign mis-split) -> class/type present", () => {
+    const r = checkCompleteness(
+      ds({
+        classType: undefined,
+        class: "Whisky",
+        confidence: { ...ds().confidence, classType: undefined, class: 0.9 },
+      }),
+    );
+    expect(statusOf(r, "classType")).toBe("present");
+    expect(r.beverageClass).toBe("distilledSpirits");
+  });
+
   it("a low-confidence present field -> review (not incomplete)", () => {
     const r = checkCompleteness(ds({ confidence: { ...ds().confidence, brand: 0.4 } }));
     expect(statusOf(r, "brand")).toBe("present");

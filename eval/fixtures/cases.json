@@ -23,6 +23,9 @@
         "classType": { "value": "Kentucky Straight Bourbon Whiskey", "confidence": 0.97 },
         "alcoholContent": { "value": "45% Alc./Vol. (90 Proof)", "confidence": 0.98 },
         "netContents": { "value": "750 mL", "confidence": 0.96 },
+        "class": { "value": "Whisky", "confidence": 0.9 },
+        "name": { "value": "Old Tom Distillery", "confidence": 0.95 },
+        "address": { "value": "Louisville, KY", "confidence": 0.93 },
         "warningText": {
           "value": "GOVERNMENT WARNING: (1) According to the Surgeon General, women should not drink alcoholic beverages during pregnancy because of the risk of birth defects. (2) Consumption of alcoholic beverages impairs your ability to drive a car or operate machinery, and may cause health problems.",
           "confidence": 0.97
@@ -107,6 +110,9 @@
         "classType": { "value": "Kentucky Straight Bourbon Whiskey", "confidence": 0.96 },
         "alcoholContent": { "value": "40% Alc./Vol. (80 Proof)", "confidence": 0.97 },
         "netContents": { "value": "750 mL", "confidence": 0.95 },
+        "class": { "value": "Whisky", "confidence": 0.9 },
+        "name": { "value": "Stone’s Throw Distillery", "confidence": 0.94 },
+        "address": { "value": "Bardstown, KY", "confidence": 0.92 },
         "warningText": {
           "value": "GOVERNMENT WARNING: (1) According to the Surgeon General, women should not drink alcoholic beverages during pregnancy because of the risk of birth defects. (2) Consumption of alcoholic beverages impairs your ability to drive a car or operate machinery, and may cause health problems.",
           "confidence": 0.97
@@ -213,6 +219,9 @@
         "classType": { "value": "Straight Rye Whisky", "confidence": 0.96 },
         "alcoholContent": { "value": "45% Alc./Vol.", "confidence": 0.97 },
         "netContents": { "value": "750 mL", "confidence": 0.96 },
+        "class": { "value": "Whisky", "confidence": 0.9 },
+        "name": { "value": "ABC Distillery", "confidence": 0.95 },
+        "address": { "value": "Frederick, MD", "confidence": 0.93 },
         "warningText": {
           "value": "GOVERNMENT WARNING: (1) According to the Surgeon General, women should not drink alcoholic beverages during pregnancy because of the risk of birth defects. (2) Consumption of alcoholic beverages impairs your ability to drive a car or operate machinery, and may cause health problems.",
           "confidence": 0.96
@@ -241,6 +250,9 @@
         "classType": { "value": "Kentucky Straight Bourbon Whiskey", "confidence": 0.97 },
         "alcoholContent": { "value": "45% Alc./Vol. (90 Proof)", "confidence": 0.98 },
         "netContents": { "value": "750 mL", "confidence": 0.96 },
+        "class": { "value": "Whisky", "confidence": 0.9 },
+        "name": { "value": "Old Tom Distillery", "confidence": 0.95 },
+        "address": { "value": "Louisville, KY", "confidence": 0.93 },
         "warningText": {
           "value": "GOVERNMENT WARNING: (1) According to the Surgeon General, women should not drink alcoholic beverages during pregnancy because of the risk of birth defects. (2) Consumption of alcoholic beverages impairs your ability to drive a car or operate machinery, and may cause health problems.",
           "confidence": 0.97

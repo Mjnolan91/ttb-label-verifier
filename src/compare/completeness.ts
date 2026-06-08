@@ -48,8 +48,12 @@ function fieldFor(key: RequirementKey, e: ExtractedFields): { value?: string; co
   switch (key) {
     case "brand":
       return { value: e.brand, confidence: e.confidence.brand };
-    case "classType":
-      return { value: e.classType, confidence: e.confidence.classType };
+    case "classType": {
+      // Fall back to the broad `class` when the specific designation is empty, so a benign
+      // class/classType mis-split doesn't read as a missing class/type designation.
+      const v = e.classType?.trim() ? e.classType : e.class;
+      return { value: v, confidence: e.confidence.classType ?? e.confidence.class };
+    }
     case "alcoholContent":
       return { value: e.alcoholContentText, confidence: e.confidence.alcoholContent };
     case "netContents":
@@ -154,10 +158,9 @@ function evalAbsentAlcohol(spec: RequirementSpec, e: ExtractedFields, cls: Bever
  * extracted `beverageClass`, falling back to resolving it from the class/type text.
  */
 export function checkCompleteness(extracted: ExtractedFields): CompletenessResult {
-  const beverageClass: BeverageClass = resolveBeverageClass(
-    extracted.classType,
-    abvFromText(extracted),
-  );
+  // Resolve the class from the specific designation, falling back to the broad `class` category.
+  const classText = extracted.classType?.trim() ? extracted.classType : extracted.class;
+  const beverageClass: BeverageClass = resolveBeverageClass(classText, abvFromText(extracted));
 
   let lowConfidencePresent = false;
   const elements = mandatoryElementsFor(beverageClass).map((spec): CompletenessElement => {
