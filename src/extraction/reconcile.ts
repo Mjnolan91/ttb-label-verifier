@@ -10,6 +10,7 @@
  */
 import type { ExtractedFields, FieldConfidence } from "@/domain";
 import { similarity } from "@/compare";
+import { FIELD_CATALOG, type ExtractedValueKey } from "./fieldCatalog";
 import type { ImageInput, VisionProvider } from "./VisionProvider";
 
 /** Per-call extraction timeout (~3s) — the mock/offline default; keeps tests fast and deterministic. */
@@ -80,43 +81,14 @@ export function extractWithTimeout(
   });
 }
 
-const VALUE_FIELDS = [
-  "brand",
-  "class",
-  "classType",
-  "alcoholContentText",
-  "netContents",
-  "name",
-  "address",
-  "warningText",
-  "countryOfOrigin",
-  "appellation",
-  "vintage",
-  "varietal",
-  "sulfiteDeclaration",
-  "ageStatement",
-  "commodityStatement",
-] as const;
-type ValueField = (typeof VALUE_FIELDS)[number];
-
+// The merged value fields and their confidence channels are derived from the single field catalog,
+// so a new extracted field is reconciled across front/back automatically (no silent omission here).
+type ValueField = ExtractedValueKey;
+const VALUE_FIELDS: ValueField[] = FIELD_CATALOG.map((d) => d.key);
 /** The FieldConfidence key for a value field (alcoholContentText is keyed as `alcoholContent`). */
-const CONF_KEY: Record<ValueField, keyof FieldConfidence> = {
-  brand: "brand",
-  class: "class",
-  classType: "classType",
-  alcoholContentText: "alcoholContent",
-  netContents: "netContents",
-  name: "name",
-  address: "address",
-  warningText: "warningText",
-  countryOfOrigin: "countryOfOrigin",
-  appellation: "appellation",
-  vintage: "vintage",
-  varietal: "varietal",
-  sulfiteDeclaration: "sulfiteDeclaration",
-  ageStatement: "ageStatement",
-  commodityStatement: "commodityStatement",
-};
+const CONF_KEY: Record<ValueField, keyof FieldConfidence> = Object.fromEntries(
+  FIELD_CATALOG.map((d) => [d.key, d.confKey]),
+) as Record<ValueField, keyof FieldConfidence>;
 
 function norm(s: string | undefined): string {
   return (s ?? "").trim().toLowerCase().replace(/\s+/g, " ");
