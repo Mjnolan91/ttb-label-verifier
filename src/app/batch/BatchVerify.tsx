@@ -13,13 +13,15 @@ import type { BeverageClass, ExtractedFields } from "@/domain";
 import type { CompletenessResult } from "@/compare";
 import type { LabelPosition } from "@/extraction";
 import { groupImagesByProduct } from "@/batch/pairing";
-import { analysisToCsv } from "@/batch/csv";
+import { analysisToCsv, parseClaimedCsv, type ClaimedRow } from "@/batch/csv";
+import { resolveClaimedFor } from "@/batch/claimedMatch";
+import { verifyLabel, type VerifyResult } from "@/compare";
 import type { VerifyApiResponse, VerifyApiError } from "../api/verify/contract";
 import { downscaleForUpload } from "../imageDownscale";
 import { ErrorAlert } from "../ui/ErrorAlert";
 import { StatusBadge } from "../ui/StatusBadge";
-import { type Tone } from "../ui/status";
-import { primaryButtonClass, secondaryButtonClass } from "../ui/fieldStyles";
+import { toneForStatus, type Tone } from "../ui/status";
+import { inputClass, primaryButtonClass, secondaryButtonClass } from "../ui/fieldStyles";
 import { downloadJson, downloadCsv } from "../ui/download";
 import { DropZone } from "../ui/DropZone";
 import { ImageLightbox } from "../ui/ImageLightbox";
@@ -37,6 +39,8 @@ interface BatchRow {
   status: "pending" | "done" | "error";
   extracted?: ExtractedFields;
   completeness?: CompletenessResult;
+  /** Application-match verdict, when an application-values CSV row matched this product. */
+  result?: VerifyResult | null;
   note?: string;
 }
 
@@ -62,7 +66,10 @@ function groupFiles(files: File[]): ProductImages[] {
   }));
 }
 
-async function analyzeProduct(group: ProductImages): Promise<BatchRow> {
+async function analyzeProduct(
+  group: ProductImages,
+  claimedMap: Map<string, ClaimedRow>,
+): Promise<BatchRow> {
   const base: BatchRow = { product: group.product, imageCount: group.images.length, status: "error" };
   try {
     const form = new FormData();
@@ -74,11 +81,25 @@ async function analyzeProduct(group: ProductImages): Promise<BatchRow> {
     const json: VerifyApiResponse | VerifyApiError = await res.json();
     if (!res.ok) return { ...base, note: (json as VerifyApiError).error };
     const r = json as VerifyApiResponse;
+    // If the application-values CSV has a row for this product (by image filename or product stem),
+    // run the same deterministic verifyLabel comparison used on the single screen.
+    const claimedRow = resolveClaimedFor(
+      { product: group.product, images: group.images.map((im) => ({ filename: im.file.name, position: im.position })) },
+      claimedMap,
+    );
+    const result =
+      claimedRow?.brand && r.readable
+        ? verifyLabel(
+            { brand: claimedRow.brand, alcoholContentText: claimedRow.alcoholContent, classType: claimedRow.classType },
+            r.extracted,
+          )
+        : null;
     return {
       ...base,
       status: "done",
       extracted: r.extracted,
       completeness: r.completeness,
+      result,
       note: r.readable ? undefined : r.message,
     };
   } catch {
@@ -97,6 +118,7 @@ export function BatchVerify() {
   const ids = { images: useId(), help: useId() };
   const [images, setImages] = useState<{ file: File; preview: string }[]>([]);
   const [zoom, setZoom] = useState<{ src: string; alt: string } | null>(null);
+  const [claimed, setClaimed] = useState<Map<string, ClaimedRow>>(new Map());
   const [rows, setRows] = useState<BatchRow[]>([]);
   const [running, setRunning] = useState(false);
   const [done, setDone] = useState(0);
@@ -133,7 +155,7 @@ export function BatchVerify() {
     const worker = async () => {
       while (next < groups.length) {
         const idx = next++;
-        const row = await analyzeProduct(groups[idx]);
+        const row = await analyzeProduct(groups[idx], claimed);
         setRows((prev) => {
           const copy = prev.slice();
           copy[idx] = row;
@@ -166,12 +188,13 @@ export function BatchVerify() {
           filename: r.product,
           extracted: r.extracted as ExtractedFields,
           completeness: r.completeness,
+          result: r.result,
         })),
       ),
     );
   }
 
-  const COLS = ["Product", "Type", "Brand", "Class / type", "Alcohol", "Completeness"];
+  const COLS = ["Product", "Type", "Brand", "Class / type", "Alcohol", "Completeness", "Application match"];
 
   return (
     <section className="rounded-card border border-border border-t-4 border-t-brand-600 bg-surface p-6 shadow-card sm:p-8">
@@ -230,6 +253,43 @@ export function BatchVerify() {
           )}
         </div>
 
+        <div>
+          <span className="mb-1.5 block font-medium text-ink">
+            Application values{" "}
+            <span className="font-normal text-ink-muted">(optional CSV: filename, brand, alcohol, class)</span>
+          </span>
+          <input
+            type="file"
+            accept=".csv,text/csv"
+            aria-label="Application values CSV"
+            onChange={async (e) => {
+              const f = e.target.files?.[0];
+              if (f) setClaimed(parseClaimedCsv(await f.text()));
+              e.target.value = "";
+            }}
+            className={inputClass}
+          />
+          <div className="mt-2 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              className={secondaryButtonClass}
+              onClick={() =>
+                downloadCsv(
+                  "application-values-template.csv",
+                  "filename,brand,alcohol,class\nacme-front.jpg,Acme Distillery,40% Alc./Vol. (80 Proof),Vodka\n",
+                )
+              }
+            >
+              Download CSV template
+            </button>
+            {claimed.size > 0 && (
+              <span className="text-sm text-ink-muted">
+                {claimed.size} application row(s) loaded — products that match get an Approve/Review/Reject verdict.
+              </span>
+            )}
+          </div>
+        </div>
+
         {error && <ErrorAlert>{error}</ErrorAlert>}
 
         <div className="flex flex-wrap gap-3">
@@ -285,6 +345,13 @@ export function BatchVerify() {
                       <StatusBadge tone={COMPLETENESS_TONE[r.completeness.overall]} label={r.completeness.overall} />
                     ) : (
                       <span className="text-ink-muted">{r.status === "pending" ? "…" : "—"}</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2.5">
+                    {r.result ? (
+                      <StatusBadge tone={toneForStatus(r.result.overall)} label={r.result.overall} />
+                    ) : (
+                      <span className="text-ink-muted">{claimed.size > 0 ? "no application row" : "—"}</span>
                     )}
                   </td>
                 </tr>
