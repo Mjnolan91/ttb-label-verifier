@@ -60,7 +60,7 @@ export function ConfirmFieldRow({
             <input
               id={inputId}
               className={inputClass}
-              defaultValue={field.value}
+              value={field.value}
               placeholder="(not read — type it if it's on the label)"
               onChange={(e) => onEdit(e.target.value)}
               onKeyDown={(e) => {
@@ -76,6 +76,7 @@ export function ConfirmFieldRow({
             {hasAiValue && (
               <button
                 type="button"
+                aria-label={`Confirm ${field.label}`}
                 onClick={onAccept}
                 className="min-h-[44px] rounded-field border-2 border-pass-600 px-3 text-sm font-semibold text-pass-900 hover:bg-pass-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2"
               >
@@ -84,6 +85,7 @@ export function ConfirmFieldRow({
             )}
             <button
               type="button"
+              aria-label={`Mark ${field.label} as not on the label`}
               onClick={onMarkMissing}
               className="min-h-[44px] rounded-field border-2 border-border-strong px-3 text-sm font-semibold text-ink hover:border-fail-600 hover:text-fail-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2"
             >
@@ -93,7 +95,7 @@ export function ConfirmFieldRow({
         </div>
       )}
 
-      <p className="mt-2 break-words text-sm">{field.reason}</p>
+      {field.reason && <p className="mt-2 break-words text-sm">{field.reason}</p>}
     </li>
   );
 }

@@ -28,7 +28,7 @@ describe("ConfirmFieldRow", () => {
     const q = within(render(
       <ConfirmFieldRow field={field()} onAccept={vi.fn()} onEdit={onEdit} onMarkMissing={vi.fn()} />,
     ).container);
-    fireEvent.change(q.getByLabelText(/Brand name/i), { target: { value: "New Brand" } });
+    fireEvent.change(q.getByRole("textbox"), { target: { value: "New Brand" } });
     expect(onEdit).toHaveBeenCalledWith("New Brand");
   });
 
@@ -41,6 +41,15 @@ describe("ConfirmFieldRow", () => {
     fireEvent.click(q.getByRole("button", { name: /not on the label/i }));
     expect(onMarkMissing).toHaveBeenCalledTimes(1);
     expect(q.queryByRole("button", { name: /confirm/i })).toBeNull();
+  });
+
+  it("reflects an updated field value on re-render (controlled input, no stale value across reads)", () => {
+    const { container, rerender } = render(
+      <ConfirmFieldRow field={field({ aiValue: "Label A", value: "Label A" })} onAccept={vi.fn()} onEdit={vi.fn()} onMarkMissing={vi.fn()} />,
+    );
+    expect((within(container).getByRole("textbox") as HTMLInputElement).value).toBe("Label A");
+    rerender(<ConfirmFieldRow field={field({ aiValue: "Label B", value: "Label B" })} onAccept={vi.fn()} onEdit={vi.fn()} onMarkMissing={vi.fn()} />);
+    expect((within(container).getByRole("textbox") as HTMLInputElement).value).toBe("Label B");
   });
 
   it("a non-editable field (warning) renders no input", () => {
