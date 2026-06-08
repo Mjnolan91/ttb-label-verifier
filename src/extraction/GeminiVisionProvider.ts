@@ -19,7 +19,15 @@ import { defaultFetch, fetchWithRetry, withHardTimeout, type FetchLike } from ".
 // with GEMINI_MODEL — e.g. a `-pro` model for the hardest reads (subtle visual cues like bold).
 // Whatever you choose must support image input + structured output (responseSchema).
 const DEFAULT_MODEL = "gemini-3.5-flash";
-const MAX_OUTPUT_TOKENS = 1500;
+
+// Gemini 3 models "think" by default, and that reasoning is billed against maxOutputTokens AND adds
+// several seconds. For a TRANSCRIPTION task (read what's printed) thinking isn't needed — measured:
+// with thinking ON, the full-schema read hit MAX_TOKENS (1,242 thinking tokens) and ~8s; with
+// thinkingBudget=0 it returned the complete JSON (incl. the bold/all-caps flags) in ~3s. So we
+// disable it to stay inside the latency budget and avoid truncation. A generous token ceiling gives
+// headroom for a -pro model (which may ignore the 0 budget and still think) and verbose labels.
+const THINKING_BUDGET = 0;
+const MAX_OUTPUT_TOKENS = 4096;
 const API_BASE = "https://generativelanguage.googleapis.com/v1beta";
 
 /** Resolved Gemini connection config. */
@@ -164,6 +172,7 @@ export class GeminiVisionProvider implements VisionProvider {
           maxOutputTokens: MAX_OUTPUT_TOKENS,
           responseMimeType: "application/json",
           responseSchema: RESPONSE_SCHEMA,
+          thinkingConfig: { thinkingBudget: THINKING_BUDGET },
         },
       }),
     });

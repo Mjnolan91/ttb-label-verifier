@@ -87,10 +87,13 @@ describe("GeminiVisionProvider.extract — request shape + parsing (HTTP mocked)
     expect(calls[0].init.headers["x-goog-api-key"]).toBe("AIza-test-123");
     const body = JSON.parse(calls[0].init.body ?? "{}") as {
       contents: { parts: { text?: string; inlineData?: { mimeType: string; data: string } }[] }[];
-      generationConfig: { responseMimeType: string; responseSchema?: unknown };
+      generationConfig: { responseMimeType: string; responseSchema?: unknown; thinkingConfig?: { thinkingBudget?: number } };
     };
     expect(body.generationConfig.responseMimeType).toBe("application/json");
     expect(body.generationConfig.responseSchema).toBeTruthy();
+    // Thinking is disabled — on Gemini 3 it would otherwise eat the token budget (truncation) and
+    // blow the latency budget on this transcription task.
+    expect(body.generationConfig.thinkingConfig?.thinkingBudget).toBe(0);
     const inline = body.contents[0].parts.find((p) => p.inlineData)?.inlineData;
     expect(inline?.mimeType).toBe("image/jpeg");
     expect(typeof inline?.data).toBe("string");
