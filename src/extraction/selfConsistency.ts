@@ -60,7 +60,8 @@ export function aggregateSamples(samples: ExtractedFields[]): ExtractedFields {
 }
 
 /** Read the image `samples` times in PARALLEL (sampling mode) through the reconciler, then aggregate
- *  to agreement-based confidence. samples<=1 is a single normal read (preserves provider confidence). */
+ *  to agreement-based confidence. samples<=1 is a single normal read (preserves provider confidence).
+ *  Partial failures are tolerated: aggregates the samples that succeed; throws only if all fail. */
 export async function selfConsistentExtract(
   providers: VisionProvider[],
   image: ImageInput,
@@ -68,8 +69,15 @@ export async function selfConsistentExtract(
   samples: number,
 ): Promise<ExtractedFields> {
   if (samples <= 1) return reconcileExtract(providers, image, timeoutMs);
-  const reads = await Promise.all(
+  const settled = await Promise.allSettled(
     Array.from({ length: samples }, () => reconcileExtract(providers, image, timeoutMs, { sample: true })),
   );
+  const reads = settled
+    .filter((s): s is PromiseFulfilledResult<ExtractedFields> => s.status === "fulfilled")
+    .map((s) => s.value);
+  if (reads.length === 0) {
+    const rejected = settled.find((s): s is PromiseRejectedResult => s.status === "rejected");
+    throw rejected ? rejected.reason : new Error("All self-consistency samples failed.");
+  }
   return aggregateSamples(reads);
 }

@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
-import { aggregateSamples } from "./selfConsistency";
+import { aggregateSamples, selfConsistentExtract } from "./selfConsistency";
 import type { ExtractedFields } from "@/domain";
+import type { VisionProvider } from "./VisionProvider";
 
 function read(brand: string, conf: number, allCaps = true): ExtractedFields {
   return {
@@ -33,5 +34,35 @@ describe("aggregateSamples", () => {
   it("votes the warning flags too (majority all-caps wins)", () => {
     const out = aggregateSamples([read("X", 0.9, true), read("X", 0.9, true), read("X", 0.9, false)]);
     expect(out.warningPrefixIsAllCaps).toBe(true);
+  });
+});
+
+describe("selfConsistentExtract", () => {
+  const img = { filename: "x", data: new Uint8Array([1]) };
+
+  it("aggregates N successful samples to agreement-based confidence", async () => {
+    const brands = ["Old Tom", "Old Tom", "0ld T0m"];
+    let i = 0;
+    const provider: VisionProvider = { name: "gemini", extract: async () => read(brands[i++], 0.9) };
+    const out = await selfConsistentExtract([provider], img, undefined, 3);
+    expect(out.brand).toBe("Old Tom");
+    expect(out.confidence.brand).toBeCloseTo(0.667, 2);
+  });
+
+  it("tolerates a partial sample failure (aggregates the survivors)", async () => {
+    let i = 0;
+    const provider: VisionProvider = {
+      name: "gemini",
+      extract: async () => { i++; if (i === 2) throw new Error("transient 429"); return read("Old Tom", 0.9); },
+    };
+    const out = await selfConsistentExtract([provider], img, undefined, 3);
+    expect(out.brand).toBe("Old Tom");
+    // 2 survivors agreed -> 2/2 = 1.0 (the failed sample is not counted in the denominator)
+    expect(out.confidence.brand).toBe(1);
+  });
+
+  it("rejects only when ALL samples fail", async () => {
+    const provider: VisionProvider = { name: "gemini", extract: async () => { throw new Error("down"); } };
+    await expect(selfConsistentExtract([provider], img, undefined, 3)).rejects.toThrow();
   });
 });
