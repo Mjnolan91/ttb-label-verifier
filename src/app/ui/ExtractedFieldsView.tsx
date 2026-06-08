@@ -1,12 +1,21 @@
 import type { Ref } from "react";
 import type { ExtractedFields } from "@/domain";
+import { HEADLINE_FIELDS, DETAIL_FIELDS, type FieldDescriptor } from "@/extraction/fieldCatalog";
 
 /**
- * ExtractedFieldsView — the extraction-first headline output: what the AI read off the label,
- * field by field, each with the model's confidence, plus the raw JSON. Read-only and verdict-free
- * (compliance pass/fail lives in the optional ResultView). The form moves focus to this section's
- * heading on completion, so focus is the single announcement channel (no overlapping aria-live).
+ * ExtractedFieldsView — the extraction-first output: what the AI read off the label, field by field,
+ * each with the model's confidence, plus the raw JSON. The rows are DERIVED from FIELD_CATALOG (one
+ * source of truth shared with the merge + CSV), split into the few headline fields shown at a glance
+ * and the long tail behind a "show everything" disclosure to keep the screen calm for a 70+ agent.
+ * Read-only and verdict-free (compliance pass/fail lives in the verdict headline / ResultView). The
+ * form moves focus to this section's heading on completion, so focus is the single announcement
+ * channel (no overlapping aria-live).
  */
+
+/** Read a catalog string field off ExtractedFields by key (all catalog value keys are string?). */
+function valueOf(e: ExtractedFields, key: FieldDescriptor["key"]): string | undefined {
+  return (e as unknown as Record<string, string | undefined>)[key];
+}
 
 function confidenceColor(v: number | undefined): string {
   if (typeof v !== "number") return "text-ink-muted";
@@ -16,8 +25,11 @@ function confidenceColor(v: number | undefined): string {
 function ConfidenceTag({ value }: { value: number | undefined }) {
   if (typeof value !== "number") return null;
   return (
-    <span className={`shrink-0 text-xs font-semibold ${confidenceColor(value)}`} title="Model confidence">
-      {Math.round(value * 100)}% conf.
+    <span
+      className={`shrink-0 text-xs font-semibold ${confidenceColor(value)}`}
+      title="How sure the AI is it read this field correctly"
+    >
+      {Math.round(value * 100)}% confident
     </span>
   );
 }
@@ -77,32 +89,22 @@ export function ExtractedFieldsView({
 
       <div className="rounded-card border border-border bg-surface p-5 shadow-card">
         <dl>
-          <Row label="Brand" value={extracted.brand} confidence={c.brand} />
-          {extracted.class ? <Row label="Class" value={extracted.class} confidence={c.class} /> : null}
-          <Row label="Type" value={extracted.classType} confidence={c.classType} />
-          <Row label="Alcohol" value={extracted.alcoholContentText} confidence={c.alcoholContent} />
-          <Row label="Net contents" value={extracted.netContents} confidence={c.netContents} />
-          <Row label="Name" value={extracted.name} confidence={c.name} />
-          <Row label="Address" value={extracted.address} confidence={c.address} />
-          {extracted.countryOfOrigin ? (
-            <Row label="Country of origin" value={extracted.countryOfOrigin} confidence={c.countryOfOrigin} />
-          ) : null}
-          {extracted.appellation ? (
-            <Row label="Appellation" value={extracted.appellation} confidence={c.appellation} />
-          ) : null}
-          {extracted.vintage ? <Row label="Vintage" value={extracted.vintage} confidence={c.vintage} /> : null}
-          {extracted.varietal ? <Row label="Varietal" value={extracted.varietal} confidence={c.varietal} /> : null}
-          {extracted.sulfiteDeclaration ? (
-            <Row label="Sulfites" value={extracted.sulfiteDeclaration} confidence={c.sulfiteDeclaration} />
-          ) : null}
-          {extracted.ageStatement ? (
-            <Row label="Age statement" value={extracted.ageStatement} confidence={c.ageStatement} />
-          ) : null}
-          {extracted.commodityStatement ? (
-            <Row label="Commodity" value={extracted.commodityStatement} confidence={c.commodityStatement} />
-          ) : null}
-          <Row label="Gov. warning" value={extracted.warningText} confidence={c.warningText} />
+          {HEADLINE_FIELDS.map((d) => (
+            <Row key={d.key} label={d.label} value={valueOf(extracted, d.key)} confidence={c[d.confKey]} />
+          ))}
         </dl>
+
+        <details className="mt-3 border-t border-border pt-3">
+          <summary className="cursor-pointer text-sm font-semibold text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2">
+            Show everything we read ({DETAIL_FIELDS.length} more fields)
+          </summary>
+          <dl className="mt-2">
+            {DETAIL_FIELDS.map((d) => (
+              <Row key={d.key} label={d.label} value={valueOf(extracted, d.key)} confidence={c[d.confKey]} />
+            ))}
+          </dl>
+        </details>
+
         <div className="mt-3 flex flex-wrap gap-2 border-t border-border pt-3">
           <Flag label="Warning prefix ALL CAPS" value={extracted.warningPrefixIsAllCaps ? "yes" : "no"} />
           <Flag label="Warning prefix bold" value={boldText} />

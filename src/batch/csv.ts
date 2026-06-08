@@ -4,6 +4,7 @@
  */
 import type { ExtractedFields } from "@/domain";
 import type { VerifyResult, CompletenessResult } from "@/compare";
+import { FIELD_CATALOG } from "@/extraction/fieldCatalog";
 
 /** Claimed values for one label, keyed by its image filename. */
 export interface ClaimedRow {
@@ -112,51 +113,32 @@ const fmtBool = (b: boolean | null | undefined): string =>
   b === true ? "yes" : b === false ? "no" : "";
 
 /**
- * Serialize extracted label data to CSV (the extraction-first export). Verdict columns
- * (brand_status, alcohol_status, warning_status, overall) are appended ONLY when at least one row
- * carries a verification result; rows without a result leave them blank.
+ * Serialize extracted label data to CSV (the extraction-first export). The per-field columns are
+ * DERIVED from FIELD_CATALOG — one `<col>` value + one `<col>_conf` per field — so the CSV covers
+ * exactly the field set the JSON export dumps (no silently-dropped wine/spirits fields). The two
+ * warning format flags and the completeness summary follow; verdict columns (brand_status,
+ * alcohol_status, warning_status, overall) are appended ONLY when at least one row carries a
+ * verification result, leaving them blank for rows without one.
  */
 export function analysisToCsv(rows: AnalysisRow[]): string {
   const hasVerdict = rows.some((r) => r.result);
-  const base = [
-    "filename",
-    "brand",
-    "class",
-    "type",
-    "alcohol",
-    "net_contents",
-    "name",
-    "address",
-    "warning_present",
-    "warning_all_caps",
-    "warning_bold",
-    "brand_conf",
-    "alcohol_conf",
-    "warning_conf",
-    "completeness",
-  ];
+  const fieldCols = FIELD_CATALOG.flatMap((d) => [d.csvColumn, `${d.csvColumn}_conf`]);
+  const base = ["filename", ...fieldCols, "warning_all_caps", "warning_bold", "completeness"];
   const verdictCols = ["brand_status", "alcohol_status", "warning_status", "overall"];
   const header = hasVerdict ? [...base, ...verdictCols] : base;
 
   const body = rows.map((r) => {
     const e = r.extracted;
-    const cells = [
-      r.filename,
-      e.brand ?? "",
-      e.class ?? "",
-      e.classType ?? "",
-      e.alcoholContentText ?? "",
-      e.netContents ?? "",
-      e.name ?? "",
-      e.address ?? "",
-      e.warningText ? "yes" : "no",
+    const eByKey = e as unknown as Record<string, string | undefined>;
+    const cells: string[] = [r.filename];
+    for (const d of FIELD_CATALOG) {
+      cells.push(eByKey[d.key] ?? "", fmtConf(e.confidence[d.confKey]));
+    }
+    cells.push(
       fmtBool(e.warningPrefixIsAllCaps),
       fmtBool(e.warningPrefixIsBold),
-      fmtConf(e.confidence.brand),
-      fmtConf(e.confidence.alcoholContent),
-      fmtConf(e.confidence.warningText),
       r.completeness ? r.completeness.overall : "",
-    ];
+    );
     if (hasVerdict) {
       const v = r.result;
       cells.push(

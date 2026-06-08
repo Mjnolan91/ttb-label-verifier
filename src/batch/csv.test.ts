@@ -68,21 +68,34 @@ describe("resultsToCsv", () => {
 });
 
 describe("analysisToCsv (extraction-first export)", () => {
-  it("emits extraction columns (no verdict columns) when no row has a result", () => {
+  it("emits a value + _conf column for EVERY catalog field (CSV no longer drops wine/spirits fields)", () => {
     const csv = analysisToCsv([{ filename: "x.png", extracted: EXTRACTED }]);
-    const lines = csv.split("\n");
-    const header = lines[0].split(",");
-    for (const col of ["class", "type", "name", "address", "completeness"]) {
+    const header = csv.split("\n")[0].split(",");
+    // The previously-dropped fields are now present, so CSV and JSON cover the same field set.
+    for (const col of [
+      "brand", "type", "alcohol", "net_contents", "warning_text", "class", "name", "address",
+      "country_of_origin", "appellation", "vintage", "varietal", "sulfites", "age_statement",
+      "commodity_statement", "completeness",
+    ]) {
+      expect(header).toContain(col);
+    }
+    for (const col of ["brand_conf", "alcohol_conf", "sulfites_conf"]) {
       expect(header).toContain(col);
     }
     expect(header).not.toContain("class_type");
     expect(header).not.toContain("brand_status"); // no verdict columns
+  });
+
+  it("populates values + confidence and leaves completeness blank when absent", () => {
+    const csv = analysisToCsv([{ filename: "x.png", extracted: EXTRACTED }]);
+    const lines = csv.split("\n");
+    const header = lines[0].split(",");
     const row = lines[1].split(",");
     const get = (k: string) => row[header.indexOf(k)];
     expect(get("brand")).toBe("OLD TOM DISTILLERY");
     expect(get("type")).toBe("Kentucky Straight Bourbon Whiskey");
     expect(get("alcohol")).toBe("45% Alc./Vol. (90 Proof)");
-    expect(get("warning_present")).toBe("yes");
+    expect(get("warning_all_caps")).toBe("yes");
     expect(get("brand_conf")).toBe("0.98");
     expect(get("completeness")).toBe("");
   });
@@ -110,9 +123,14 @@ describe("analysisToCsv (extraction-first export)", () => {
       warningPrefixIsBold: null,
       confidence: {},
     };
-    const line = analysisToCsv([{ filename: "weird,name.png", extracted: sparse }]).split("\n")[1];
-    expect(line.startsWith('"weird,name.png",')).toBe(true); // comma in filename is quoted
-    expect(line).toContain("no,no"); // warning_present=no, warning_all_caps=no
-    expect(line).not.toContain("yes"); // nothing present, bold null -> empty
+    const csv = analysisToCsv([{ filename: "sparse.png", extracted: sparse }]);
+    const header = csv.split("\n")[0].split(",");
+    const cells = csv.split("\n")[1].split(",");
+    expect(cells[header.indexOf("warning_all_caps")]).toBe("no"); // false -> no
+    expect(cells[header.indexOf("warning_bold")]).toBe(""); // null -> empty
+    expect(cells[header.indexOf("brand")]).toBe(""); // nothing read -> blank
+    // A comma in a filename is quoted (kept whole).
+    const quoted = analysisToCsv([{ filename: "weird,name.png", extracted: sparse }]).split("\n")[1];
+    expect(quoted.startsWith('"weird,name.png",')).toBe(true);
   });
 });
