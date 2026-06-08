@@ -104,6 +104,22 @@ describe("analysisToCsv (extraction-first export)", () => {
     expect(lines[2].split(",").slice(-4)).toEqual(["", "", "", ""]); // no result -> blank verdict
   });
 
+  it("the overall column prefers the gated `overall` over result.overall when provided", () => {
+    // The 3-check result alone would approve, but completeness gated it to review — exporting the
+    // gated headline keeps the CSV consistent with the on-screen verdict.
+    const result: VerifyResult = {
+      brand: { status: "pass", claimed: "X", extracted: "X", reason: "" },
+      alcohol: { status: "pass", claimed: "40%", extracted: "40%", reason: "" },
+      warning: { status: "pass", claimed: "", extracted: "", reason: "" },
+      overall: "approve",
+    };
+    const csv = analysisToCsv([{ filename: "a.png", extracted: EXTRACTED, result, overall: "review" }]);
+    const header = csv.split("\n")[0].split(",");
+    const row = csv.split("\n")[1].split(",");
+    expect(row[header.indexOf("overall")]).toBe("review"); // gated headline, not the 3-check "approve"
+    expect(row[header.indexOf("brand_status")]).toBe("pass"); // per-field columns stay 3-check
+  });
+
   it("defangs spreadsheet formula triggers in cell values (CSV injection, CWE-1236)", () => {
     // Extracted values come from importer-supplied label images; a value that opens with =,+,-,@
     // must not execute as a formula when the agent opens the export in Excel/LibreOffice.

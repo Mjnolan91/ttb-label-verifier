@@ -182,7 +182,7 @@ describe("VerifyForm — claimed-vs-application verification", () => {
 
     expect(await q.findByText("Verification result")).toBeTruthy();
     expect(q.getByText("Needs review")).toBeTruthy();
-    expect(q.getByText(/missing a field TTB requires/i)).toBeTruthy();
+    expect(q.getByText(/a field TTB requires for this beverage type/i)).toBeTruthy();
   });
 
   it("shows the re-upload prompt for an unreadable image (never a fabricated verdict)", ASYNC, async () => {

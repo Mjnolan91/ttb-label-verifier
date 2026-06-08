@@ -208,6 +208,9 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
           extracted: response.extracted,
           result: verdict ?? response.result,
           completeness: response.completeness,
+          // Export the GATED headline (matches the on-screen verdict + the batch CSV), not the
+          // ungated 3-check overall — otherwise a label shown as "Needs review" would export approve.
+          overall: combined?.overall ?? undefined,
         },
       ]),
     );

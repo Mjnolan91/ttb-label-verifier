@@ -92,8 +92,8 @@ export function ResultView({
           <p className="mt-1 text-sm">{NEXT_STEP[headline]}</p>
           {gatedByCompleteness && (
             <p className="mt-1 text-sm font-medium">
-              The three checks matched, but the label is missing a field TTB requires for this
-              beverage type — see the completeness check below.
+              The three checks matched, but a field TTB requires for this beverage type is missing or
+              couldn&apos;t be read confidently — see the completeness check below.
             </p>
           )}
         </div>
