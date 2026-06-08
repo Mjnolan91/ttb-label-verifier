@@ -70,3 +70,20 @@ export function IconSpinner(props: IconProps) {
     </Svg>
   );
 }
+
+export function IconClose(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M5 5l10 10M15 5L5 15" />
+    </Svg>
+  );
+}
+
+export function IconZoom(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="8.5" cy="8.5" r="5" />
+      <path d="M12.5 12.5L17 17" />
+    </Svg>
+  );
+}
