@@ -16,10 +16,11 @@
  *    flavors/ingredients other than hops extract, or State law requires (27 CFR 7.63(a)(3), 7.65(a)).
  *
  * Documented simplifications (like tolerances.ts — do not silently "fix" these):
- *  - `sulfiteDeclaration` is modeled MANDATORY for wine. The strict rule is conditional (required at
- *    >= 10 ppm SO2, 27 CFR 4.32(e)) and applies to spirits/malt too (5.63(c)(7) / 7.63(b)(3)), but it
- *    is present on effectively all commercial wine, so we treat it as a wine requirement and surface
- *    the spirits/malt case as out of scope (the extractor does not capture additive disclosures).
+ *  - `sulfiteDeclaration` is modeled CONDITIONAL for wine, matching the CFR: "Contains Sulfites" is
+ *    required only at >= 10 ppm SO2 (27 CFR 4.32(e)), and the ppm cannot be read from a label image.
+ *    So an absent declaration is surfaced as `unverifiable` (review), never a hard "missing" — we do
+ *    not fail a genuinely sulfite-free wine. (The same conditional rule applies to spirits/malt under
+ *    5.63(c)(7) / 7.63(b)(3); those classes don't list it because the extractor can't confirm the ppm.)
  *  - Conditional additive disclosures (FD&C Yellow No. 5, cochineal/carmine, aspartame "PHENYLKETONURICS"
  *    per 4.32/5.63/7.63) are NOT modeled — they are present-only and the extractor does not read them.
  *    (Saccharin disclosure was REPEALED in 2004 and is deliberately absent.)
@@ -97,8 +98,8 @@ const COUNTRY_OF_ORIGIN: RequirementSpec = {
 const SULFITES: RequirementSpec = {
   key: "sulfiteDeclaration",
   label: "Sulfite declaration",
-  necessity: "mandatory",
-  note: "'Contains Sulfites' when >= 10 ppm SO2 (27 CFR 4.32(e)) — present on effectively all wine.",
+  necessity: "conditional",
+  note: "'Contains Sulfites' required only at >= 10 ppm SO2 (27 CFR 4.32(e)); the ppm is not determinable from the image, so an absent declaration is surfaced for review, never failed.",
 };
 const APPELLATION: RequirementSpec = {
   key: "appellation",

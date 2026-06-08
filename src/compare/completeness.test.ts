@@ -57,15 +57,16 @@ describe("checkCompleteness", () => {
     expect(r.overall).toBe("incomplete");
   });
 
-  it("requires a sulfite declaration for wine; missing -> incomplete", () => {
+  it("does not fail a sulfite-free wine: sulfite is conditional (>=10 ppm SO2, 27 CFR 4.32(e))", () => {
     const wine = ds({
       classType: "Cabernet Sauvignon Red Wine", // class derived from this text + ABV
       alcoholContentText: "13.5% Alc./Vol.", // <=14% -> wineUnder14
+      // no sulfiteDeclaration: not determinable from the image, so surfaced, never failed
     });
     const r = checkCompleteness(wine);
     expect(r.beverageClass).toBe("wineUnder14");
-    expect(statusOf(r, "sulfiteDeclaration")).toBe("missing");
-    expect(r.overall).toBe("incomplete");
+    expect(statusOf(r, "sulfiteDeclaration")).toBe("unverifiable");
+    expect(r.overall).not.toBe("incomplete");
   });
 
   it("a wine WITH a sulfite declaration is complete", () => {
