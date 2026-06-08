@@ -1,16 +1,15 @@
 /* eslint-disable @typescript-eslint/no-require-imports -- CommonJS build-time script (not app code) */
 /*
- * generate-demo-labels.cjs — (re)generate the bundled DEMO label images.
+ * generate-demo-labels.cjs — (re)generate the REAL raster demo labels used as eval fixtures.
  *
- * These are REAL, readable raster labels (unlike the hermetic .svg fixture stubs) so the live
- * Azure-vision demo (VISION_PROVIDER=llm) extracts genuine pixels when a reviewer clicks a sample.
- * Authored as SVG here for exact control over the text and the deliberate defects, then rasterized
- * to PNG with sharp (a transitive Next dependency — no new package). Output filenames are kept in
- * lockstep with eval/fixtures/cases.json and src/app/VerifyForm.tsx SAMPLES; the offline mock keys
- * off these filenames, so the same files drive both the offline mock verdict and the real read.
+ * These are REAL, readable raster labels (unlike the hermetic .svg fixture stubs) so a real
+ * provider (VISION_PROVIDER=openai/llm) can extract genuine pixels from them. Authored as SVG
+ * here for exact control over the text and the deliberate defects, then rasterized to PNG with
+ * sharp (a transitive Next dependency — no new package). Output filenames are kept in lockstep
+ * with eval/fixtures/cases.json; the offline mock keys off these filenames.
  *
  * Run from the repo root:  node scripts/generate-demo-labels.cjs
- * Writes to both eval/fixtures/images/ and public/samples/.
+ * Writes to eval/fixtures/images/.
  */
 const sharp = require("sharp");
 const path = require("path");
@@ -103,10 +102,7 @@ const LABELS = {
   "demo-brand-typo.png": { ...BASE, brand1: "Old Tomm", brand2: "Distillery", warningPrefix: "GOVERNMENT WARNING:" },
 };
 
-const outDirs = [
-  path.join(__dirname, "..", "eval", "fixtures", "images"),
-  path.join(__dirname, "..", "public", "samples"),
-];
+const outDirs = [path.join(__dirname, "..", "eval", "fixtures", "images")];
 
 (async () => {
   for (const dir of outDirs) fs.mkdirSync(dir, { recursive: true });
