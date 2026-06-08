@@ -22,10 +22,12 @@ const RESPONSE: VerifyApiResponse = {
     classType: "Vodka",
     alcoholContentText: "40% Alc./Vol.",
     netContents: "750 mL",
+    name: "Acme Distillery",
+    address: "Peoria, IL",
     warningText: CANONICAL_GOVERNMENT_WARNING,
     warningPrefixIsAllCaps: true,
     warningPrefixIsBold: true,
-    confidence: { brand: 0.98, classType: 0.97, alcoholContent: 0.98, netContents: 0.96, warningText: 0.97 },
+    confidence: { brand: 0.98, classType: 0.97, alcoholContent: 0.98, netContents: 0.96, name: 0.95, address: 0.95, warningText: 0.97 },
   },
   result: null,
 };

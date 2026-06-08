@@ -98,6 +98,8 @@ export interface AnalysisRow {
   extracted: ExtractedFields;
   result?: VerifyResult | null;
   completeness?: CompletenessResult;
+  /** The headline verdict after gating on completeness; falls back to result.overall. */
+  overall?: VerifyResult["overall"] | null;
 }
 
 const fmtConf = (n: number | undefined): string => (typeof n === "number" ? n.toFixed(2) : "");
@@ -137,7 +139,7 @@ export function analysisToCsv(rows: AnalysisRow[]): string {
         v ? v.brand.status : "",
         v ? v.alcohol.status : "",
         v ? v.warning.status : "",
-        v ? v.overall : "",
+        r.overall ?? (v ? v.overall : ""),
       );
     }
     return cells.map(csvCell).join(",");

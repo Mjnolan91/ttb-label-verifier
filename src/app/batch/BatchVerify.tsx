@@ -15,7 +15,7 @@ import type { LabelPosition } from "@/extraction";
 import { groupImagesByProduct } from "@/batch/pairing";
 import { analysisToCsv, parseClaimedCsv, type ClaimedRow } from "@/batch/csv";
 import { resolveClaimedFor } from "@/batch/claimedMatch";
-import { verifyLabel, type VerifyResult } from "@/compare";
+import { combinedVerdict, type VerifyResult } from "@/compare";
 import type { VerifyApiResponse, VerifyApiError } from "../api/verify/contract";
 import { downscaleForUpload } from "../imageDownscale";
 import { ErrorAlert } from "../ui/ErrorAlert";
@@ -42,6 +42,8 @@ interface BatchRow {
   completeness?: CompletenessResult;
   /** Application-match verdict, when an application-values CSV row matched this product. */
   result?: VerifyResult | null;
+  /** Headline verdict after gating on completeness. */
+  overall?: VerifyResult["overall"] | null;
   note?: string;
 }
 
@@ -80,9 +82,9 @@ async function analyzeProduct(
       { product: group.product, images: group.images.map((im) => ({ filename: im.file.name, position: im.position })) },
       claimedMap,
     );
-    const result =
+    const combined =
       claimedRow?.brand && r.readable
-        ? verifyLabel(
+        ? combinedVerdict(
             { brand: claimedRow.brand, alcoholContentText: claimedRow.alcoholContent, classType: claimedRow.classType },
             r.extracted,
           )
@@ -92,7 +94,8 @@ async function analyzeProduct(
       status: "done",
       extracted: r.extracted,
       completeness: r.completeness,
-      result,
+      result: combined?.verify ?? null,
+      overall: combined?.overall ?? null,
       note: r.readable ? undefined : r.message,
     };
   } catch {
@@ -186,6 +189,7 @@ export function BatchVerify() {
           extracted: r.extracted as ExtractedFields,
           completeness: r.completeness,
           result: r.result,
+          overall: r.overall,
         })),
       ),
     );
@@ -361,8 +365,8 @@ export function BatchVerify() {
                     )}
                   </td>
                   <td className="px-3 py-2.5">
-                    {r.result ? (
-                      <StatusBadge tone={toneForStatus(r.result.overall)} label={VERDICT_LABEL[r.result.overall]} />
+                    {r.overall ? (
+                      <StatusBadge tone={toneForStatus(r.overall)} label={VERDICT_LABEL[r.overall]} />
                     ) : (
                       <span className="text-ink-muted">{claimed.size > 0 ? "no application row" : "—"}</span>
                     )}
