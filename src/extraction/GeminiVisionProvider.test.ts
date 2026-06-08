@@ -91,9 +91,9 @@ describe("GeminiVisionProvider.extract — request shape + parsing (HTTP mocked)
     };
     expect(body.generationConfig.responseMimeType).toBe("application/json");
     expect(body.generationConfig.responseSchema).toBeTruthy();
-    // Thinking is disabled — on Gemini 3 it would otherwise eat the token budget (truncation) and
-    // blow the latency budget on this transcription task.
-    expect(body.generationConfig.thinkingConfig?.thinkingBudget).toBe(0);
+    // Gemini 3 uses thinkingLevel:"minimal" (not thinkingBudget) — keeps latency inside budget
+    // while staying correct for the gen3 API (thinkingBudget is a legacy 2.x param).
+    expect(body.generationConfig.thinkingConfig).toEqual({ thinkingLevel: "minimal" });
     const inline = body.contents[0].parts.find((p) => p.inlineData)?.inlineData;
     expect(inline?.mimeType).toBe("image/jpeg");
     expect(typeof inline?.data).toBe("string");
@@ -157,6 +157,41 @@ describe("GeminiVisionProvider.extract — request shape + parsing (HTTP mocked)
     });
     await expect(blocked.extract({ filename: "x.jpg", data: new Uint8Array([1]) })).rejects.toThrow(/safety/i);
     await expect(provider.extract({ filename: "x.jpg", data: new Uint8Array([1]) })).rejects.toThrow(/text content/i);
+  });
+});
+
+describe("GeminiVisionProvider — bold pass + tuning", () => {
+  function fetchReturning(text: string) {
+    return (async () => ({ ok: true, status: 200, json: async () => ({ candidates: [{ content: { parts: [{ text }] } }] }) })) as unknown as typeof fetch;
+  }
+  const img = { filename: "x.jpg", data: new Uint8Array([1, 2, 3]), contentType: "image/jpeg" };
+  const cfg = { apiKey: "k", model: "gemini-3.1-pro-preview" };
+
+  it("judgeWarningBold maps BOLDER/SAME/CANNOT_DETERMINE to true/false/null", async () => {
+    const bolder = new GeminiVisionProvider({ config: cfg, fetchImpl: fetchReturning('{"bold":"BOLDER"}') });
+    expect(await bolder.judgeWarningBold!(img)).toBe(true);
+    const same = new GeminiVisionProvider({ config: cfg, fetchImpl: fetchReturning('{"bold":"SAME"}') });
+    expect(await same.judgeWarningBold!(img)).toBe(false);
+    const unk = new GeminiVisionProvider({ config: cfg, fetchImpl: fetchReturning('{"bold":"CANNOT_DETERMINE"}') });
+    expect(await unk.judgeWarningBold!(img)).toBeNull();
+  });
+
+  it("the read request carries gen3 thinkingLevel + per-part media resolution", async () => {
+    type CapturedPart = { text?: string; inlineData?: unknown; mediaResolution?: unknown };
+    type CapturedBody = {
+      generationConfig: { temperature: number; thinkingConfig: unknown };
+      contents: { parts: CapturedPart[] }[];
+    };
+    let body: CapturedBody;
+    const capture = (async (_url: string, init: { body: string }) => {
+      body = JSON.parse(init.body) as CapturedBody;
+      return { ok: true, status: 200, json: async () => ({ candidates: [{ content: { parts: [{ text: "{}" }] } }] }) };
+    }) as unknown as typeof fetch;
+    await new GeminiVisionProvider({ config: cfg, fetchImpl: capture }).extract(img);
+    expect(body!.generationConfig.temperature).toBe(1);
+    expect(body!.generationConfig.thinkingConfig).toEqual({ thinkingLevel: "minimal" });
+    const mediaPart = body!.contents[0].parts.find((p) => p.inlineData);
+    expect(mediaPart?.mediaResolution).toEqual({ level: "media_resolution_high" });
   });
 });
 

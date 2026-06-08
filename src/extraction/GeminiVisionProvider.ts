@@ -11,23 +11,18 @@
  * HTTP layer is injectable so unit tests use no network.
  */
 import type { ExtractedFields } from "@/domain";
-import type { ImageInput, VisionProvider } from "./VisionProvider";
+import type { ExtractOptions, ImageInput, VisionProvider } from "./VisionProvider";
 import { SYSTEM_PROMPT, USER_PROMPT, parseModelJson } from "./LlmVisionProvider";
 import { FIELD_CATALOG } from "./fieldCatalog";
 import { defaultFetch, fetchWithRetry, withHardTimeout, type FetchLike } from "./http";
+import { geminiTuning } from "./geminiTuning";
 
 // Gemini 2.x flash models were retired in 2026; the current line is the Gemini 3 series. Override
 // with GEMINI_MODEL — e.g. a `-pro` model for the hardest reads (subtle visual cues like bold).
 // Whatever you choose must support image input + structured output (responseSchema).
 const DEFAULT_MODEL = "gemini-3.5-flash";
 
-// Gemini 3 models "think" by default, and that reasoning is billed against maxOutputTokens AND adds
-// several seconds. For a TRANSCRIPTION task (read what's printed) thinking isn't needed — measured:
-// with thinking ON, the full-schema read hit MAX_TOKENS (1,242 thinking tokens) and ~8s; with
-// thinkingBudget=0 it returned the complete JSON (incl. the bold/all-caps flags) in ~3s. So we
-// disable it to stay inside the latency budget and avoid truncation. A generous token ceiling gives
-// headroom for a -pro model (which may ignore the 0 budget and still think) and verbose labels.
-const THINKING_BUDGET = 0;
+// A generous token ceiling gives headroom for a -pro model and verbose labels.
 const MAX_OUTPUT_TOKENS = 4096;
 const API_BASE = "https://generativelanguage.googleapis.com/v1beta";
 
@@ -141,12 +136,13 @@ export class GeminiVisionProvider implements VisionProvider {
     this.fetchImpl = opts?.fetchImpl ?? defaultFetch;
   }
 
-  async extract(image: ImageInput, signal?: AbortSignal): Promise<ExtractedFields> {
+  async extract(image: ImageInput, signal?: AbortSignal, options?: ExtractOptions): Promise<ExtractedFields> {
     if (!image.data || image.data.length === 0) {
       throw new Error("The gemini provider requires image bytes (image.data).");
     }
     const base64 = Buffer.from(image.data).toString("base64");
     const url = `${API_BASE}/models/${this.config.model}:generateContent`;
+    const tuning = geminiTuning(this.config.model, options?.sample ? "sample" : "read");
 
     const res = await fetchWithRetry(this.fetchImpl, url, {
       method: "POST",
@@ -162,16 +158,19 @@ export class GeminiVisionProvider implements VisionProvider {
                 ? [{ text: `This image is the ${image.position} label of the product.` }]
                 : []),
               { text: USER_PROMPT },
-              { inlineData: { mimeType: image.contentType ?? "image/jpeg", data: base64 } },
+              {
+                inlineData: { mimeType: image.contentType ?? "image/jpeg", data: base64 },
+                ...(tuning.mediaResolution ? { mediaResolution: tuning.mediaResolution } : {}),
+              },
             ],
           },
         ],
         generationConfig: {
-          temperature: 0,
+          temperature: tuning.temperature,
           maxOutputTokens: MAX_OUTPUT_TOKENS,
           responseMimeType: "application/json",
           responseSchema: RESPONSE_SCHEMA,
-          thinkingConfig: { thinkingBudget: THINKING_BUDGET },
+          thinkingConfig: tuning.thinkingConfig,
         },
       }),
     });
@@ -196,5 +195,47 @@ export class GeminiVisionProvider implements VisionProvider {
       throw new Error("Gemini response did not include any text content.");
     }
     return parseModelJson(content);
+  }
+
+  private static readonly BOLD_PROMPT =
+    'Look ONLY at the government health warning on this label. Compare the visual weight (stroke ' +
+    'width and darkness) of the "GOVERNMENT WARNING:" prefix against the warning body text that ' +
+    'follows it. Is the prefix rendered in a clearly heavier/bolder typeface than the body? ' +
+    "Answer with one word: BOLDER, SAME, or CANNOT_DETERMINE. If there is no government warning, answer CANNOT_DETERMINE.";
+
+  async judgeWarningBold(image: ImageInput, signal?: AbortSignal): Promise<boolean | null> {
+    if (!image.data || image.data.length === 0) return null;
+    const base64 = Buffer.from(image.data).toString("base64");
+    const url = `${API_BASE}/models/${this.config.model}:generateContent`;
+    const tuning = geminiTuning(this.config.model, "bold");
+    try {
+      const res = await fetchWithRetry(this.fetchImpl, url, {
+        method: "POST",
+        headers: { "x-goog-api-key": this.config.apiKey, "content-type": "application/json" },
+        signal: withHardTimeout(signal),
+        body: JSON.stringify({
+          contents: [{ role: "user", parts: [
+            { text: GeminiVisionProvider.BOLD_PROMPT },
+            { inlineData: { mimeType: image.contentType ?? "image/jpeg", data: base64 },
+              ...(tuning.mediaResolution ? { mediaResolution: tuning.mediaResolution } : {}) },
+          ] }],
+          generationConfig: {
+            temperature: tuning.temperature,
+            maxOutputTokens: MAX_OUTPUT_TOKENS,
+            responseMimeType: "application/json",
+            responseSchema: { type: "OBJECT", properties: { bold: { type: "STRING", enum: ["BOLDER", "SAME", "CANNOT_DETERMINE"] } }, required: ["bold"] },
+            thinkingConfig: tuning.thinkingConfig,
+          },
+        }),
+      });
+      if (!res.ok) return null;
+      const json = (await res.json()) as GeminiResponse;
+      const text = firstText(json.candidates?.[0]);
+      if (!text) return null;
+      const verdict = (JSON.parse(text) as { bold?: string }).bold;
+      return verdict === "BOLDER" ? true : verdict === "SAME" ? false : null;
+    } catch {
+      return null;
+    }
   }
 }
