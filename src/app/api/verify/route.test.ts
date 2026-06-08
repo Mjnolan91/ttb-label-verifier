@@ -126,6 +126,24 @@ describe("POST /api/verify — completeness + multi-image", () => {
   });
 });
 
+describe("POST /api/verify — upload guards", () => {
+  function postRaw(files: File[]): Promise<Response> {
+    const form = new FormData();
+    for (const f of files) form.append("image", f);
+    return POST(new Request("http://localhost/api/verify", { method: "POST", body: form }));
+  }
+
+  it("rejects a non-image upload with 415", async () => {
+    const res = await postRaw([new File([new Uint8Array([1, 2, 3, 4])], "doc.pdf", { type: "application/pdf" })]);
+    expect(res.status).toBe(415);
+  });
+
+  it("rejects more than the per-product image cap with 413", async () => {
+    const res = await postRaw(Array.from({ length: 5 }, (_, i) => stubImage(`x${i}.svg`)));
+    expect(res.status).toBe(413);
+  });
+});
+
 describe("POST /api/verify — misconfigured real provider (fail loud, no silent mock fallback)", () => {
   async function withEnv(
     vars: Record<string, string | undefined>,
