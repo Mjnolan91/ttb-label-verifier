@@ -143,25 +143,38 @@ export const USER_PROMPT =
   '"warningText":{"value":string,"confidence":number},' +
   '"warningPrefixIsAllCaps":boolean,"warningPrefixIsBold":boolean|null}\n\n' +
   "Transcribe verbatim. Field rules:\n" +
-  '- brand: brand name as printed (e.g. "ABC", "OLD TOM DISTILLERY").\n' +
-  '- class: the BROAD category only (e.g. "Whisky", "Wine", "Malt beverage", "Brandy").\n' +
-  '- classType: the FULL specific designation / standard of identity (e.g. "Straight Rye Whisky", "Kentucky Straight Bourbon Whiskey", "Cabernet Sauvignon", "India Pale Ale").\n' +
+  "- brand: the FANCIFUL product/brand mark — usually the largest text or a logo wordmark (e.g. " +
+  '"Single Barrel", "Stone\'s Throw"). This is NOT automatically the bottling company: the legally ' +
+  "responsible company belongs in `name`. If the SAME words serve as both the brand mark AND the " +
+  'responsible company (e.g. a label whose only large text is "OLD TOM DISTILLERY"), populate BOTH ' +
+  "`brand` and `name` with them.\n" +
+  "- class: the BROAD category. This is the ONE field you may DERIVE rather than transcribe verbatim " +
+  '(an explicit exception to Hard Rule #2): infer it from the printed designation, e.g. classType ' +
+  '"Kentucky Straight Bourbon Whiskey" -> class "Whisky", "India Pale Ale" -> "Malt beverage", ' +
+  '"Cabernet Sauvignon" -> "Wine".\n' +
+  '- classType: the FULL specific designation / standard of identity, VERBATIM as printed (e.g. ' +
+  '"Straight Rye Whisky", "Kentucky Straight Bourbon Whiskey", "Cabernet Sauvignon", "India Pale Ale").\n' +
   '- alcoholContent: VERBATIM alcohol statement (e.g. "45% Alc./Vol. (90 Proof)", "45% ALC/VOL"); do NOT convert units or compute proof.\n' +
   '- netContents: net contents as printed (e.g. "750 mL", "750 ML").\n' +
-  '- name: the responsible-party COMPANY NAME only. It usually follows a verb like "DISTILLED & ' +
+  "- name: the responsible-party COMPANY NAME only. It usually follows a verb like \"DISTILLED & " +
   'BOTTLED BY:", "PRODUCED BY", "IMPORTED BY" — e.g. from "DISTILLED AND BOTTLED BY: ABC DISTILLERY, ' +
   'FREDERICK, MD" the name is "ABC Distillery". Do NOT include the verb or the address.\n' +
   '- address: the responsible-party ADDRESS only (street/city/state), e.g. "Frederick, MD". Separate from name.\n' +
+  "  NOTE: `name`, `address`, and `commodityStatement` are all PARSED FROM THE SAME printed " +
+  "responsibility line — populate all three from it; do NOT leave name/address empty just because " +
+  "commodityStatement is filled.\n" +
   '- countryOfOrigin: e.g. "Product of Scotland" (imports); "" if none.\n' +
   '- appellation: wine appellation of origin, e.g. "Napa Valley".\n' +
   '- vintage: wine vintage year, e.g. "2019".\n' +
   '- varietal: grape variety, e.g. "Cabernet Sauvignon".\n' +
   '- sulfiteDeclaration: e.g. "Contains Sulfites"; "" if none.\n' +
   '- ageStatement: e.g. "Aged 4 Years"; "" if none.\n' +
-  '- commodityStatement: the full responsibility/commodity statement incl. the verb (e.g. "Distilled and bottled by ...").\n' +
+  '- commodityStatement: the full responsibility/commodity statement incl. the verb (e.g. "Distilled and bottled by ABC Distillery, Frederick, MD").\n' +
   '- warningText: the FULL government warning, verbatim from GOVERNMENT/Government through "...health problems.", preserving "(1) ... (2) ...". "" if absent.\n' +
   '- warningPrefixIsAllCaps: true ONLY if the "GOVERNMENT WARNING:" prefix is ALL CAPITAL LETTERS; false if title/mixed case.\n' +
-  '- warningPrefixIsBold: true if that prefix is clearly bolder than the body; false if clearly same weight; null if unsure (never guess true).\n' +
+  '- warningPrefixIsBold: true if that prefix is clearly bolder than the body; false ONLY if it is ' +
+  "clearly the SAME weight as the body (a real violation); null if you cannot tell. When unsure, " +
+  "return null — never guess true OR false (a wrong false rejects a compliant label).\n" +
   "- confidence: per-field legibility confidence in [0,1]; empty/illegible <= 0.3.";
 
 function coerceConfidenced(v: unknown): RawConfidencedValue | undefined {
