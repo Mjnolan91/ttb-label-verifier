@@ -115,7 +115,9 @@ const fmtBool = (b: boolean | null | undefined): string =>
  * verification result, leaving them blank for rows without one.
  */
 export function analysisToCsv(rows: AnalysisRow[]): string {
-  const hasVerdict = rows.some((r) => r.result);
+  // Emit the verdict columns when a row carries EITHER a per-field result (batch) or just a gated
+  // headline `overall` (the single confirm-to-approve screen, which has no per-field VerifyResult).
+  const hasVerdict = rows.some((r) => r.result || r.overall);
   const fieldCols = FIELD_CATALOG.flatMap((d) => [d.csvColumn, `${d.csvColumn}_conf`]);
   const base = ["filename", ...fieldCols, "warning_all_caps", "warning_bold", "completeness"];
   const verdictCols = ["brand_status", "alcohol_status", "warning_status", "overall"];

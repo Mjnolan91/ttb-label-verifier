@@ -104,6 +104,18 @@ describe("analysisToCsv (extraction-first export)", () => {
     expect(lines[2].split(",").slice(-4)).toEqual(["", "", "", ""]); // no result -> blank verdict
   });
 
+  it("emits the overall column for a confirm-screen row with a gated overall but no per-field result", () => {
+    // The single confirm-to-approve screen exports only the gated `overall` (it has no 3-field
+    // VerifyResult). The verdict columns must still appear, with the per-field cells left blank.
+    const csv = analysisToCsv([{ filename: "x.png", extracted: EXTRACTED, overall: "approve" }]);
+    const lines = csv.split("\n");
+    const header = lines[0].split(",");
+    expect(header).toContain("overall");
+    const row = lines[1].split(",");
+    expect(row[header.indexOf("overall")]).toBe("approve");
+    expect(row[header.indexOf("brand_status")]).toBe(""); // confirm flow has no per-field VerifyResult
+  });
+
   it("the overall column prefers the gated `overall` over result.overall when provided", () => {
     // The 3-check result alone would approve, but completeness gated it to review — exporting the
     // gated headline keeps the CSV consistent with the on-screen verdict.
