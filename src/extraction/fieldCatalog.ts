@@ -63,16 +63,17 @@ export const FIELD_CATALOG: readonly FieldDescriptor[] = [
   {
     key: "brand", rawKey: "brand", confKey: "brand", label: "Brand name", csvColumn: "brand", group: "headline",
     description:
-      "The BRAND NAME as it appears in the product's primary masthead / wordmark — the FULL name the " +
-      "product is marketed under, e.g. \"Stone's Throw\", \"ABC Single Barrel\". Capture the COMPLETE " +
-      "prominent brand presentation, INCLUDING descriptor words shown as part of it such as \"Single Barrel\", " +
-      "\"Small Batch\", or \"Reserve\" — do NOT drop them. EXCLUDE only: the class/type designation " +
-      "(e.g. \"Straight Rye Whisky\", \"India Pale Ale\" — that goes in classType) and the separate, " +
-      "legally-responsible producer/bottler entity (that goes in `name`). Producer handling: (a) if the label " +
-      "shows the marketed brand AND a separate longer producer name (brand \"ABC Single Barrel\" + producer " +
-      "\"ABC Distillery\"), put the marketed brand in `brand` and the producer in `name` — never the producer " +
-      "entity in `brand`; (b) if the SAME words are the ONLY prominent name (only large text is " +
-      "\"OLD TOM DISTILLERY\"), populate BOTH `brand` and `name`. Transcribe verbatim; do not normalize.",
+      "The BRAND NAME — in TTB's terms, the name under which the product (or line of products) is SOLD, shown " +
+      "in the primary masthead / wordmark, e.g. \"Stone's Throw\", \"Jolly Jerry's\". Per TTB, if the product is " +
+      "NOT sold under a separate brand name, the bottler / distiller / importer COMPANY NAME is treated as the " +
+      "brand: so when the only prominent name is e.g. \"OLD TOM DISTILLERY\", populate BOTH `brand` and `name` " +
+      "with it. Do NOT fold any of these into the brand: (a) the class/type designation (e.g. \"Rum\", " +
+      "\"Straight Rye Whisky\" -> that is classType); (b) a distinctive or fanciful / \"sell\" name or descriptive " +
+      "phrase (e.g. \"Spiced Rum\", \"Single Barrel\", \"Small Batch\", \"Reserve\") -> those are NOT the brand " +
+      "name; (c) marketing puffery (\"Superior\", \"Premium\", \"Smooth\"). When the masthead pairs a brand with a " +
+      "separate, longer producer name (brand \"ABC\" + producer \"ABC Distillery\"), put the brand in `brand` and " +
+      "the producer in `name`. Transcribe verbatim; do not normalize. If unsure where a word belongs, lower the " +
+      "confidence so a person can confirm.",
   },
   {
     key: "classType", rawKey: "classType", confKey: "classType", label: "Class / type", csvColumn: "type", group: "headline",
@@ -86,7 +87,12 @@ export const FIELD_CATALOG: readonly FieldDescriptor[] = [
       "designation is \"Rum\" (\"Superior\" is marketing puffery; \"Caribbean\" is a geographic descriptor, not the " +
       "class). NEVER add a word that is not printed (do not write \"Spiced\", \"Reserve\", \"Aged\", etc. unless that " +
       "exact word appears). If you are unsure whether a word belongs in the designation, KEEP it but LOWER the " +
-      "confidence so a person can confirm. Transcribe the designation words verbatim (preserve printed spelling/case).",
+      "confidence so a person can confirm. Transcribe the designation words verbatim (preserve printed spelling/case). " +
+      "SPECIALTY products that do NOT fit a standard of identity have no single class word: there, TTB treats the " +
+      "distinctive or fanciful name TOGETHER WITH the statement of composition as the class/type designation — " +
+      "capture that whole designation here (e.g. fanciful \"Spiced Rum\" + statement of composition " +
+      "\"Rum with natural flavors added\"). A fanciful name alone (\"Spiced Rum\") does NOT by itself satisfy the " +
+      "class/type requirement.",
   },
   {
     key: "alcoholContentText", rawKey: "alcoholContent", confKey: "alcoholContent", label: "Alcohol content", csvColumn: "alcohol", group: "headline",

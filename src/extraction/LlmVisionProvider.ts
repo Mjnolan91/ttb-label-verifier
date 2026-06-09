@@ -129,9 +129,12 @@ export const SYSTEM_PROMPT =
   "for its value and a LOW confidence (<= 0.3).\n" +
   "3. Report per-field confidence in [0,1] honestly, reflecting both how legible the text is AND how sure " +
   "you are the words belong in that field; when unsure which field a word belongs to, lower the confidence.\n" +
-  "4. MARKETING vs LEGAL TEXT: promotional or fanciful adjectives (e.g. \"Superior\", \"Premium\", \"Smooth\", " +
-  "\"Handcrafted\", \"Legendary\") and tasting/marketing prose are NOT class/type designations — never place " +
-  "them in classType; capture only the standard-of-identity designation there.\n" +
+  "4. TTB FIELD ALLOCATION — keep the legal categories distinct: the BRAND NAME is the name the product is " +
+  "SOLD under (if there is no separate brand, the producer/bottler/importer company name is the brand). The " +
+  "CLASS/TYPE DESIGNATION is the standard of identity (\"Rum\", \"Vodka\"). A distinctive or fanciful / \"sell\" " +
+  "name (e.g. \"Spiced Rum\", \"Single Barrel\") and marketing puffery (\"Superior\", \"Premium\", \"Smooth\", " +
+  "\"Handcrafted\", \"Legendary\") are NEITHER the brand NOR, by themselves, the class/type — never put them in " +
+  "`brand`, and never put puffery in `classType`.\n" +
   "5. Return exactly ONE JSON object and nothing else — no prose, no markdown, no code fences.\n" +
   "6. A product may have several label images (front/back/neck). You are shown ONE of them — extract " +
   'only what is visible on THIS image and leave the rest "" with low confidence.';
