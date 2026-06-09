@@ -85,13 +85,13 @@ export function combinedVerdict(
   const completeness = checkCompleteness(extracted);
   const completenessVerdict = COMPLETENESS_VERDICT[completeness.overall];
 
-  // Safety net: callers (VerifyForm/BatchVerify) should pre-validate before passing a non-null
-  // `claimed`, but if a partially-filled application object arrives we treat it as "no comparison"
-  // rather than running verifyLabel with a blank brand/alcohol.
-  const hasClaimed =
-    claimed != null &&
-    (claimed.brand ?? "").trim() !== "" &&
-    (claimed.alcoholContentText ?? "").trim() !== "";
+  // Safety net: callers pre-validate before passing a non-null `claimed`. The single screen now gates
+  // on the FULL per-type required-input set (requiredInputKeysFor) before getting here, and alcohol is
+  // NOT mandatory for every class (wine ≤14% table-wine substitution; malt-optional; cider), so the net
+  // requires only BRAND — the one input mandatory for every beverage type. verifyLabel still compares an
+  // absent alcohol to `review` (never approves it), so a missing-but-not-required alcohol can't be
+  // silently approved.
+  const hasClaimed = claimed != null && (claimed.brand ?? "").trim() !== "";
   if (!hasClaimed) {
     return { overall: null, verify: null, completeness, gatedByCompleteness: false };
   }

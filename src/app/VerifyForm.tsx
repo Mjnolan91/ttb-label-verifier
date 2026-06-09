@@ -3,23 +3,33 @@
 /**
  * VerifyForm — the single "verify a label" screen (the spec's core loop).
  *
- * Drop a product's label image(s) — front, back, neck — and the AI reads them TOGETHER into one
- * structured record. The screen ALWAYS runs the deterministic TTB completeness check; when the agent
- * also enters the application's claimed values (brand + alcohol content), it LEADS with the
- * label-vs-application comparison — "Brand matches? ABV correct? Government warning there?" → Approve
- * / Needs review / Reject — gated on completeness. No typing required to read. Accessibility
- * (WCAG 2.1 AA): labelled controls, >=44px targets, visible focus, aria-live result regions, focus
- * moved to the result heading.
+ * Drop a product's label image(s) — front, back — and the AI reads them TOGETHER into one structured
+ * record. The screen ALWAYS runs the deterministic TTB completeness check; the agent then confirms the
+ * application's values (the AI's reading is SUGGESTED in grey — Tab or "Accept all" to accept), and the
+ * screen LEADS with the label-vs-application comparison once every field TTB REQUIRES for the beverage
+ * type is supplied. The required set is DYNAMIC per type (requiredInputKeysFor, from the CFR matrix):
+ * spirits/wine>14%/unknown require alcohol; wine≤14%/malt/cider don't. Accessibility (WCAG 2.1 AA):
+ * labelled controls, >=44px targets, visible focus, aria-live result regions, focus moved to the result.
  */
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import type { VerifyApiResponse, VerifyApiError } from "./api/verify/contract";
 import type { LabelPosition } from "@/extraction";
-import { combinedVerdict, toClaimedFields, type CombinedVerdict } from "@/compare";
-import type { ClaimedFields } from "@/domain";
+import {
+  combinedVerdict,
+  resolveBeverageClass,
+  parseAlcoholText,
+  requiredInputKeysFor,
+  classChoiceFor,
+  CLASS_CHOICES,
+  type ClassChoice,
+  type CombinedVerdict,
+} from "@/compare";
+import type { BeverageClass, ClaimedFields, RequirementKey } from "@/domain";
 import { ExtractedFieldsView } from "./ui/ExtractedFieldsView";
 import { CompletenessView } from "./ui/CompletenessView";
 import { ResultView } from "./ui/ResultView";
 import { PipelineSteps } from "./ui/PipelineSteps";
+import { CLASS_DISPLAY_LABEL } from "./ui/beverageClass";
 import { downscaleForUpload } from "./imageDownscale";
 import { DropZone } from "./ui/DropZone";
 import { ErrorAlert } from "./ui/ErrorAlert";
@@ -30,7 +40,7 @@ import { analysisToCsv } from "@/batch/csv";
 import { ImageLightbox } from "./ui/ImageLightbox";
 import { ForwardLookingNote } from "./ui/ForwardLookingNote";
 import { VERDICT_LABEL } from "./ui/status";
-import { IconReview, IconSpinner, IconZoom } from "./ui/icons";
+import { IconReview, IconSpinner, IconZoom, IconPass } from "./ui/icons";
 
 type SubmitState = "idle" | "loading" | "done" | "error";
 interface LabelImage {
@@ -44,6 +54,31 @@ type SlotKey = "front" | "back";
 const orderedImagesOf = (s: { front?: LabelImage; back?: LabelImage }): LabelImage[] =>
   [s.front, s.back].filter(Boolean) as LabelImage[];
 
+/** Human label for each application input / requirement key (used by the "still needed" checklist). */
+const KEY_LABEL: Record<RequirementKey, string> = {
+  brand: "Brand",
+  classType: "Class / type",
+  alcoholContent: "Alcohol content",
+  netContents: "Net contents",
+  name: "Producer / bottler name",
+  address: "Producer / bottler address",
+  governmentWarning: "Government warning",
+  countryOfOrigin: "Country of origin",
+  sulfiteDeclaration: "Sulfite declaration",
+  ageStatement: "Age statement",
+  appellation: "Appellation of origin",
+};
+
+/** The amber input treatment for a LOW-CONFIDENCE AI suggestion — the agent should scrutinise it
+ *  before accepting. Distinct from inputClass so the "yellow highlight" is unmistakable. */
+const LOW_CONF_INPUT =
+  "min-h-[44px] w-full rounded-field border-2 border-review-500 bg-review-50 px-3 py-2.5 text-ink " +
+  "placeholder:text-review-700 shadow-sm transition focus-visible:outline-none focus-visible:border-brand-600 " +
+  "focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2";
+
+const FIELD_REVIEW_CONFIDENCE = 0.7;
+const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
+
 export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
   // The label is uploaded into two explicit slots — Front (required) and Back (optional) — so the
   // agent says what each image is; position is fixed by the slot (no order-guessing, no dropdown).
@@ -51,9 +86,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
   const [state, setState] = useState<SubmitState>("idle");
   const [formError, setFormError] = useState<string | null>(null);
   const [response, setResponse] = useState<VerifyApiResponse | null>(null);
-  // The application values the label is verified AGAINST — the reference the tool exists to check.
-  // Brand + alcohol are required to produce a verdict; the rest are compared when the application
-  // lists them. These persist across re-reads of the same product (no retyping).
+  // The application values the label is verified AGAINST. These persist across re-reads (no retyping).
   const [claimBrand, setClaimBrand] = useState("");
   const [claimAlcohol, setClaimAlcohol] = useState("");
   const [claimClass, setClaimClass] = useState("");
@@ -61,6 +94,9 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
   const [claimName, setClaimName] = useState("");
   const [claimAddress, setClaimAddress] = useState("");
   const [claimCountry, setClaimCountry] = useState("");
+  // The beverage type the required-field set is driven by. null = use the AI's reading; a value = the
+  // agent overrode it. The wine ≤14/>14 split is derived from ABV, never a human pick.
+  const [classChoice, setClassChoice] = useState<ClassChoice | null>(null);
   // The image currently shown full-size in the lightbox, if any.
   const [zoom, setZoom] = useState<{ src: string; alt: string } | null>(null);
 
@@ -69,6 +105,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
     imageHelp: useId(),
     err: useId(),
     heading: useId(),
+    appType: useId(),
     appBrand: useId(),
     appAlcohol: useId(),
     appClass: useId(),
@@ -77,48 +114,87 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
     appAddress: useId(),
     appCountry: useId(),
   };
-  // One result heading owns focus after a read; only one result branch mounts at a time, so a single
-  // ref attached to whichever headline renders (comparison / completeness / unreadable) is enough.
   const headlineRef = useRef<HTMLHeadingElement>(null);
-  // Monotonic token so an in-flight read whose image set has since changed is ignored.
   const readToken = useRef(0);
 
-  // When a read completes, move focus to the result heading so a keyboard/screen-reader user lands on
-  // the headline outcome. Keyed on `state` only so live recompute (typing application values) never
-  // steals focus.
   useEffect(() => {
     if (state !== "done") return;
     headlineRef.current?.focus();
   }, [state]);
 
   const readable = state === "done" && Boolean(response?.readable);
+  const extracted = readable && response ? response.extracted : undefined;
 
-  // The application values, or null when not enough is entered to compare (needs BOTH brand AND
-  // alcohol — toClaimedFields owns that rule, shared with the batch screen).
-  const claimed: ClaimedFields | null = useMemo(
-    () =>
-      toClaimedFields({
-        brand: claimBrand,
-        alcoholContentText: claimAlcohol,
-        classType: claimClass,
-        netContents: claimNet,
-        name: claimName,
-        address: claimAddress,
-        countryOfOrigin: claimCountry,
-      }),
-    [claimBrand, claimAlcohol, claimClass, claimNet, claimName, claimAddress, claimCountry],
-  );
+  // The AI's per-field suggestion + confidence, and which application input it maps to. The required
+  // set is dynamic (below), so each input is rendered uniformly and marked required per the resolved type.
+  const appInputs: {
+    key: RequirementKey;
+    id: string;
+    label: string;
+    value: string;
+    set: (v: string) => void;
+    suggestion?: string;
+    confidence?: number;
+    hint?: string;
+  }[] = [
+    { key: "brand", id: ids.appBrand, label: "Brand", value: claimBrand, set: setClaimBrand, suggestion: extracted?.brand, confidence: extracted?.confidence.brand },
+    { key: "classType", id: ids.appClass, label: "Class / type", value: claimClass, set: setClaimClass, suggestion: extracted?.classType?.trim() ? extracted.classType : extracted?.class, confidence: extracted?.confidence.classType ?? extracted?.confidence.class },
+    { key: "alcoholContent", id: ids.appAlcohol, label: "Alcohol content", value: claimAlcohol, set: setClaimAlcohol, suggestion: extracted?.alcoholContentText, confidence: extracted?.confidence.alcoholContent },
+    { key: "netContents", id: ids.appNet, label: "Net contents", value: claimNet, set: setClaimNet, suggestion: extracted?.netContents, confidence: extracted?.confidence.netContents },
+    { key: "name", id: ids.appName, label: "Producer / bottler name", value: claimName, set: setClaimName, suggestion: extracted?.name, confidence: extracted?.confidence.name },
+    { key: "address", id: ids.appAddress, label: "Producer / bottler address", value: claimAddress, set: setClaimAddress, suggestion: extracted?.address, confidence: extracted?.confidence.address },
+    { key: "countryOfOrigin", id: ids.appCountry, label: "Country of origin", value: claimCountry, set: setClaimCountry, suggestion: extracted?.countryOfOrigin, confidence: extracted?.confidence.countryOfOrigin, hint: "imports only" },
+  ];
 
-  // Always compute completeness (the law-based headline when nothing is being compared); the
-  // claimed-vs-label comparison rides on top when application values are supplied. Pure + client-side,
-  // so typing application values recomputes instantly with no re-read.
-  const combined: CombinedVerdict | null = useMemo(
-    () => (readable && response ? combinedVerdict(claimed, response.extracted) : null),
-    [readable, response, claimed],
-  );
+  // Resolve the beverage class that DRIVES the required set: the agent's override wins, else the AI's
+  // reading; the wine ≤14/>14 split uses the ABV (typed value preferred, else the label's).
+  const aiClassText = extracted ? (extracted.classType?.trim() ? extracted.classType : extracted.class) : undefined;
+  const effectiveAbv = parseAlcoholText(claimAlcohol).abv ?? parseAlcoholText(extracted?.alcoholContentText).abv;
+  const beverageClass: BeverageClass = resolveBeverageClass(classChoice ?? aiClassText, effectiveAbv);
+  const selectorChoice: ClassChoice = classChoice ?? classChoiceFor(beverageClass);
 
-  // Read the current image set (front/back/...) together. Triggered from the handlers, not an effect,
-  // so the AI reads automatically the moment images change — with no manual "go" button.
+  // The dynamic required-input set for this type (brand/class/type/net/name/address always; alcohol only
+  // where the law makes it mandatory), and which of those are still empty (block the verdict until none).
+  const requiredKeys = extracted ? requiredInputKeysFor(beverageClass) : [];
+  const valueByKey = (k: RequirementKey): string =>
+    appInputs.find((f) => f.key === k)?.value ?? "";
+  const missingKeys = requiredKeys.filter((k) => valueByKey(k).trim() === "");
+  const applicationComplete = Boolean(extracted) && missingKeys.length === 0;
+
+  // The application object, built only when every required field is supplied (else null → block).
+  const opt = (v: string): string | undefined => (v.trim() ? v.trim() : undefined);
+  const claimed: ClaimedFields | null = applicationComplete
+    ? {
+        brand: claimBrand.trim(),
+        alcoholContentText: claimAlcohol.trim() || undefined,
+        classType: opt(claimClass),
+        netContents: opt(claimNet),
+        name: opt(claimName),
+        address: opt(claimAddress),
+        countryOfOrigin: opt(claimCountry),
+        beverageClass,
+      }
+    : null;
+
+  // Completeness always runs (the law-based supporting check); the claimed-vs-label comparison rides on
+  // top once the application is complete. Pure + client-side, so typing recomputes instantly (no re-read).
+  const combined: CombinedVerdict | null = extracted ? combinedVerdict(claimed, extracted) : null;
+
+  // Accept the AI's grey suggestion for one field by pressing Tab while it's empty (the agent confirms
+  // the read as the application value) — fast, but deliberate, so an unaccepted required field still blocks.
+  function acceptOnTab(e: KeyboardEvent<HTMLInputElement>, value: string, suggestion: string | undefined, set: (v: string) => void) {
+    if (e.key === "Tab" && !e.shiftKey && value.trim() === "" && suggestion && suggestion.trim()) {
+      set(suggestion.trim());
+    }
+  }
+  // Fill every still-empty field that has a suggestion, in one click.
+  function acceptAllSuggestions() {
+    for (const f of appInputs) {
+      if (f.value.trim() === "" && f.suggestion && f.suggestion.trim()) f.set(f.suggestion.trim());
+    }
+  }
+  const hasUnacceptedSuggestions = appInputs.some((f) => f.value.trim() === "" && f.suggestion?.trim());
+
   async function read(imgs: LabelImage[]) {
     if (imgs.length === 0) return;
     const token = ++readToken.current;
@@ -150,13 +226,12 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
 
   const orderedImages = orderedImagesOf(slots);
 
-  // Put an image in a slot (replacing any existing one), then re-read the fused front+back pair.
   function setSlot(key: SlotKey, file: File) {
     setSlots((prev) => {
       const old = prev[key];
       if (old) {
         if (zoom?.src === old.preview) setZoom(null);
-        URL.revokeObjectURL(old.preview); // replacing -> revoke the old object URL
+        URL.revokeObjectURL(old.preview);
       }
       const next = { ...prev, [key]: { file, preview: URL.createObjectURL(file), position: key as LabelPosition } };
       void read(orderedImagesOf(next));
@@ -167,7 +242,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
     setSlots((prev) => {
       const target = prev[key];
       if (target) {
-        if (zoom?.src === target.preview) setZoom(null); // don't leave the lightbox on a revoked URL
+        if (zoom?.src === target.preview) setZoom(null);
         URL.revokeObjectURL(target.preview);
       }
       const next = { ...prev, [key]: undefined };
@@ -176,6 +251,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
         readToken.current++; // cancel any in-flight read
         setState("idle");
         setResponse(null);
+        setClassChoice(null); // a fresh session: drop any beverage-type override
       } else {
         void read(imgs);
       }
@@ -192,9 +268,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
       extracted: response.extracted,
       completeness: combined.completeness,
       ...(claimed ? { claimed } : {}),
-      ...(combined.verify
-        ? { result: combined.verify, overall: combined.overall }
-        : {}),
+      ...(combined.verify ? { result: combined.verify, overall: combined.overall } : {}),
     });
   }
   function onDownloadCsv() {
@@ -210,23 +284,18 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
     ]));
   }
 
-  // The headline outcome announced in the live region. When the application hasn't been entered yet,
-  // the screen is awaiting it (not presenting completeness as the answer), so announce that.
-  const announce = combined
-    ? combined.verify
+  const missingLabels = missingKeys.map((k) => KEY_LABEL[k]);
+  const announce = !extracted
+    ? ""
+    : combined?.verify
       ? `Verdict: ${VERDICT_LABEL[combined.overall ?? "review"]}.`
-      : "Label read. Enter the application's brand and alcohol content to verify it."
-    : "";
+      : `Label read. Complete the required application fields to verify: ${missingLabels.join(", ")}.`;
 
-  // The first uploaded image — opened by the "View label photo" affordance the result surfaces when a
-  // field matched but the photo read was fuzzy (the actual remedy: glance at the image).
   const firstImage = orderedImages[0];
   const viewFirstImage = firstImage
     ? () => setZoom({ src: firstImage.preview, alt: `Label — ${firstImage.file.name}` })
     : undefined;
 
-  // Which stage of the read → compare → verdict pipeline we're in, for the always-visible spine that
-  // makes the order of operations legible (null until a label is uploaded).
   const pipelineStage: "reading" | "awaiting" | "done" | null =
     state === "loading" ? "reading" : readable ? (combined?.verify ? "done" : "awaiting") : null;
 
@@ -241,9 +310,9 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
       </h2>
       <p className="mt-1 text-ink-muted">
         Upload the product&apos;s front label (and the back, if you have it) — the AI reads it — then
-        enter what the application claims. The screen checks the label against the application
-        field-by-field (brand, alcohol, net contents, producer, origin) and the statutory government
-        warning, and flags every mismatch as Approve / Needs review / Reject.
+        confirm what the application claims. The screen checks the label against the application
+        field-by-field and the statutory government warning, and flags every mismatch as Approve / Needs
+        review / Reject.
       </p>
 
       {mockMode && (
@@ -258,7 +327,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
       <div className="mt-6">
         <h3 className="mb-1.5 block font-medium text-ink">1. Label images</h3>
         <p id={ids.imageHelp} className="sr-only">
-          Upload the front label (required) and optionally the back label. Click a thumbnail to enlarge it.
+          Upload the front label (required) and optionally the back label. Click an image to enlarge it.
         </p>
         <div className="grid gap-4 sm:grid-cols-2">
           {(["front", "back"] as const).map((key) => {
@@ -271,28 +340,32 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
                   <span className="font-normal text-ink-muted">{key === "front" ? "(required)" : "(optional)"}</span>
                 </span>
                 {img ? (
-                  <div className="flex items-center gap-3 rounded-card border border-border bg-surface-muted p-3">
+                  <figure className="overflow-hidden rounded-card border border-border bg-surface-muted shadow-card">
                     <button
                       type="button"
                       onClick={() => setZoom({ src: img.preview, alt: `${label} — ${img.file.name}` })}
                       aria-label={`Enlarge ${img.file.name}`}
-                      className="group relative h-24 w-24 shrink-0 cursor-zoom-in overflow-hidden rounded border border-border bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2"
+                      className="group relative block w-full cursor-zoom-in bg-surface-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-700"
                     >
                       {/* eslint-disable-next-line @next/next/no-img-element -- local object URL preview */}
-                      <img src={img.preview} alt="" className="h-full w-full object-contain" />
-                      <span className="absolute bottom-1 right-1 inline-flex h-6 w-6 items-center justify-center rounded-full bg-black/65 text-sm text-white opacity-90 transition group-hover:opacity-100">
-                        <IconZoom />
+                      <img src={img.preview} alt="" className="h-52 w-full object-contain" />
+                      <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-pill bg-black/65 px-2.5 py-1 text-xs font-semibold text-white opacity-90 transition group-hover:opacity-100">
+                        <IconZoom /> Enlarge
                       </span>
                     </button>
-                    <span className="min-w-0 flex-1 truncate text-sm text-ink">{img.file.name}</span>
-                    <button
-                      type="button"
-                      onClick={() => clearSlot(key)}
-                      className="min-h-[44px] rounded-field border-2 border-border-strong px-3 text-sm font-semibold text-ink transition hover:border-fail-600 hover:text-fail-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2"
-                    >
-                      Remove
-                    </button>
-                  </div>
+                    <figcaption className="flex items-center gap-3 border-t border-border bg-surface px-3 py-2">
+                      <span className="min-w-0 flex-1 truncate text-sm text-ink" title={img.file.name}>
+                        {img.file.name}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => clearSlot(key)}
+                        className="min-h-[40px] shrink-0 rounded-field border-2 border-border-strong px-3 text-sm font-semibold text-ink transition hover:border-fail-600 hover:text-fail-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2"
+                      >
+                        Remove
+                      </button>
+                    </figcaption>
+                  </figure>
                 ) : (
                   <DropZone
                     id={`${ids.image}-${key}`}
@@ -308,96 +381,112 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
         </div>
       </div>
 
-      {/* Step 2 — the application: the reference the label is verified against. Brand + alcohol are
-          REQUIRED to produce a verdict; the rest are compared when the application lists them. The
-          verdict recomputes live as the agent types — no re-read. */}
+      {/* Step 2 — the application: the reference the label is verified against. The AI's reading is
+          SUGGESTED in grey; the agent accepts (Tab / "Accept all") or types the application's value.
+          Every field TTB requires for the beverage type (marked *) must be filled before a verdict. */}
       <div className="mt-6">
-        <h3 className="mb-1.5 block font-medium text-ink">2. The application</h3>
-        <p className="mb-3 text-sm text-ink-muted">
-          Enter what the application claims — the label is checked against it using the TTB rules
-          (brand match, ABV tolerance by class, verbatim warning). <strong className="text-ink">Brand
-          and alcohol content are required</strong> for a verdict; fill the rest if the application
-          lists them.
-        </p>
-
-        {/* The two values that unlock the verdict */}
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <label htmlFor={ids.appBrand} className="mb-1.5 block text-sm font-medium text-ink">
-              Brand <span className="text-fail-700" aria-hidden="true">*</span>{" "}
-              <span className="font-normal text-ink-muted">(required)</span>
-            </label>
-            <input
-              id={ids.appBrand}
-              type="text"
-              required
-              aria-required="true"
-              value={claimBrand}
-              onChange={(e) => setClaimBrand(e.target.value)}
-              placeholder="e.g. ABC Single Barrel"
-              className={inputClass}
-            />
-          </div>
-          <div>
-            <label htmlFor={ids.appAlcohol} className="mb-1.5 block text-sm font-medium text-ink">
-              Alcohol content <span className="text-fail-700" aria-hidden="true">*</span>{" "}
-              <span className="font-normal text-ink-muted">(required)</span>
-            </label>
-            <input
-              id={ids.appAlcohol}
-              type="text"
-              required
-              aria-required="true"
-              value={claimAlcohol}
-              onChange={(e) => setClaimAlcohol(e.target.value)}
-              placeholder="e.g. 45% Alc./Vol."
-              className={inputClass}
-            />
-          </div>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h3 className="font-medium text-ink">2. The application</h3>
+          {extracted && hasUnacceptedSuggestions && (
+            <button
+              type="button"
+              onClick={acceptAllSuggestions}
+              className="inline-flex min-h-[40px] items-center gap-1.5 rounded-field bg-brand-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2"
+            >
+              <IconPass className="h-4 w-4" /> Accept all AI suggestions
+            </button>
+          )}
         </div>
-
-        {/* Compared only when the application lists them */}
-        <p className="mb-2 mt-4 text-xs font-semibold uppercase tracking-wide text-ink-muted">
-          Other application values — fill if the application lists them
+        <p className="mb-3 mt-1 text-sm text-ink-muted">
+          {extracted ? (
+            <>
+              The AI&apos;s reading is suggested in grey — press <kbd className="rounded border border-border bg-surface-muted px-1 font-sans text-xs">Tab</kbd> to accept a field, or use{" "}
+              <strong className="text-ink">Accept all</strong>. Fields TTB requires for this type are
+              marked <span className="font-bold text-fail-700">*</span> and must be filled to verify.
+            </>
+          ) : (
+            <>Upload a label first — the AI&apos;s reading will pre-fill these as suggestions you can accept or correct.</>
+          )}
         </p>
+
+        {/* Beverage type — AI-prefilled, agent-overridable; drives the required-field set + ABV tolerance. */}
+        {extracted && (
+          <div className="mb-4 max-w-sm">
+            <label htmlFor={ids.appType} className="mb-1.5 block text-sm font-medium text-ink">
+              Beverage type
+            </label>
+            <select
+              id={ids.appType}
+              value={selectorChoice}
+              onChange={(e) => setClassChoice(e.target.value as ClassChoice)}
+              className={inputClass}
+            >
+              {CLASS_CHOICES.map((c) => (
+                <option key={c.value} value={c.value}>
+                  {c.label}
+                </option>
+              ))}
+            </select>
+            <span className="mt-1 block text-xs text-ink-muted">
+              {classChoice ? "Changed by you — required fields updated." : "The AI read this — change it if it's wrong."}
+            </span>
+          </div>
+        )}
+
         <div className="grid gap-4 sm:grid-cols-2">
-          {[
-            { id: ids.appClass, label: "Class / type", value: claimClass, set: setClaimClass, ph: "e.g. Straight Rye Whisky" },
-            { id: ids.appNet, label: "Net contents", value: claimNet, set: setClaimNet, ph: "e.g. 750 mL" },
-            { id: ids.appName, label: "Producer / bottler name", value: claimName, set: setClaimName, ph: "e.g. ABC Distillery" },
-            { id: ids.appAddress, label: "Producer / bottler address", value: claimAddress, set: setClaimAddress, ph: "e.g. Frederick, MD" },
-            { id: ids.appCountry, label: "Country of origin", value: claimCountry, set: setClaimCountry, ph: "e.g. Product of Scotland", hint: "imports only" },
-          ].map((f) => (
-            <div key={f.id}>
-              <label htmlFor={f.id} className="mb-1.5 block text-sm font-medium text-ink">
-                {f.label}
-                {f.hint ? <span className="font-normal text-ink-muted"> ({f.hint})</span> : null}
-              </label>
-              <input
-                id={f.id}
-                type="text"
-                value={f.value}
-                onChange={(e) => f.set(e.target.value)}
-                placeholder={f.ph}
-                className={inputClass}
-              />
-            </div>
-          ))}
+          {appInputs.map((f) => {
+            const required = requiredKeys.includes(f.key);
+            const hasSuggestion = Boolean(f.suggestion && f.suggestion.trim());
+            const lowConf = hasSuggestion && typeof f.confidence === "number" && f.confidence < FIELD_REVIEW_CONFIDENCE;
+            const accepted = hasSuggestion && f.value.trim() !== "" && norm(f.value) === norm(f.suggestion ?? "");
+            return (
+              <div key={f.id}>
+                <label htmlFor={f.id} className="mb-1.5 flex flex-wrap items-center gap-1.5 text-sm font-medium text-ink">
+                  <span>
+                    {f.label}
+                    {required && <span className="text-fail-700" aria-hidden="true"> *</span>}
+                    {f.hint && <span className="font-normal text-ink-muted"> ({f.hint})</span>}
+                  </span>
+                  {lowConf && (
+                    <span className="rounded-pill border border-review-500 bg-review-50 px-1.5 py-0.5 text-xs font-semibold text-review-900">
+                      AI unsure ({Math.round((f.confidence ?? 0) * 100)}%) — verify
+                    </span>
+                  )}
+                  {accepted && (
+                    <span className="rounded-pill border border-border bg-surface-muted px-1.5 py-0.5 text-xs font-medium text-ink-muted">
+                      from label
+                    </span>
+                  )}
+                </label>
+                <input
+                  id={f.id}
+                  type="text"
+                  value={f.value}
+                  onChange={(e) => f.set(e.target.value)}
+                  onKeyDown={(e) => acceptOnTab(e, f.value, f.suggestion, f.set)}
+                  placeholder={hasSuggestion ? f.suggestion : undefined}
+                  required={required}
+                  aria-required={required}
+                  className={lowConf ? LOW_CONF_INPUT : inputClass}
+                />
+                {f.value.trim() === "" && hasSuggestion && (
+                  <span className="mt-1 block text-xs text-ink-muted">
+                    Suggested from the label — press Tab to accept.
+                  </span>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
 
-      {/* The order-of-operations spine: read the label → AI confidence → compare → verdict. Visible
-          once a label is uploaded so the AI READ reads as its own (fallible) step, not part of the
-          comparison — that's what makes a confidence flag legible instead of looking like a rejection. */}
+      {/* The order-of-operations spine: read the label → AI confidence → compare → verdict. */}
       {pipelineStage && (
         <div className="mt-8 border-t border-border pt-6">
           <PipelineSteps stage={pipelineStage} />
         </div>
       )}
 
-      {/* Persistent live region: the headline can appear/refresh reactively as the agent types the
-          application values (no `state` change), so the focus-move announcement never fires there.
-          This polite region announces the headline outcome whenever it appears or changes. */}
       <p role="status" aria-live="polite" className="sr-only">
         {announce}
       </p>
@@ -421,9 +510,9 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
         </>
       )}
 
-      {/* Results — the headline IS the label-vs-application comparison. Until the application's brand +
-          alcohol are entered, the screen says so (it never presents the completeness check as the
-          answer); completeness is a supporting check behind a disclosure either way. */}
+      {/* Results — the headline IS the label-vs-application comparison, shown once every required field
+          for the beverage type is supplied. Until then, the screen lists exactly what's still needed
+          (it never presents the completeness check as the answer). */}
       {readable && response && combined && (
         <>
           {combined.verify ? (
@@ -443,20 +532,34 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
               </details>
             </>
           ) : (
-            <section aria-label="Awaiting the application" className="mt-6 flex flex-col gap-4">
-              <div className="flex items-start gap-4 rounded-card border-l-8 border-brand-600 bg-brand-50 p-5 shadow-card">
+            <section aria-label="Complete the application" className="mt-6 flex flex-col gap-4">
+              <div className="flex items-start gap-4 rounded-card border-l-8 border-brand-600 bg-brand-50 p-6 shadow-card">
                 <IconReview className="h-9 w-9 shrink-0 text-brand-700" />
-                <div>
+                <div className="min-w-0">
                   <h2
                     ref={headlineRef}
                     tabIndex={-1}
                     className="text-lg font-semibold text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2"
                   >
-                    Enter the application to verify
+                    Complete the application to verify
                   </h2>
-                  <p className="mt-1 text-sm text-ink">
-                    The label was read. Add the application&apos;s <strong>brand</strong> and{" "}
-                    <strong>alcohol content</strong> above to check the label against it.
+                  <p className="mt-1.5 text-sm text-ink">
+                    The label was read. TTB requires {missingKeys.length === 1 ? "this field" : "these fields"} for a{" "}
+                    <strong>{CLASS_DISPLAY_LABEL[beverageClass]}</strong> before a verdict:
+                  </p>
+                  <ul className="mt-2 flex flex-wrap gap-2">
+                    {missingKeys.map((k) => (
+                      <li
+                        key={k}
+                        className="rounded-pill border border-brand-600 bg-surface px-2.5 py-0.5 text-sm font-semibold text-brand-700"
+                      >
+                        {KEY_LABEL[k]}
+                      </li>
+                    ))}
+                  </ul>
+                  <p className="mt-2.5 text-sm text-ink-muted">
+                    Accept the grey suggestions above (Tab or <strong className="text-ink">Accept all</strong>), or
+                    type the application&apos;s values.
                   </p>
                 </div>
               </div>

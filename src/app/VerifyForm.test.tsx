@@ -2,11 +2,12 @@
 /**
  * VerifyForm.test.tsx — component/integration tests for the single-label screen.
  *
- * These lock the wiring the pure suites can't: a readable extraction leads with the TTB completeness
- * check; entering the application's brand + alcohol turns the headline into the label-vs-application
- * comparison (Approve / Needs review / Reject); and the unreadable path shows the re-upload prompt
- * rather than a fabricated result. Fetch + object-URL are mocked; the verdict is computed by the real
- * pure combinedVerdict.
+ * These lock the wiring the pure suites can't: a readable extraction prompts to COMPLETE the
+ * application (the required set is dynamic per beverage type); accepting the AI's suggestions turns the
+ * headline into the label-vs-application comparison (Approve / Needs review / Reject); the verdict is
+ * BLOCKED until every TTB-required field for the type is supplied; and the unreadable path shows the
+ * re-upload prompt rather than a fabricated result. Fetch + object-URL are mocked; the verdict is
+ * computed by the real pure combinedVerdict.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, within } from "@testing-library/react";
@@ -58,51 +59,66 @@ afterEach(() => {
 
 // The image-dropping tests exercise the full async upload -> read flow; RTL cleanup can race a
 // settling read under jsdom + React 19, so they carry a small bounded retry. The deterministic logic
-// (combinedVerdict, completeness) is covered without retry in the pure unit suites.
+// (combinedVerdict, completeness, requiredInputKeysFor) is covered without retry in the pure suites.
 const ASYNC = { retry: 2 } as const;
 
+const READ_OK = (extracted = extractedBourbon()): VerifyApiResponse => ({
+  provider: "mock", readable: true, extracted, result: null,
+});
+
 describe("VerifyForm — verify against the application", () => {
-  it("with no application values, prompts to enter the application (never a completeness-only result)", ASYNC, async () => {
-    mockFetch({ provider: "mock", readable: true, extracted: extractedBourbon(), result: null });
+  it("with no application values, prompts to COMPLETE the application (dynamic, per type)", ASYNC, async () => {
+    mockFetch(READ_OK());
     const { container } = render(<VerifyForm />);
     const q = within(container);
     dropLabelImage(container);
-    expect(await q.findByText("Enter the application to verify")).toBeTruthy();
+    expect(await q.findByText("Complete the application to verify")).toBeTruthy();
     expect(q.queryByText(/Label vs\. application/)).toBeNull();
   });
 
-  it("entering matching application values leads with an Approve comparison", ASYNC, async () => {
-    mockFetch({ provider: "mock", readable: true, extracted: extractedBourbon(), result: null });
+  it("accepting the AI suggestions completes the application and leads with an Approve comparison", ASYNC, async () => {
+    mockFetch(READ_OK());
     const { container } = render(<VerifyForm />);
     const q = within(container);
     dropLabelImage(container);
-    await q.findByText("Enter the application to verify");
-    fireEvent.change(q.getByLabelText(/^Brand/i), { target: { value: "Old Tom Distillery" } });
-    fireEvent.change(q.getByLabelText(/^Alcohol content/i), { target: { value: "45% Alc./Vol." } });
+    await q.findByText("Complete the application to verify");
+    fireEvent.click(q.getByRole("button", { name: /Accept all AI suggestions/i }));
     expect(await q.findByText(/Label vs\. application/)).toBeTruthy();
     expect(q.getByText("Approve")).toBeTruthy();
   });
 
-  it("a mismatching application brand rejects with a No match card", ASYNC, async () => {
-    mockFetch({ provider: "mock", readable: true, extracted: extractedBourbon(), result: null });
+  it("BLOCKS the verdict until every TTB-required field for the type is supplied", ASYNC, async () => {
+    mockFetch(READ_OK());
     const { container } = render(<VerifyForm />);
     const q = within(container);
     dropLabelImage(container);
-    await q.findByText("Enter the application to verify");
-    fireEvent.change(q.getByLabelText(/^Brand/i), { target: { value: "Totally Different Co" } });
+    await q.findByText("Complete the application to verify");
+    // Brand + alcohol alone is NOT enough for distilled spirits (also needs class/type, net, name, address).
+    fireEvent.change(q.getByLabelText(/^Brand/i), { target: { value: "Old Tom Distillery" } });
     fireEvent.change(q.getByLabelText(/^Alcohol content/i), { target: { value: "45% Alc./Vol." } });
+    expect(q.queryByText(/Label vs\. application/)).toBeNull(); // still blocked
+    expect(q.getByText("Complete the application to verify")).toBeTruthy();
+  });
+
+  it("a mismatching application brand rejects with a No match card", ASYNC, async () => {
+    mockFetch(READ_OK());
+    const { container } = render(<VerifyForm />);
+    const q = within(container);
+    dropLabelImage(container);
+    await q.findByText("Complete the application to verify");
+    fireEvent.click(q.getByRole("button", { name: /Accept all AI suggestions/i }));
+    fireEvent.change(q.getByLabelText(/^Brand/i), { target: { value: "Totally Different Co" } });
     expect(await q.findByText("Reject")).toBeTruthy();
     expect(q.getByText("No match")).toBeTruthy();
   });
 
-  it("compares an optional field the agent fills (a mismatched net contents adds a No match card)", ASYNC, async () => {
-    mockFetch({ provider: "mock", readable: true, extracted: extractedBourbon(), result: null });
+  it("a mismatched net contents adds a No match card once the required set is complete", ASYNC, async () => {
+    mockFetch(READ_OK());
     const { container } = render(<VerifyForm />);
     const q = within(container);
     dropLabelImage(container);
-    await q.findByText("Enter the application to verify");
-    fireEvent.change(q.getByLabelText(/^Brand/i), { target: { value: "Old Tom Distillery" } });
-    fireEvent.change(q.getByLabelText(/^Alcohol content/i), { target: { value: "45% Alc./Vol." } });
+    await q.findByText("Complete the application to verify");
+    fireEvent.click(q.getByRole("button", { name: /Accept all AI suggestions/i }));
     fireEvent.change(q.getByLabelText(/^Net contents/i), { target: { value: "375 mL" } }); // label says 750 mL
     await q.findByText(/Label vs\. application/);
     const panel = within(q.getByRole("region", { name: "Verification result" }));
@@ -111,11 +127,33 @@ describe("VerifyForm — verify against the application", () => {
     expect(q.getByText("Reject")).toBeTruthy();
   });
 
-  it("marks brand and alcohol content as required inputs", () => {
+  it("marks the per-type required fields after a read (distilled spirits require alcohol)", ASYNC, async () => {
+    mockFetch(READ_OK());
     const { container } = render(<VerifyForm />);
     const q = within(container);
+    dropLabelImage(container);
+    await q.findByText("Complete the application to verify");
     expect((q.getByLabelText(/^Brand/i) as HTMLInputElement).required).toBe(true);
     expect((q.getByLabelText(/^Alcohol content/i) as HTMLInputElement).required).toBe(true);
+  });
+
+  it("does NOT require alcohol for a malt beverage (table-of-type optionality is respected)", ASYNC, async () => {
+    // A malt-beverage read: alcohol is optional under 27 CFR 7.63(a)(3)/7.65(a), so it must NOT block.
+    const malt = extractedBourbon({
+      brand: "Granite Peak",
+      classType: "India Pale Ale",
+      class: "Malt beverage",
+      alcoholContentText: "6.5% Alc./Vol.",
+      netContents: "12 FL OZ",
+      name: "Granite Peak Brewing Co.",
+      address: "Portland, OR",
+    });
+    mockFetch(READ_OK(malt));
+    const { container } = render(<VerifyForm />);
+    const q = within(container);
+    dropLabelImage(container);
+    await q.findByText("Complete the application to verify");
+    expect((q.getByLabelText(/^Alcohol content/i) as HTMLInputElement).required).toBe(false);
   });
 
   it("shows two explicit upload slots (front + back), each with its own file input", () => {
@@ -135,6 +173,6 @@ describe("VerifyForm — verify against the application", () => {
     dropLabelImage(container);
     expect(await q.findByText(/Couldn.t read the label/i)).toBeTruthy();
     expect(q.queryByText(/Label vs\. application/)).toBeNull();
-    expect(q.queryByText("Enter the application to verify")).toBeNull();
+    expect(q.queryByText("Complete the application to verify")).toBeNull();
   });
 });

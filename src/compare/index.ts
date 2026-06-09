@@ -36,6 +36,12 @@ export {
 export { normalizeText, normalizeWarning, similarity, levenshtein } from "./text";
 export { combinedVerdict, worstVerdict, toClaimedFields, type CombinedVerdict } from "./reviewVerdict";
 export {
+  requiredInputKeysFor,
+  classChoiceFor,
+  CLASS_CHOICES,
+  type ClassChoice,
+} from "./requiredInputs";
+export {
   parseAlcoholText,
   resolveBeverageClass,
   isLowOrReducedAlcoholClaim,
