@@ -63,7 +63,10 @@ export const FIELD_CATALOG: readonly FieldDescriptor[] = [
   {
     key: "brand", rawKey: "brand", confKey: "brand", label: "Brand name", csvColumn: "brand", group: "headline",
     description:
-      "The fanciful product/brand mark — usually the largest text or a logo wordmark (e.g. \"Single Barrel\", \"Stone's Throw\"). " +
+      "The BRAND NAME — the name the product is SOLD / marketed under (the masthead brand, often the " +
+      "largest distinct wordmark or logo, e.g. \"Stone's Throw\"). It is NOT a descriptive or fanciful " +
+      "phrase such as \"Single Barrel\", \"Small Batch\", or \"Reserve\" (those are fanciful names or part " +
+      "of the class/type), and NOT the class/type designation itself. " +
       "This is NOT automatically the bottling company: the legally responsible company belongs in `name`. " +
       "Two decisive cases: (a) if the label shows a SHORT mark AND a longer producer name that CONTAINS it " +
       "(mark \"ABC\" + producer \"ABC Distillery\"), `brand` is the SHORT mark (\"ABC\") and `name` is the producer " +
@@ -84,13 +87,16 @@ export const FIELD_CATALOG: readonly FieldDescriptor[] = [
   },
   {
     key: "netContents", rawKey: "netContents", confKey: "netContents", label: "Net contents", csvColumn: "net_contents", group: "headline",
-    description: "Net contents as printed, e.g. \"750 mL\", \"750 ML\". Transcribe verbatim.",
+    description:
+      "Net contents as printed, including the quantity AND its unit, e.g. \"750 mL\", \"12 FL OZ\". " +
+      "If the label shows BOTH a metric (mL/L) and a US-customary (fl oz/pint) measure, capture both. Transcribe verbatim.",
   },
   {
     key: "warningText", rawKey: "warningText", confKey: "warningText", label: "Government warning", csvColumn: "warning_text", group: "headline",
     description:
-      "The FULL government warning, verbatim from GOVERNMENT/Government through \"...health problems.\", " +
-      "preserving \"(1) ... (2) ...\". \"\" if absent.",
+      "The FULL government warning, transcribed VERBATIM (exactly as printed) — from the \"GOVERNMENT WARNING:\" " +
+      "prefix through \"...health problems.\" — including the EXACT capitalization of the prefix and the literal " +
+      "\"(1)\" and \"(2)\" clause markers. Do NOT re-case, renumber, reword, or paraphrase any part. \"\" if absent.",
   },
   {
     key: "class", rawKey: "class", confKey: "class", label: "Broad category", csvColumn: "class", group: "detail",

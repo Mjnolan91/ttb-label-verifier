@@ -17,7 +17,7 @@ import {
   type BeverageClass,
 } from "@/domain";
 import type { FieldResult } from "./types";
-import { normalizeText, normalizeWarning, similarity } from "./text";
+import { normalizeText, normalizeWarning, normalizeBrandKeepingSymbols, similarity } from "./text";
 import {
   parseAlcoholText,
   resolveBeverageClass,
@@ -103,11 +103,22 @@ export function compareBrand(args: {
     return result("fail", claimed, extracted || "(none)", "No brand name was read from the label.");
   }
   if (nc === ne) {
+    // Equal after dropping ALL punctuation. If they also match with symbols kept, it's a true match;
+    // if they differ ONLY in punctuation/symbols ("Smith & Co" vs "Smith Co"), that can be a distinct
+    // registered brand — route to review rather than auto-approve (27 CFR 5.64/4.33 brand identity).
+    if (normalizeBrandKeepingSymbols(claimed) === normalizeBrandKeepingSymbols(extracted)) {
+      return result(
+        "pass",
+        claimed,
+        extracted,
+        "Brand matches after normalizing case, spacing and smart quotes.",
+      );
+    }
     return result(
-      "pass",
+      "review",
       claimed,
       extracted,
-      "Brand matches after normalizing case, spacing, punctuation and smart quotes.",
+      'Brand matches except for punctuation/symbols (e.g. "&", "-") — confirm they are the same brand.',
     );
   }
   // Brand mark vs producer name: "ABC" and "ABC Distillery" are the same brand family. Equal after

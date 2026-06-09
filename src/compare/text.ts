@@ -19,6 +19,21 @@ export function normalizeText(input: string): string {
 }
 
 /**
+ * Fold a brand's case, smart quotes, and whitespace but KEEP punctuation/symbols. Used to tell a
+ * punctuation-only difference ("Smith & Co" vs "Smith Co", "A-1" vs "A1") apart from a true match:
+ * a symbol can distinguish registered brands, so such differences route to review, not auto-pass —
+ * while case/space/smart-quote-only differences ("STONE'S THROW" vs "Stone's Throw") still pass.
+ */
+export function normalizeBrandKeepingSymbols(input: string): string {
+  return input
+    .replace(/[‘’‛′]/g, "'")
+    .replace(/[“”‟″]/g, '"')
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/**
  * Normalize a government-warning body for WORDING comparison: whitespace collapsed, trimmed,
  * lowercased. Case is intentionally folded here because the prefix's required CAPITALS are
  * judged from the extracted `warningPrefixIsAllCaps` flag, not re-derived from the raw text.
