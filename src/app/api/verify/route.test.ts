@@ -102,6 +102,28 @@ describe("POST /api/verify — extraction-first (no claimed values → read only
   });
 });
 
+describe("POST /api/verify — full field-by-field comparison", () => {
+  it("returns an ordered fields list including each supplied application field", async () => {
+    const res = await postForm(cleanClaim, stubImage("old-tom-bourbon-clean.svg"));
+    const json = await res.json();
+    const keys = (json.result.fields as { key: string }[]).map((f) => f.key);
+    expect(keys).toContain("brand");
+    expect(keys).toContain("classType");
+    expect(keys).toContain("alcohol");
+    expect(keys).toContain("netContents");
+    expect(keys).toContain("warning");
+  });
+
+  it("compares the producer name only when the application supplies it", async () => {
+    const without = await (await postForm(cleanClaim, stubImage("old-tom-bourbon-clean.svg"))).json();
+    expect((without.result.fields as { key: string }[]).some((f) => f.key === "name")).toBe(false);
+    const withName = await (
+      await postForm({ ...cleanClaim, name: "Old Tom Distillery" }, stubImage("old-tom-bourbon-clean.svg"))
+    ).json();
+    expect((withName.result.fields as { key: string }[]).some((f) => f.key === "name")).toBe(true);
+  });
+});
+
 describe("POST /api/verify — completeness + multi-image", () => {
   it("returns a TTB completeness result for a readable extraction", async () => {
     const res = await postForm({}, stubImage("old-tom-bourbon-clean.svg"));

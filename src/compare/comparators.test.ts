@@ -6,7 +6,16 @@
  * class proving the class SELECTS the right tolerance.
  */
 import { describe, it, expect } from "vitest";
-import { compareBrand, compareAlcohol, compareWarning } from "./comparators";
+import {
+  compareBrand,
+  compareAlcohol,
+  compareWarning,
+  compareNetContents,
+  compareClassType,
+  compareName,
+  compareAddress,
+  compareOrigin,
+} from "./comparators";
 import { CANONICAL_GOVERNMENT_WARNING } from "@/domain";
 
 describe("compareBrand", () => {
@@ -234,6 +243,82 @@ describe("compareAlcohol — the class SELECTS the tolerance (one case per class
     expect(
       compareAlcohol({ claimedText: "40%", extractedText: "40.4%", beverageClass: "unknown" }).status,
     ).toBe("fail");
+  });
+});
+
+describe("compareNetContents", () => {
+  it("PASS: same metric volume, normalized spacing/case", () => {
+    expect(compareNetContents({ claimed: "750 mL", extracted: "750ML" }).status).toBe("pass");
+  });
+  it("PASS: label states both metric and US-customary; metric matches", () => {
+    expect(compareNetContents({ claimed: "750 mL", extracted: "750 mL / 25.4 FL OZ" }).status).toBe("pass");
+  });
+  it("FAIL: a different metric volume", () => {
+    expect(compareNetContents({ claimed: "750 mL", extracted: "375 mL" }).status).toBe("fail");
+  });
+  it("PASS: same US-customary statement (no metric on either)", () => {
+    expect(compareNetContents({ claimed: "12 FL OZ", extracted: "12 fl oz" }).status).toBe("pass");
+  });
+  it("REVIEW: mixed unit systems can't be compared by magnitude", () => {
+    expect(compareNetContents({ claimed: "750 mL", extracted: "25.4 fl oz" }).status).toBe("review");
+  });
+  it("REVIEW: nothing readable on the label", () => {
+    expect(compareNetContents({ claimed: "750 mL", extracted: "" }).status).toBe("review");
+  });
+});
+
+describe("compareClassType", () => {
+  it("PASS: a specific standard of identity matches the application's broad class (same BeverageClass)", () => {
+    expect(compareClassType({ claimed: "distilled-spirits", extracted: "Kentucky Straight Bourbon Whiskey" }).status).toBe("pass");
+    expect(compareClassType({ claimed: "distilled-spirits", extracted: "Straight Rye Whisky" }).status).toBe("pass");
+  });
+  it("PASS: identical designation", () => {
+    expect(compareClassType({ claimed: "Table Wine", extracted: "Table Wine" }).status).toBe("pass");
+  });
+  it("FAIL: genuinely different classes (spirits vs wine)", () => {
+    expect(compareClassType({ claimed: "Vodka", extracted: "Cabernet Sauvignon Wine" }).status).toBe("fail");
+  });
+  it("REVIEW: nothing read from the label", () => {
+    expect(compareClassType({ claimed: "distilled-spirits", extracted: "" }).status).toBe("review");
+  });
+});
+
+describe("compareName (producer/bottler — fuzzy, never a hard fail)", () => {
+  it("PASS: identical after normalizing", () => {
+    expect(compareName({ claimed: "ABC Distillery", extracted: "ABC DISTILLERY" }).status).toBe("pass");
+  });
+  it("REVIEW: a company-suffix difference is not a hard fail", () => {
+    expect(compareName({ claimed: "ABC Distillery", extracted: "ABC Distilling Co" }).status).toBe("review");
+  });
+  it("REVIEW: a different producer is review, never fail (importer vs. producer judgement)", () => {
+    expect(compareName({ claimed: "ABC Distillery", extracted: "XYZ Imports" }).status).toBe("review");
+  });
+  it("REVIEW: nothing read from the label", () => {
+    expect(compareName({ claimed: "ABC Distillery", extracted: "" }).status).toBe("review");
+  });
+});
+
+describe("compareAddress (fuzzy, never a hard fail)", () => {
+  it("PASS: identical after normalizing", () => {
+    expect(compareAddress({ claimed: "Louisville, KY", extracted: "LOUISVILLE KY" }).status).toBe("pass");
+  });
+  it("REVIEW: a clearly different address is review, never fail", () => {
+    expect(compareAddress({ claimed: "Louisville, KY", extracted: "Portland, OR" }).status).toBe("review");
+  });
+  it("REVIEW: nothing read from the label", () => {
+    expect(compareAddress({ claimed: "Louisville, KY", extracted: "" }).status).toBe("review");
+  });
+});
+
+describe("compareOrigin (country of origin — a real mismatch is a defect)", () => {
+  it("PASS: same country, tolerating a 'Product of' prefix", () => {
+    expect(compareOrigin({ claimed: "Scotland", extracted: "Product of Scotland" }).status).toBe("pass");
+  });
+  it("FAIL: a different country", () => {
+    expect(compareOrigin({ claimed: "Scotland", extracted: "Ireland" }).status).toBe("fail");
+  });
+  it("REVIEW: nothing read from the label", () => {
+    expect(compareOrigin({ claimed: "Scotland", extracted: "" }).status).toBe("review");
   });
 });
 

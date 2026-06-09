@@ -314,6 +314,161 @@ export function validateNetContents(value: string | undefined, cls: BeverageClas
   return null; // unknown class — don't assert a rule we can't determine
 }
 
+/** Class/type similarity threshold: a close-but-not-identical designation routes to review. */
+const CLASS_REVIEW_SIMILARITY = 0.8;
+/** Producer-name similarity threshold for a review-leaning fuzzy match. */
+const NAME_REVIEW_SIMILARITY = 0.8;
+/** Address similarity threshold (addresses abbreviate heavily: "St"/"Street", "KY"/"Kentucky"). */
+const ADDRESS_REVIEW_SIMILARITY = 0.6;
+/** Country-of-origin similarity threshold. */
+const ORIGIN_REVIEW_SIMILARITY = 0.8;
+/** "Product of …" / "Made in …" lead-ins stripped before comparing the country itself. */
+const ORIGIN_PREFIX = /^(?:product of|produce of|made in|bottled in|imported from)\s+/i;
+
+/**
+ * Net contents — CLAIMED vs label (distinct from validateNetContents, which checks the label's net
+ * contents against CFR standards of fill). Metric magnitudes are compared numerically; US-customary
+ * statements (no parsed magnitude) fall back to normalized text; mixed unit systems route to review
+ * (750 mL vs 25.4 fl oz may be equal — a human call). Compared only when the application supplies one.
+ */
+export function compareNetContents(args: { claimed?: string; extracted?: string }): FieldResult {
+  const claimed = args.claimed ?? "";
+  const extracted = args.extracted ?? "";
+  const c = parseNetContents(claimed);
+  const e = parseNetContents(extracted);
+  if (!e.parsed) {
+    return result("review", claimed || "(none)", extracted || "(none)",
+      "Couldn't read a net-contents quantity from the label to compare against the application.");
+  }
+  if (!c.parsed) {
+    return result("review", claimed || "(none)", extracted, "Couldn't parse the application's net contents to compare.");
+  }
+  if (c.ml !== undefined && e.ml !== undefined) {
+    return Math.abs(c.ml - e.ml) <= 0.5
+      ? result("pass", claimed, extracted, `Net contents match (${e.ml} mL).`)
+      : result("fail", claimed, extracted, `Net contents differ: application states ${c.ml} mL, label states ${e.ml} mL.`);
+  }
+  if (c.ml === undefined && e.ml === undefined) {
+    const nc = normalizeText(claimed);
+    const ne = normalizeText(extracted);
+    if (nc === ne) return result("pass", claimed, extracted, "Net contents match after normalizing.");
+    if (similarity(nc, ne) >= 0.8) return result("review", claimed, extracted, "Net contents are close but not identical — confirm.");
+    return result("fail", claimed, extracted, "Net contents do not match the application.");
+  }
+  return result("review", claimed, extracted,
+    "Application and label state net contents in different unit systems — confirm they're equal.");
+}
+
+/**
+ * Class/type — the application often lists a broad class ("distilled spirits") while the label prints
+ * the specific standard of identity ("Kentucky Straight Bourbon Whiskey"). Both resolving to the SAME
+ * BeverageClass is a genuine match (pass); only DIFFERENT resolved classes are a hard fail. Anything
+ * uncertain (containment, close text, an unknown class) routes to review.
+ */
+export function compareClassType(args: {
+  claimed?: string;
+  extracted?: string;
+  claimedBeverageClass?: BeverageClass;
+}): FieldResult {
+  const claimed = args.claimed ?? "";
+  const extracted = args.extracted ?? "";
+  const nc = normalizeText(claimed);
+  const ne = normalizeText(extracted);
+  if (ne.length === 0) {
+    return result("review", claimed || "(none)", extracted || "(none)", "No class/type designation was read from the label to compare.");
+  }
+  if (nc === ne) {
+    return result("pass", claimed, extracted, "Class/type matches after normalizing.");
+  }
+  const claimedClass = args.claimedBeverageClass ?? resolveBeverageClass(claimed);
+  const extractedClass = resolveBeverageClass(extracted);
+  const isWine = (b: BeverageClass) => b === "wineUnder14" || b === "wineOver14";
+  if (claimedClass !== "unknown" && (claimedClass === extractedClass || (isWine(claimedClass) && isWine(extractedClass)))) {
+    return result("pass", claimed, extracted,
+      `Both resolve to ${CLASS_LABEL[extractedClass]} — the label's specific designation matches the application's class.`);
+  }
+  if (wordBoundaryContains(ne, nc) || wordBoundaryContains(nc, ne)) {
+    return result("review", claimed, extracted, "One class/type designation contains the other — confirm they're the same.");
+  }
+  if (similarity(nc, ne) >= CLASS_REVIEW_SIMILARITY) {
+    return result("review", claimed, extracted, `Class/type is a close match (${Math.round(similarity(nc, ne) * 100)}%) — confirm.`);
+  }
+  if (claimedClass !== "unknown" && extractedClass !== "unknown") {
+    return result("fail", claimed, extracted,
+      `Class/type differs: the application is ${CLASS_LABEL[claimedClass]}, the label is ${CLASS_LABEL[extractedClass]}.`);
+  }
+  return result("review", claimed, extracted, "Class/type couldn't be confidently matched — a person should confirm.");
+}
+
+/**
+ * Producer/bottler name — fuzzy and review-leaning (NEVER a hard fail): a mismatch is commonly a
+ * benign importer-vs-producer or company-suffix difference, a human call. Reuses the brand
+ * entity-suffix / containment / similarity ladder.
+ */
+export function compareName(args: { claimed?: string; extracted?: string }): FieldResult {
+  const claimed = args.claimed ?? "";
+  const extracted = args.extracted ?? "";
+  const nc = normalizeText(claimed);
+  const ne = normalizeText(extracted);
+  if (ne.length === 0) {
+    return result("review", claimed || "(none)", extracted || "(none)", "No producer/bottler name was read from the label to compare.");
+  }
+  if (nc === ne) {
+    return result("pass", claimed, extracted, "Producer name matches after normalizing.");
+  }
+  const coreC = stripBrandEntitySuffixes(nc);
+  const coreE = stripBrandEntitySuffixes(ne);
+  if (coreC !== "" && coreC === coreE) {
+    return result("review", claimed, extracted, 'Producer name matches once a company suffix (e.g. "Co", "LLC") is set aside — confirm.');
+  }
+  if (wordBoundaryContains(ne, nc) || wordBoundaryContains(nc, ne) || similarity(nc, ne) >= NAME_REVIEW_SIMILARITY) {
+    return result("review", claimed, extracted, "Producer name is close but not identical — confirm it's the same entity.");
+  }
+  return result("review", claimed, extracted, "Producer name differs from the application — a person should confirm (e.g. importer vs. producer).");
+}
+
+/**
+ * Producer/bottler address — fuzzy and review-leaning (NEVER a hard fail): addresses abbreviate
+ * heavily (St/Street, KY/Kentucky) and a difference is a human call, not an auto-reject.
+ */
+export function compareAddress(args: { claimed?: string; extracted?: string }): FieldResult {
+  const claimed = args.claimed ?? "";
+  const extracted = args.extracted ?? "";
+  const nc = normalizeText(claimed);
+  const ne = normalizeText(extracted);
+  if (ne.length === 0) {
+    return result("review", claimed || "(none)", extracted || "(none)", "No address was read from the label to compare.");
+  }
+  if (nc === ne) {
+    return result("pass", claimed, extracted, "Address matches after normalizing.");
+  }
+  if (wordBoundaryContains(ne, nc) || wordBoundaryContains(nc, ne) || similarity(nc, ne) >= ADDRESS_REVIEW_SIMILARITY) {
+    return result("review", claimed, extracted, "Address is close but not identical — confirm.");
+  }
+  return result("review", claimed, extracted, "Address differs from the application — a person should confirm.");
+}
+
+/**
+ * Country of origin — normalized text, import-only (compared only when the application provides it).
+ * A genuinely different country is a real defect, so this CAN fail; close/contained -> review.
+ */
+export function compareOrigin(args: { claimed?: string; extracted?: string }): FieldResult {
+  const claimed = args.claimed ?? "";
+  const extracted = args.extracted ?? "";
+  const nc = normalizeText(claimed.replace(ORIGIN_PREFIX, ""));
+  const ne = normalizeText(extracted.replace(ORIGIN_PREFIX, ""));
+  if (ne.length === 0) {
+    return result("review", claimed || "(none)", extracted || "(none)", "No country of origin was read from the label to compare.");
+  }
+  if (nc === ne) {
+    return result("pass", claimed, extracted, "Country of origin matches.");
+  }
+  if (wordBoundaryContains(ne, nc) || wordBoundaryContains(nc, ne) || similarity(nc, ne) >= ORIGIN_REVIEW_SIMILARITY) {
+    return result("review", claimed, extracted, "Country of origin is close but not identical — confirm.");
+  }
+  return result("fail", claimed, extracted, "Country of origin does not match the application.");
+}
+
 /**
  * Government warning — strict. Body must match the canonical statutory wording; the prefix's
  * required ALL-CAPS (and BOLD where detectable) is read from the extracted flags, not re-derived

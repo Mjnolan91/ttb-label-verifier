@@ -4,7 +4,13 @@
 import { describe, it, expect } from "vitest";
 import { parseCsv, parseClaimedCsv, analysisToCsv } from "./csv";
 import type { ExtractedFields } from "@/domain";
-import type { VerifyResult } from "@/compare";
+import type { VerifyResult, VerifyField, CompletenessResult, OverallVerdict } from "@/compare";
+
+/** Build a VerifyResult from an ordered field list; named accessors derived from it. */
+function verifyResult(fields: VerifyField[], overall: OverallVerdict): VerifyResult {
+  const byKey = (k: string) => fields.find((f) => f.key === k)!;
+  return { fields, brand: byKey("brand"), alcohol: byKey("alcohol"), warning: byKey("warning"), overall };
+}
 
 const EXTRACTED: ExtractedFields = {
   brand: "OLD TOM DISTILLERY",
@@ -87,21 +93,27 @@ describe("analysisToCsv (extraction-first export)", () => {
     expect(get("completeness")).toBe("");
   });
 
-  it("appends verdict columns when any row has a result; blank for rows without", () => {
-    const result: VerifyResult = {
-      brand: { status: "pass", claimed: "OLD TOM DISTILLERY", extracted: "OLD TOM DISTILLERY", reason: "match" },
-      alcohol: { status: "pass", claimed: "45%", extracted: "45%", reason: "within tolerance" },
-      warning: { status: "fail", claimed: "", extracted: "", reason: "prefix not all caps" },
-      overall: "reject",
-    };
-    const csv = analysisToCsv([
+  it("appends per-field verdict columns when any row has a result; blank for fields not compared and rows without", () => {
+    const result = verifyResult(
+      [
+        { key: "brand", label: "Brand name", status: "pass", claimed: "OLD TOM DISTILLERY", extracted: "OLD TOM DISTILLERY", reason: "match" },
+        { key: "alcohol", label: "Alcohol content", status: "pass", claimed: "45%", extracted: "45%", reason: "within tolerance" },
+        { key: "warning", label: "Government warning", status: "fail", claimed: "", extracted: "", reason: "prefix not all caps" },
+      ],
+      "reject",
+    );
+    const rows = parseCsv(analysisToCsv([
       { filename: "a.png", extracted: EXTRACTED, result },
       { filename: "b.png", extracted: EXTRACTED },
-    ]);
-    const lines = csv.split("\n");
-    expect(lines[0]).toContain("brand_status,alcohol_status,warning_status,overall");
-    expect(lines[1].split(",").slice(-4)).toEqual(["pass", "pass", "fail", "reject"]);
-    expect(lines[2].split(",").slice(-4)).toEqual(["", "", "", ""]); // no result -> blank verdict
+    ]));
+    expect(rows[0].brand_status).toBe("pass");
+    expect(rows[0].alcohol_status).toBe("pass");
+    expect(rows[0].warning_status).toBe("fail");
+    expect(rows[0].overall).toBe("reject");
+    expect(rows[0].net_contents_status).toBe(""); // not compared by this result -> blank
+    // a row with no verdict at all leaves every verdict column blank
+    expect(rows[1].brand_status).toBe("");
+    expect(rows[1].overall).toBe("");
   });
 
   it("emits the overall column for a confirm-screen row with a gated overall but no per-field result", () => {
@@ -119,17 +131,59 @@ describe("analysisToCsv (extraction-first export)", () => {
   it("the overall column prefers the gated `overall` over result.overall when provided", () => {
     // The 3-check result alone would approve, but completeness gated it to review — exporting the
     // gated headline keeps the CSV consistent with the on-screen verdict.
-    const result: VerifyResult = {
-      brand: { status: "pass", claimed: "X", extracted: "X", reason: "" },
-      alcohol: { status: "pass", claimed: "40%", extracted: "40%", reason: "" },
-      warning: { status: "pass", claimed: "", extracted: "", reason: "" },
-      overall: "approve",
-    };
+    const result = verifyResult(
+      [
+        { key: "brand", label: "Brand name", status: "pass", claimed: "X", extracted: "X", reason: "" },
+        { key: "alcohol", label: "Alcohol content", status: "pass", claimed: "40%", extracted: "40%", reason: "" },
+        { key: "warning", label: "Government warning", status: "pass", claimed: "", extracted: "", reason: "" },
+      ],
+      "approve",
+    );
     const csv = analysisToCsv([{ filename: "a.png", extracted: EXTRACTED, result, overall: "review" }]);
     const header = csv.split("\n")[0].split(",");
     const row = csv.split("\n")[1].split(",");
-    expect(row[header.indexOf("overall")]).toBe("review"); // gated headline, not the 3-check "approve"
-    expect(row[header.indexOf("brand_status")]).toBe("pass"); // per-field columns stay 3-check
+    expect(row[header.indexOf("overall")]).toBe("review"); // gated headline, not the comparison's "approve"
+    expect(row[header.indexOf("brand_status")]).toBe("pass"); // per-field columns from the comparison
+  });
+
+  it("names each missing/malformed element in a completeness_issues column (triage from the export alone)", () => {
+    const completeness: CompletenessResult = {
+      beverageClass: "distilledSpirits",
+      overall: "incomplete",
+      elements: [
+        { key: "brand", label: "Brand name", necessity: "mandatory", status: "present", detail: "ok" },
+        { key: "netContents", label: "Net contents", necessity: "mandatory", status: "missing", detail: "not found" },
+        { key: "governmentWarning", label: "Government warning", necessity: "mandatory", status: "malformed", detail: "prefix not bold" },
+      ],
+    };
+    const parsed = parseCsv(analysisToCsv([{ filename: "x.png", extracted: EXTRACTED, completeness }]))[0];
+    expect(parsed).toHaveProperty("completeness_issues");
+    expect(parsed.completeness_issues).toBe("Net contents (missing); Government warning (wrong format)");
+  });
+
+  it("leaves completeness_issues blank for a complete label", () => {
+    const completeness: CompletenessResult = {
+      beverageClass: "distilledSpirits",
+      overall: "complete",
+      elements: [{ key: "brand", label: "Brand name", necessity: "mandatory", status: "present", detail: "ok" }],
+    };
+    const parsed = parseCsv(analysisToCsv([{ filename: "x.png", extracted: EXTRACTED, completeness }]))[0];
+    expect(parsed.completeness_issues).toBe("");
+  });
+
+  it("keeps `overall` the last column, after completeness_issues and the per-field verdict columns", () => {
+    const result = verifyResult(
+      [
+        { key: "brand", label: "Brand name", status: "pass", claimed: "X", extracted: "X", reason: "" },
+        { key: "alcohol", label: "Alcohol content", status: "pass", claimed: "40%", extracted: "40%", reason: "" },
+        { key: "warning", label: "Government warning", status: "pass", claimed: "", extracted: "", reason: "" },
+      ],
+      "approve",
+    );
+    const header = analysisToCsv([{ filename: "a.png", extracted: EXTRACTED, result, overall: "approve" }]).split("\n")[0].split(",");
+    expect(header[header.length - 1]).toBe("overall");
+    expect(header).toContain("net_contents_status"); // full per-field verdict set
+    expect(header.indexOf("completeness_issues")).toBeLessThan(header.indexOf("brand_status"));
   });
 
   it("defangs spreadsheet formula triggers in cell values (CSV injection, CWE-1236)", () => {

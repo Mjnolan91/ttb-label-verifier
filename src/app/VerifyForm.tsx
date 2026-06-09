@@ -1,27 +1,29 @@
 "use client";
 
 /**
- * VerifyForm — the single "read a label" screen (extraction-first, multi-image).
+ * VerifyForm — the single "verify a label" screen (the spec's core loop).
  *
  * Drop a product's label image(s) — front, back, neck — and the AI reads them TOGETHER into one
- * structured record, then runs the TTB completeness check for the detected beverage type. Results
- * are downloadable as JSON or CSV. No typing. Accessibility (WCAG 2.1 AA): labelled controls,
- * >=44px targets, visible focus, aria-live result regions, focus moved to the result heading.
+ * structured record. The screen ALWAYS runs the deterministic TTB completeness check; when the agent
+ * also enters the application's claimed values (brand + alcohol content), it LEADS with the
+ * label-vs-application comparison — "Brand matches? ABV correct? Government warning there?" → Approve
+ * / Needs review / Reject — gated on completeness. No typing required to read. Accessibility
+ * (WCAG 2.1 AA): labelled controls, >=44px targets, visible focus, aria-live result regions, focus
+ * moved to the result heading.
  */
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { VerifyApiResponse, VerifyApiError } from "./api/verify/contract";
 import type { LabelPosition } from "@/extraction";
-import { confirmVerdict, resolveExtractedClass, type ConfirmVerdict, type FieldConfirmation, type ClassChoice } from "@/compare";
-import type { RequirementKey } from "@/domain";
+import { combinedVerdict, toClaimedFields, type CombinedVerdict } from "@/compare";
+import type { ClaimedFields } from "@/domain";
 import { ExtractedFieldsView } from "./ui/ExtractedFieldsView";
 import { CompletenessView } from "./ui/CompletenessView";
-import { ConfirmPanel } from "./ui/ConfirmPanel";
-import { coarseClassOf } from "./ui/beverageClass";
+import { ResultView } from "./ui/ResultView";
 import { downscaleForUpload } from "./imageDownscale";
 import { DropZone } from "./ui/DropZone";
 import { ErrorAlert } from "./ui/ErrorAlert";
 import { ResultSkeleton } from "./ui/ResultSkeleton";
-import { secondaryButtonClass } from "./ui/fieldStyles";
+import { inputClass, secondaryButtonClass } from "./ui/fieldStyles";
 import { downloadJson, downloadCsv } from "./ui/download";
 import { analysisToCsv } from "@/batch/csv";
 import { ImageLightbox } from "./ui/ImageLightbox";
@@ -48,9 +50,16 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
   const [state, setState] = useState<SubmitState>("idle");
   const [formError, setFormError] = useState<string | null>(null);
   const [response, setResponse] = useState<VerifyApiResponse | null>(null);
-  const [confirmations, setConfirmations] = useState<Partial<Record<RequirementKey, FieldConfirmation>>>({});
-  // The reviewer's beverage-type override, if any. undefined => use the AI-resolved class.
-  const [classOverride, setClassOverride] = useState<ClassChoice | undefined>(undefined);
+  // The application values the label is verified AGAINST — the reference the tool exists to check.
+  // Brand + alcohol are required to produce a verdict; the rest are compared when the application
+  // lists them. These persist across re-reads of the same product (no retyping).
+  const [claimBrand, setClaimBrand] = useState("");
+  const [claimAlcohol, setClaimAlcohol] = useState("");
+  const [claimClass, setClaimClass] = useState("");
+  const [claimNet, setClaimNet] = useState("");
+  const [claimName, setClaimName] = useState("");
+  const [claimAddress, setClaimAddress] = useState("");
+  const [claimCountry, setClaimCountry] = useState("");
   // The image currently shown full-size in the lightbox, if any.
   const [zoom, setZoom] = useState<{ src: string; alt: string } | null>(null);
 
@@ -59,44 +68,56 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
     imageHelp: useId(),
     err: useId(),
     heading: useId(),
+    appBrand: useId(),
+    appAlcohol: useId(),
+    appClass: useId(),
+    appNet: useId(),
+    appName: useId(),
+    appAddress: useId(),
+    appCountry: useId(),
   };
-  const resultHeadingRef = useRef<HTMLHeadingElement>(null);
-  const completenessHeadingRef = useRef<HTMLHeadingElement>(null);
-  const verdictHeadingRef = useRef<HTMLHeadingElement>(null);
+  // One result heading owns focus after a read; only one result branch mounts at a time, so a single
+  // ref attached to whichever headline renders (comparison / completeness / unreadable) is enough.
+  const headlineRef = useRef<HTMLHeadingElement>(null);
   // Monotonic token so an in-flight read whose image set has since changed is ignored.
   const readToken = useRef(0);
 
-  // When a read completes, move focus to the TOPMOST result heading so a keyboard/screen-reader user
-  // lands on the headline outcome the verify-first page leads with — not the third section. Each
-  // heading ref is populated ONLY while its section is mounted, so the priority order falls out of
-  // which ref exists: verdict (confirm panel) > completeness > extracted / re-upload.
-  // Keyed on `state` only so live recompute (confirming fields) never steals focus.
+  // When a read completes, move focus to the result heading so a keyboard/screen-reader user lands on
+  // the headline outcome. Keyed on `state` only so live recompute (typing application values) never
+  // steals focus.
   useEffect(() => {
     if (state !== "done") return;
-    const target =
-      verdictHeadingRef.current || completenessHeadingRef.current || resultHeadingRef.current;
-    target?.focus();
+    headlineRef.current?.focus();
   }, [state]);
 
-  // Derive the confirm verdict from the reading + the human confirmations (no effect, no extra
-  // state). Exists the moment a readable extraction is present; each confirmation action updates it.
-  const verdict: ConfirmVerdict | null = useMemo(
-    () => (state === "done" && response?.readable ? confirmVerdict(response.extracted, confirmations, classOverride) : null),
-    [state, response, confirmations, classOverride],
+  const readable = state === "done" && Boolean(response?.readable);
+
+  // The application values, or null when not enough is entered to compare (needs BOTH brand AND
+  // alcohol — toClaimedFields owns that rule, shared with the batch screen).
+  const claimed: ClaimedFields | null = useMemo(
+    () =>
+      toClaimedFields({
+        brand: claimBrand,
+        alcoholContentText: claimAlcohol,
+        classType: claimClass,
+        netContents: claimNet,
+        name: claimName,
+        address: claimAddress,
+        countryOfOrigin: claimCountry,
+      }),
+    [claimBrand, claimAlcohol, claimClass, claimNet, claimName, claimAddress, claimCountry],
   );
 
-  const accept = (key: RequirementKey) => setConfirmations((p) => ({ ...p, [key]: { state: "accepted" } }));
-  const edit = (key: RequirementKey, value: string) => setConfirmations((p) => ({ ...p, [key]: { state: "edited", editedValue: value } }));
-  const markMissing = (key: RequirementKey) => setConfirmations((p) => ({ ...p, [key]: { state: "missing" } }));
-  // Picking the AI's own class clears the override (so the "Changed by you" cue only shows a genuine
-  // change, per AC-5), and resolves identically either way.
-  const changeClass = (choice: ClassChoice) => {
-    const aiCoarse = response?.readable ? coarseClassOf(resolveExtractedClass(response.extracted)) : undefined;
-    setClassOverride(choice === aiCoarse ? undefined : choice);
-  };
+  // Always compute completeness (the law-based headline when nothing is being compared); the
+  // claimed-vs-label comparison rides on top when application values are supplied. Pure + client-side,
+  // so typing application values recomputes instantly with no re-read.
+  const combined: CombinedVerdict | null = useMemo(
+    () => (readable && response ? combinedVerdict(claimed, response.extracted) : null),
+    [readable, response, claimed],
+  );
 
-  // Read the current image set (front/back/...) together. Triggered from the handlers, not an
-  // effect, so the AI reads automatically the moment images change — with no manual "go" button.
+  // Read the current image set (front/back/...) together. Triggered from the handlers, not an effect,
+  // so the AI reads automatically the moment images change — with no manual "go" button.
   async function read(imgs: LabelImage[]) {
     if (imgs.length === 0) return;
     const token = ++readToken.current;
@@ -116,8 +137,6 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
         setState("error");
         return;
       }
-      setConfirmations({});
-      setClassOverride(undefined); // a fresh read re-defaults to the AI's class
       setResponse(json as VerifyApiResponse);
       setState("done");
     } catch {
@@ -165,26 +184,38 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
 
   const exportBase = (orderedImages[0]?.file.name ?? "label").replace(/\.[^.]+$/, "");
   function onDownloadJson() {
-    if (!response) return;
+    if (!response || !combined) return;
     downloadJson(`${exportBase}.json`, {
       images: orderedImages.map((i) => ({ filename: i.file.name, position: i.position })),
       provider: response.provider,
       extracted: response.extracted,
-      completeness: response.completeness,
-      ...(verdict
-        ? { confirm: { overall: verdict.overall, awaitingConfirmation: verdict.awaitingConfirmation,
-            fields: verdict.fields.map((f) => ({ key: f.key, value: f.value, status: f.status, state: f.state })) } }
+      completeness: combined.completeness,
+      ...(claimed ? { claimed } : {}),
+      ...(combined.verify
+        ? { result: combined.verify, overall: combined.overall }
         : {}),
     });
   }
   function onDownloadCsv() {
-    if (!response) return;
+    if (!response || !combined) return;
     downloadCsv(`${exportBase}.csv`, analysisToCsv([
-      { filename: exportBase, extracted: response.extracted, completeness: response.completeness, overall: verdict?.overall ?? undefined },
+      {
+        filename: exportBase,
+        extracted: response.extracted,
+        completeness: combined.completeness,
+        result: combined.verify,
+        overall: combined.overall ?? undefined,
+      },
     ]));
   }
 
-  const readable = state === "done" && response?.readable;
+  // The headline outcome announced in the live region. When the application hasn't been entered yet,
+  // the screen is awaiting it (not presenting completeness as the answer), so announce that.
+  const announce = combined
+    ? combined.verify
+      ? `Verdict: ${VERDICT_LABEL[combined.overall ?? "review"]}.`
+      : "Label read. Enter the application's brand and alcohol content to verify it."
+    : "";
 
   return (
     <section
@@ -196,9 +227,10 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
         Read &amp; verify a label
       </h2>
       <p className="mt-1 text-ink-muted">
-        Upload the product&apos;s front label (and the back, if you have it) and the AI reads them
-        together, fills in every field TTB requires for the beverage type, and asks you to confirm or
-        correct each. No typing required to read.
+        Upload the product&apos;s front label (and the back, if you have it) — the AI reads it — then
+        enter what the application claims. The screen checks the label against the application
+        field-by-field (brand, alcohol, net contents, producer, origin) and the statutory government
+        warning, and flags every mismatch as Approve / Needs review / Reject.
       </p>
 
       {mockMode && (
@@ -263,15 +295,89 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
         </div>
       </div>
 
-      {/* Persistent live region: the verdict can appear/refresh reactively as the agent confirms
-          fields (no `state` change), so the focus-move announcement never fires on that path. This
-          polite region announces the headline outcome whenever it appears or changes. */}
+      {/* Step 2 — the application: the reference the label is verified against. Brand + alcohol are
+          REQUIRED to produce a verdict; the rest are compared when the application lists them. The
+          verdict recomputes live as the agent types — no re-read. */}
+      <div className="mt-6">
+        <h3 className="mb-1.5 block font-medium text-ink">2. The application</h3>
+        <p className="mb-3 text-sm text-ink-muted">
+          Enter what the application claims — the label is checked against it using the TTB rules
+          (brand match, ABV tolerance by class, verbatim warning). <strong className="text-ink">Brand
+          and alcohol content are required</strong> for a verdict; fill the rest if the application
+          lists them.
+        </p>
+
+        {/* The two values that unlock the verdict */}
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label htmlFor={ids.appBrand} className="mb-1.5 block text-sm font-medium text-ink">
+              Brand <span className="text-fail-700" aria-hidden="true">*</span>{" "}
+              <span className="font-normal text-ink-muted">(required)</span>
+            </label>
+            <input
+              id={ids.appBrand}
+              type="text"
+              required
+              aria-required="true"
+              value={claimBrand}
+              onChange={(e) => setClaimBrand(e.target.value)}
+              placeholder="e.g. ABC Single Barrel"
+              className={inputClass}
+            />
+          </div>
+          <div>
+            <label htmlFor={ids.appAlcohol} className="mb-1.5 block text-sm font-medium text-ink">
+              Alcohol content <span className="text-fail-700" aria-hidden="true">*</span>{" "}
+              <span className="font-normal text-ink-muted">(required)</span>
+            </label>
+            <input
+              id={ids.appAlcohol}
+              type="text"
+              required
+              aria-required="true"
+              value={claimAlcohol}
+              onChange={(e) => setClaimAlcohol(e.target.value)}
+              placeholder="e.g. 45% Alc./Vol."
+              className={inputClass}
+            />
+          </div>
+        </div>
+
+        {/* Compared only when the application lists them */}
+        <p className="mb-2 mt-4 text-xs font-semibold uppercase tracking-wide text-ink-muted">
+          Other application values — fill if the application lists them
+        </p>
+        <div className="grid gap-4 sm:grid-cols-2">
+          {[
+            { id: ids.appClass, label: "Class / type", value: claimClass, set: setClaimClass, ph: "e.g. Straight Rye Whisky" },
+            { id: ids.appNet, label: "Net contents", value: claimNet, set: setClaimNet, ph: "e.g. 750 mL" },
+            { id: ids.appName, label: "Producer / bottler name", value: claimName, set: setClaimName, ph: "e.g. ABC Distillery" },
+            { id: ids.appAddress, label: "Producer / bottler address", value: claimAddress, set: setClaimAddress, ph: "e.g. Frederick, MD" },
+            { id: ids.appCountry, label: "Country of origin", value: claimCountry, set: setClaimCountry, ph: "e.g. Product of Scotland", hint: "imports only" },
+          ].map((f) => (
+            <div key={f.id}>
+              <label htmlFor={f.id} className="mb-1.5 block text-sm font-medium text-ink">
+                {f.label}
+                {f.hint ? <span className="font-normal text-ink-muted"> ({f.hint})</span> : null}
+              </label>
+              <input
+                id={f.id}
+                type="text"
+                value={f.value}
+                onChange={(e) => f.set(e.target.value)}
+                placeholder={f.ph}
+                className={inputClass}
+              />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Persistent live region: the headline can appear/refresh reactively as the agent types the
+          application values (no `state` change), so the focus-move announcement never fires there.
+          This polite region announces the headline outcome whenever it appears or changes. */}
       <p role="status" aria-live="polite" className="sr-only">
-        {verdict
-          ? verdict.awaitingConfirmation
-            ? `${verdict.fields.filter((f) => f.needsConfirmation).length} fields need your confirmation.`
-            : `Verdict: ${VERDICT_LABEL[verdict.overall]}.`
-          : ""}
+        {announce}
       </p>
 
       {formError && (
@@ -293,36 +399,57 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
         </>
       )}
 
-      {/* Results — lead with the confirm panel (verdict + field confirmations), then completeness, then the full reading. */}
-      {readable && response && (
+      {/* Results — the headline IS the label-vs-application comparison. Until the application's brand +
+          alcohol are entered, the screen says so (it never presents the completeness check as the
+          answer); completeness is a supporting check behind a disclosure either way. */}
+      {readable && response && combined && (
         <>
-          {verdict && (
-            <ConfirmPanel
-              verdict={verdict}
-              onAccept={accept}
-              onEdit={edit}
-              onMarkMissing={markMissing}
-              onClassChange={changeClass}
-              classOverridden={classOverride !== undefined}
-              headingRef={verdictHeadingRef}
-            />
-          )}
-          {/* The confirm panel above already presents every required element + the verdict, so the
-              full completeness breakdown and the raw field read are tucked behind disclosures to keep
-              the screen calm — the checks still run; only the duplicate display is one tap away. */}
-          {response.completeness && (
-            <details className="mt-6 rounded-card border border-border bg-surface-muted p-4">
-              <summary className="min-h-[44px] cursor-pointer py-2 text-sm font-semibold text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2">
-                Full TTB completeness breakdown
-              </summary>
-              <CompletenessView completeness={response.completeness} headingRef={completenessHeadingRef} />
-            </details>
+          {combined.verify ? (
+            <>
+              <ResultView
+                result={combined.verify}
+                overall={combined.overall ?? undefined}
+                gatedByCompleteness={combined.gatedByCompleteness}
+                headingRef={headlineRef}
+              />
+              <details className="mt-6 rounded-card border border-border bg-surface-muted p-4">
+                <summary className="min-h-[44px] cursor-pointer py-2 text-sm font-semibold text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2">
+                  Supporting check: TTB completeness
+                </summary>
+                <CompletenessView completeness={combined.completeness} />
+              </details>
+            </>
+          ) : (
+            <section aria-label="Awaiting the application" className="mt-6 flex flex-col gap-4">
+              <div className="flex items-start gap-4 rounded-card border-l-8 border-brand-600 bg-brand-50 p-5 shadow-card">
+                <IconReview className="h-9 w-9 shrink-0 text-brand-700" />
+                <div>
+                  <h2
+                    ref={headlineRef}
+                    tabIndex={-1}
+                    className="text-lg font-semibold text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2"
+                  >
+                    Enter the application to verify
+                  </h2>
+                  <p className="mt-1 text-sm text-ink">
+                    The label was read. Add the application&apos;s <strong>brand</strong> and{" "}
+                    <strong>alcohol content</strong> above to check the label against it.
+                  </p>
+                </div>
+              </div>
+              <details className="rounded-card border border-border bg-surface-muted p-4">
+                <summary className="min-h-[44px] cursor-pointer py-2 text-sm font-semibold text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2">
+                  Supporting check: TTB completeness
+                </summary>
+                <CompletenessView completeness={combined.completeness} />
+              </details>
+            </section>
           )}
           <details className="mt-4 rounded-card border border-border bg-surface-muted p-4">
             <summary className="min-h-[44px] cursor-pointer py-2 text-sm font-semibold text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2">
               What the AI read off the label
             </summary>
-            <ExtractedFieldsView extracted={response.extracted} headingRef={resultHeadingRef} />
+            <ExtractedFieldsView extracted={response.extracted} />
           </details>
           <div className="mt-4 flex flex-wrap gap-3">
             <button type="button" onClick={onDownloadJson} className={secondaryButtonClass}>
@@ -341,7 +468,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
       {state === "done" && response && !response.readable && (
         <section role="alert" className="mt-6 rounded-card border-l-8 border-review-500 bg-review-50 p-5 shadow-card">
           <h2
-            ref={resultHeadingRef}
+            ref={headlineRef}
             tabIndex={-1}
             className="flex items-center gap-2 text-lg font-semibold text-review-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2"
           >

@@ -2,8 +2,24 @@
  * compare/index.ts — public surface of the deterministic comparator.
  */
 export type { FieldStatus, FieldResult } from "./types";
-export { compareBrand, compareAlcohol, compareWarning } from "./comparators";
-export { verifyLabel, overallVerdict, type OverallVerdict, type VerifyResult } from "./verify";
+export {
+  compareBrand,
+  compareAlcohol,
+  compareWarning,
+  compareNetContents,
+  compareClassType,
+  compareName,
+  compareAddress,
+  compareOrigin,
+} from "./comparators";
+export {
+  verifyLabel,
+  overallVerdict,
+  type OverallVerdict,
+  type VerifyResult,
+  type VerifyField,
+  type VerifyFieldKey,
+} from "./verify";
 export {
   checkCompleteness,
   type CompletenessResult,
@@ -18,19 +34,10 @@ export {
   applyConfidenceGate,
 } from "./thresholds";
 export { normalizeText, normalizeWarning, similarity, levenshtein } from "./text";
-export { combinedVerdict, worstVerdict, type CombinedVerdict } from "./reviewVerdict";
+export { combinedVerdict, worstVerdict, toClaimedFields, type CombinedVerdict } from "./reviewVerdict";
 export {
   parseAlcoholText,
   resolveBeverageClass,
   isLowOrReducedAlcoholClaim,
   type ParsedAlcohol,
 } from "./alcohol";
-export {
-  confirmVerdict,
-  resolveExtractedClass,
-  type ClassChoice,
-  type ConfirmState,
-  type FieldConfirmation,
-  type ConfirmFieldResult,
-  type ConfirmVerdict,
-} from "./confirm";

@@ -15,7 +15,7 @@ import type { LabelPosition } from "@/extraction";
 import { groupImagesByProduct } from "@/batch/pairing";
 import { analysisToCsv, parseClaimedCsv, type ClaimedRow } from "@/batch/csv";
 import { resolveClaimedFor } from "@/batch/claimedMatch";
-import { combinedVerdict, type VerifyResult } from "@/compare";
+import { combinedVerdict, toClaimedFields, type VerifyResult } from "@/compare";
 import type { VerifyApiResponse, VerifyApiError } from "../api/verify/contract";
 import { downscaleForUpload } from "../imageDownscale";
 import { ErrorAlert } from "../ui/ErrorAlert";
@@ -47,6 +47,11 @@ interface BatchRow {
   /** True when an application-values CSV row matched this product — even if the label was unreadable
    *  (so a matched-but-unreadable scan isn't mislabeled "no application row"). */
   matchedClaim?: boolean;
+  /** Whether the label itself was readable (drives the re-scan vs. add-claim-value prompts). */
+  readable?: boolean;
+  /** When a row matched but its claim lacks a value the verdict needs (brand AND alcohol), the
+   *  human-readable list of what to add — so a brand-only row prompts instead of rendering blank. */
+  claimedNeeds?: string;
   note?: string;
 }
 
@@ -85,13 +90,25 @@ async function analyzeProduct(
       { product: group.product, images: group.images.map((im) => ({ filename: im.file.name, position: im.position })) },
       claimedMap,
     );
-    const combined =
-      claimedRow?.brand && r.readable
-        ? combinedVerdict(
-            { brand: claimedRow.brand, alcoholContentText: claimedRow.alcoholContent, classType: claimedRow.classType },
-            r.extracted,
-          )
-        : null;
+    // The claimed-vs-label verdict needs BOTH a brand and an alcohol content; toClaimedFields owns
+    // that rule (shared with the single screen) and returns null for a partial claim — so a partial
+    // row can't masquerade as a (blank) verdict. `needs` reports exactly what's missing for the prompt.
+    const claimedFields = claimedRow
+      ? toClaimedFields({
+          brand: claimedRow.brand,
+          alcoholContentText: claimedRow.alcoholContent,
+          classType: claimedRow.classType,
+          netContents: claimedRow.netContents,
+          name: claimedRow.name,
+          address: claimedRow.address,
+          countryOfOrigin: claimedRow.countryOfOrigin,
+        })
+      : null;
+    const needs = [
+      !claimedRow?.brand?.trim() && "a brand",
+      !claimedRow?.alcoholContent?.trim() && "alcohol content",
+    ].filter(Boolean).join(" + ");
+    const combined = claimedFields && r.readable ? combinedVerdict(claimedFields, r.extracted) : null;
     return {
       ...base,
       status: "done",
@@ -99,7 +116,9 @@ async function analyzeProduct(
       completeness: r.completeness,
       result: combined?.verify ?? null,
       overall: combined?.overall ?? null,
-      matchedClaim: Boolean(claimedRow?.brand),
+      matchedClaim: Boolean(claimedRow),
+      readable: r.readable,
+      claimedNeeds: claimedRow && !claimedFields ? needs : undefined,
       note: r.readable ? undefined : r.message,
     };
   } catch {
@@ -271,8 +290,10 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
 
         <div>
           <span className="mb-1.5 block font-medium text-ink">
-            Application values{" "}
-            <span className="font-normal text-ink-muted">(optional CSV: filename, brand, alcohol, class)</span>
+            The application{" "}
+            <span className="font-normal text-ink-muted">
+              (CSV: filename, brand, alcohol, class, net, name, address, country)
+            </span>
           </span>
           <input
             type="file"
@@ -292,7 +313,8 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
               onClick={() =>
                 downloadCsv(
                   "application-values-template.csv",
-                  "filename,brand,alcohol,class\nacme-front.jpg,Acme Distillery,40% Alc./Vol. (80 Proof),Vodka\n",
+                  "filename,brand,alcohol,class,net,name,address,country\n" +
+                    "acme-front.jpg,Acme Single Barrel,40% Alc./Vol. (80 Proof),Vodka,750 mL,Acme Distillery,\"Peoria, IL\",USA\n",
                 )
               }
             >
@@ -382,8 +404,10 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
                   <td className="px-3 py-2.5">
                     {r.overall ? (
                       <StatusBadge tone={toneForStatus(r.overall)} label={VERDICT_LABEL[r.overall]} />
-                    ) : r.matchedClaim ? (
+                    ) : r.matchedClaim && r.readable === false ? (
                       <span className="text-sm text-review-700">Matched — couldn&apos;t read label; re-scan</span>
+                    ) : r.matchedClaim && r.claimedNeeds ? (
+                      <span className="text-sm text-review-700">Matched — add {r.claimedNeeds} to compare</span>
                     ) : (
                       <span className="text-ink-muted">{claimed.size > 0 ? "no application row" : "—"}</span>
                     )}
