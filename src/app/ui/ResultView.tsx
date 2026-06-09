@@ -193,27 +193,85 @@ function ReviewControls({
           </div>
         </div>
       )}
-      {/* Once a decision is made, let the reviewer leave a note — their own words on why it's flagged or
-          what they confirmed. It's woven into the applicant email (the reviewer notes seed). */}
-      {override && onNote && (
-        <div className="mt-3">
-          <label htmlFor={`note-${field.key}`} className="block text-xs font-semibold uppercase tracking-wide text-ink-muted">
-            Note {override === "issue" ? "(what's wrong?)" : "(optional)"}
-          </label>
-          <textarea
-            id={`note-${field.key}`}
-            value={note ?? ""}
-            onChange={(e) => onNote(field.key, e.target.value)}
-            rows={2}
-            placeholder={
-              override === "issue"
-                ? "Explain the problem for the applicant. Added to the email."
-                : "Add a note for the record (optional)."
-            }
-            className="mt-1 w-full resize-y rounded-field border-2 border-border-strong bg-surface px-3 py-2 text-sm leading-relaxed text-ink shadow-sm transition focus-visible:border-brand-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2"
-          />
-        </div>
-      )}
+      {/* Once a decision is made, let the reviewer leave a note (their words on why it's flagged or what
+          they confirmed). Saving commits it into the applicant email. */}
+      {override && onNote && <NoteEditor field={field} override={override} note={note} onNote={onNote} />}
+    </div>
+  );
+}
+
+/** A per-field reviewer note with an explicit save. The textarea is a DRAFT; "Save note" commits it
+ *  (which is what feeds the applicant email), and a clear "Saved" state shows it took — so a typed note
+ *  is never silently lost or left in limbo. */
+function NoteEditor({
+  field,
+  override,
+  note,
+  onNote,
+}: {
+  field: VerifyField;
+  override: FieldOverride;
+  note?: string;
+  onNote: (key: VerifyFieldKey, text: string) => void;
+}) {
+  const saved = note ?? "";
+  const [draft, setDraft] = useState(saved);
+  // Resync the draft when the committed note changes from OUTSIDE (switching products in the batch drawer,
+  // a reset) — the React-sanctioned "adjust state during render" pattern, no effect.
+  const [prevSaved, setPrevSaved] = useState(saved);
+  if (saved !== prevSaved) {
+    setPrevSaved(saved);
+    setDraft(saved);
+  }
+  const dirty = draft.trim() !== saved.trim();
+  const hasSaved = saved.trim() !== "";
+  const btn =
+    "inline-flex min-h-[36px] items-center gap-1.5 rounded-field px-3 py-1.5 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2";
+  return (
+    <div className="mt-3">
+      <label htmlFor={`note-${field.key}`} className="block text-xs font-semibold uppercase tracking-wide text-ink-muted">
+        Note {override === "issue" ? "(what's wrong?)" : "(optional)"}
+      </label>
+      <textarea
+        id={`note-${field.key}`}
+        value={draft}
+        onChange={(e) => setDraft(e.target.value)}
+        rows={2}
+        placeholder={
+          override === "issue"
+            ? "Explain the problem. Saving adds it to the applicant email."
+            : "Add a note. Saving adds it to the applicant email."
+        }
+        className="mt-1 w-full resize-y rounded-field border-2 border-border-strong bg-surface px-3 py-2 text-sm leading-relaxed text-ink shadow-sm transition focus-visible:border-brand-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2"
+      />
+      <div className="mt-2 flex flex-wrap items-center gap-2.5">
+        <button
+          type="button"
+          onClick={() => onNote(field.key, draft)}
+          disabled={!dirty}
+          className={`${btn} border-2 border-brand-600 bg-brand-600 text-white hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50`}
+        >
+          <IconPass className="h-4 w-4" /> Save note
+        </button>
+        {hasSaved && !dirty && (
+          <span className="inline-flex items-center gap-1 text-xs font-semibold text-pass-700">
+            <IconPass className="h-3.5 w-3.5" /> Saved, added to the applicant email
+          </span>
+        )}
+        {dirty && hasSaved && <span className="text-xs font-semibold text-review-700">Unsaved changes</span>}
+        {hasSaved && (
+          <button
+            type="button"
+            onClick={() => {
+              setDraft("");
+              onNote(field.key, "");
+            }}
+            className="text-xs font-semibold text-ink-muted underline underline-offset-2 transition hover:text-fail-700 focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700"
+          >
+            Remove note
+          </button>
+        )}
+      </div>
     </div>
   );
 }

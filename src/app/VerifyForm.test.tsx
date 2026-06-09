@@ -256,6 +256,9 @@ describe("VerifyForm — verify against the application", () => {
     // A note field appears on the flagged card; the reviewer's words land in the applicant email.
     const noteField = within(brandCard).getByPlaceholderText(/Explain the problem/i);
     fireEvent.change(noteField, { target: { value: "Brand is misspelled on the label." } });
+    // The note is a draft until saved: it reaches the email only after "Save note".
+    fireEvent.click(within(brandCard).getByRole("button", { name: /Save note/i }));
+    expect(within(brandCard).getByText(/Saved, added to the applicant email/i)).toBeTruthy();
     fireEvent.click(q.getByRole("button", { name: /Reject \/ send back/i }));
     const composer = q.getByLabelText(/Reviewer notes/i) as HTMLTextAreaElement;
     expect(composer.value).toMatch(/Brand is misspelled on the label\./);
