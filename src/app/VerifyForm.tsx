@@ -11,11 +11,12 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { VerifyApiResponse, VerifyApiError } from "./api/verify/contract";
 import type { LabelPosition } from "@/extraction";
-import { confirmVerdict, type ConfirmVerdict, type FieldConfirmation, type ClassChoice } from "@/compare";
+import { confirmVerdict, resolveExtractedClass, type ConfirmVerdict, type FieldConfirmation, type ClassChoice } from "@/compare";
 import type { RequirementKey } from "@/domain";
 import { ExtractedFieldsView } from "./ui/ExtractedFieldsView";
 import { CompletenessView } from "./ui/CompletenessView";
 import { ConfirmPanel } from "./ui/ConfirmPanel";
+import { coarseClassOf } from "./ui/beverageClass";
 import { downscaleForUpload } from "./imageDownscale";
 import { DropZone } from "./ui/DropZone";
 import { ErrorAlert } from "./ui/ErrorAlert";
@@ -87,7 +88,12 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
   const accept = (key: RequirementKey) => setConfirmations((p) => ({ ...p, [key]: { state: "accepted" } }));
   const edit = (key: RequirementKey, value: string) => setConfirmations((p) => ({ ...p, [key]: { state: "edited", editedValue: value } }));
   const markMissing = (key: RequirementKey) => setConfirmations((p) => ({ ...p, [key]: { state: "missing" } }));
-  const changeClass = (choice: ClassChoice) => setClassOverride(choice);
+  // Picking the AI's own class clears the override (so the "Changed by you" cue only shows a genuine
+  // change, per AC-5), and resolves identically either way.
+  const changeClass = (choice: ClassChoice) => {
+    const aiCoarse = response?.readable ? coarseClassOf(resolveExtractedClass(response.extracted)) : undefined;
+    setClassOverride(choice === aiCoarse ? undefined : choice);
+  };
 
   // Read the current image set (front/back/...) together. Triggered from the handlers, not an
   // effect, so the AI reads automatically the moment images change — with no manual "go" button.

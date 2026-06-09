@@ -98,14 +98,21 @@ function statusForEdit(
   };
 }
 
+/** The beverage class the AI read for an extraction (no human override) — the confirm panel's default
+ *  selection. Exposed so the UI can tell whether the reviewer has actually changed the class. */
+export function resolveExtractedClass(extracted: ExtractedFields): BeverageClass {
+  const classText = extracted.classType?.trim() ? extracted.classType : extracted.class;
+  return resolveBeverageClass(classText, parseAlcoholText(extracted.alcoholContentText).abv);
+}
+
 export function confirmVerdict(
   extracted: ExtractedFields,
   confirmations: Partial<Record<RequirementKey, FieldConfirmation>> = {},
   classOverride?: ClassChoice,
 ): ConfirmVerdict {
-  const aiClassText = extracted.classType?.trim() ? extracted.classType : extracted.class;
-  const classText = classOverride ?? aiClassText;
-  const beverageClass: BeverageClass = resolveBeverageClass(classText, parseAlcoholText(extracted.alcoholContentText).abv);
+  const beverageClass: BeverageClass = classOverride
+    ? resolveBeverageClass(classOverride, parseAlcoholText(extracted.alcoholContentText).abv)
+    : resolveExtractedClass(extracted);
 
   const fields: ConfirmFieldResult[] = mandatoryElementsFor(beverageClass).map((spec): ConfirmFieldResult => {
     const c = confirmations[spec.key] ?? { state: "unconfirmed" as ConfirmState };

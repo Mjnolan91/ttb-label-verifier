@@ -8,7 +8,7 @@
  * Fetch + object-URL are mocked; the verdict itself is computed by the real pure confirmVerdict.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, waitFor, within } from "@testing-library/react";
 import { VerifyForm } from "./VerifyForm";
 import type { VerifyApiResponse } from "./api/verify/contract";
 import { CANONICAL_GOVERNMENT_WARNING, type ExtractedFields } from "@/domain";
@@ -135,6 +135,20 @@ describe("VerifyForm — confirm-to-approve", () => {
     fireEvent.change(q.getByLabelText("Beverage type"), { target: { value: "wine" } });
     expect((await panel.findAllByText("Appellation of origin")).length).toBeGreaterThan(0);
     expect(panel.queryAllByText("Age statement").length).toBe(0);
+  });
+
+  it("a fresh read resets the beverage-type override to the AI's reading (AC-6)", ASYNC, async () => {
+    mockFetch({ provider: "mock", readable: true, extracted: extractedBourbon(), result: null });
+    const { container } = render(<VerifyForm />);
+    const q = within(container);
+    dropLabelImage(container);
+    await q.findByText("Confirm the required fields");
+    // Override to Wine and confirm it took.
+    fireEvent.change(q.getByLabelText("Beverage type"), { target: { value: "wine" } });
+    await waitFor(() => expect((q.getByLabelText("Beverage type") as HTMLSelectElement).value).toBe("wine"));
+    // A fresh read (new image) must reset the override back to the AI-read class.
+    dropLabelImage(container);
+    await waitFor(() => expect((q.getByLabelText("Beverage type") as HTMLSelectElement).value).toBe("distilledSpirits"));
   });
 
   it("shows the re-upload prompt for an unreadable image (never a fabricated verdict)", ASYNC, async () => {
