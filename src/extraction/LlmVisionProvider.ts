@@ -69,8 +69,11 @@ const EXTRACTION_JSON_SCHEMA = {
   properties: {
     ...Object.fromEntries(FIELD_CATALOG.map((d) => [d.rawKey, confidencedValueSchema(d.description)])),
     warningPrefixIsAllCaps: {
-      type: "boolean",
-      description: "true ONLY if the \"GOVERNMENT WARNING:\" prefix is ALL CAPITAL LETTERS; false if title/mixed case.",
+      type: ["boolean", "null"],
+      description:
+        "true if the \"GOVERNMENT WARNING:\" prefix is clearly ALL CAPITAL LETTERS; false ONLY if it is " +
+        "clearly title/mixed case (a real violation); null if you cannot tell. When unsure, return null — " +
+        "never guess (a wrong false rejects a compliant label).",
     },
     warningPrefixIsBold: {
       type: ["boolean", "null"],
@@ -196,7 +199,8 @@ export function parseModelJson(content: string): ExtractedFields {
     sulfiteDeclaration: coerceConfidenced(p.sulfiteDeclaration),
     ageStatement: coerceConfidenced(p.ageStatement),
     commodityStatement: coerceConfidenced(p.commodityStatement),
-    warningPrefixIsAllCaps: p.warningPrefixIsAllCaps === true,
+    warningPrefixIsAllCaps:
+      p.warningPrefixIsAllCaps === true ? true : p.warningPrefixIsAllCaps === false ? false : null,
     warningPrefixIsBold:
       p.warningPrefixIsBold === true ? true : p.warningPrefixIsBold === false ? false : null,
   };

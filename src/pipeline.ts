@@ -32,9 +32,21 @@ export async function runExtraction(
 ): Promise<ExtractionOutcome> {
   if (images.length === 0) throw new Error("At least one image is required.");
   const samples = providers.every((p) => p.name === "mock") ? 1 : resolveSelfConsistencySamples();
-  const settled = await Promise.allSettled(
-    images.map((img) => selfConsistentExtract(providers, img, timeoutMs, samples)),
-  );
+
+  // Run the per-image reads AND the dedicated bold-judgment pass CONCURRENTLY. The bold pass needs
+  // only the image bytes (not the extracted fields), so waiting for extraction to finish before
+  // starting it just stacks a whole model round-trip onto the latency budget. Start both at once and
+  // apply the bold verdict afterward, only when a warning was actually read. (Trade-off: on a label
+  // with no warning the speculative bold call is wasted — but a warning is mandatory on TTB labels
+  // ≥0.5% ABV, so this nets a large latency win for the common case.)
+  const bolder = providers.find((p) => typeof p.judgeWarningBold === "function");
+  const [settled, boldVerdicts] = await Promise.all([
+    Promise.allSettled(images.map((img) => selfConsistentExtract(providers, img, timeoutMs, samples))),
+    bolder
+      ? Promise.all(images.map((img) => bolder.judgeWarningBold!(img).catch(() => null)))
+      : Promise.resolve<(boolean | null)[]>([]),
+  ]);
+
   const reads = settled
     .filter((s): s is PromiseFulfilledResult<ExtractedFields> => s.status === "fulfilled")
     .map((s) => s.value);
@@ -49,17 +61,11 @@ export async function runExtraction(
 
   const extracted = reads.reduce((acc, cur) => mergeExtracted(acc, cur));
 
-  // Bold pass: if a warning was read and a provider supports judgeWarningBold, run a dedicated
-  // bold-judgment pass. The warning may be on the back label — iterate all images and take the
-  // first non-null verdict rather than assuming it is on the first image.
+  // Apply the dedicated bold judgment ONLY when a warning was actually read. The warning may be on
+  // the back label, so take the first non-null verdict across the images.
   if (extracted.warningText && extracted.warningText.trim() !== "") {
-    const bolder = providers.find((p) => typeof p.judgeWarningBold === "function");
-    if (bolder) {
-      for (const img of images) {
-        const verdict = await bolder.judgeWarningBold!(img).catch(() => null);
-        if (verdict !== null) { extracted.warningPrefixIsBold = verdict; break; }
-      }
-    }
+    const verdict = boldVerdicts.find((v) => v !== null) ?? null;
+    if (verdict !== null) extracted.warningPrefixIsBold = verdict;
   }
 
   return { readable: isExtractionReadable(extracted), extracted };

@@ -63,7 +63,7 @@ describe("readGeminiConfig", () => {
   });
 
   it("accepts GEMINI_API_KEY or GOOGLE_API_KEY and honors GEMINI_MODEL", () => {
-    expect(readGeminiConfig({ GEMINI_API_KEY: "k" }).model).toBe("gemini-3.1-pro-preview");
+    expect(readGeminiConfig({ GEMINI_API_KEY: "k" }).model).toBe("gemini-3.5-flash");
     expect(readGeminiConfig({ GOOGLE_API_KEY: "k" }).apiKey).toBe("k");
     expect(readGeminiConfig({ GEMINI_API_KEY: "k", GEMINI_MODEL: "gemini-3.1-pro-preview" }).model).toBe(
       "gemini-3.1-pro-preview",
@@ -91,9 +91,9 @@ describe("GeminiVisionProvider.extract — request shape + parsing (HTTP mocked)
     };
     expect(body.generationConfig.responseMimeType).toBe("application/json");
     expect(body.generationConfig.responseSchema).toBeTruthy();
-    // Gemini 3 uses thinkingLevel:"minimal" (not thinkingBudget) — keeps latency inside budget
-    // while staying correct for the gen3 API (thinkingBudget is a legacy 2.x param).
-    expect(body.generationConfig.thinkingConfig).toEqual({ thinkingLevel: "minimal" });
+    // Gemini 3 uses thinkingLevel:"low" (not thinkingBudget, and NOT "minimal" — Pro rejects that)
+    // — keeps latency inside budget while staying correct for the gen3 API.
+    expect(body.generationConfig.thinkingConfig).toEqual({ thinkingLevel: "low" });
     const inline = body.contents[0].parts.find((p) => p.inlineData)?.inlineData;
     expect(inline?.mimeType).toBe("image/jpeg");
     expect(typeof inline?.data).toBe("string");
@@ -176,7 +176,7 @@ describe("GeminiVisionProvider — bold pass + tuning", () => {
     expect(await unk.judgeWarningBold!(img)).toBeNull();
   });
 
-  it("the read request carries gen3 thinkingLevel + per-part media resolution", async () => {
+  it("the read request carries gen3 thinkingLevel 'low' and sends NO per-part mediaResolution (v1beta-unsupported)", async () => {
     type CapturedPart = { text?: string; inlineData?: unknown; mediaResolution?: unknown };
     type CapturedBody = {
       generationConfig: { temperature: number; thinkingConfig: unknown };
@@ -189,9 +189,9 @@ describe("GeminiVisionProvider — bold pass + tuning", () => {
     }) as unknown as typeof fetch;
     await new GeminiVisionProvider({ config: cfg, fetchImpl: capture }).extract(img);
     expect(body!.generationConfig.temperature).toBe(1);
-    expect(body!.generationConfig.thinkingConfig).toEqual({ thinkingLevel: "minimal" });
+    expect(body!.generationConfig.thinkingConfig).toEqual({ thinkingLevel: "low" });
     const mediaPart = body!.contents[0].parts.find((p) => p.inlineData);
-    expect(mediaPart?.mediaResolution).toEqual({ level: "media_resolution_high" });
+    expect(mediaPart?.mediaResolution).toBeUndefined();
   });
 });
 

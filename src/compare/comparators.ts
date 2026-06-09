@@ -12,10 +12,12 @@ import {
   isWarningRequired,
   selectToleranceFor,
   abvToProof,
+  parseNetContents,
+  isAuthorizedFill,
   type BeverageClass,
 } from "@/domain";
 import type { FieldResult } from "./types";
-import { normalizeText, normalizeWarning, similarity } from "./text";
+import { normalizeText, normalizeWarning, normalizeBrandKeepingSymbols, similarity } from "./text";
 import {
   parseAlcoholText,
   resolveBeverageClass,
@@ -101,11 +103,22 @@ export function compareBrand(args: {
     return result("fail", claimed, extracted || "(none)", "No brand name was read from the label.");
   }
   if (nc === ne) {
+    // Equal after dropping ALL punctuation. If they also match with symbols kept, it's a true match;
+    // if they differ ONLY in punctuation/symbols ("Smith & Co" vs "Smith Co"), that can be a distinct
+    // registered brand — route to review rather than auto-approve (27 CFR 5.64/4.33 brand identity).
+    if (normalizeBrandKeepingSymbols(claimed) === normalizeBrandKeepingSymbols(extracted)) {
+      return result(
+        "pass",
+        claimed,
+        extracted,
+        "Brand matches after normalizing case, spacing and smart quotes.",
+      );
+    }
     return result(
-      "pass",
+      "review",
       claimed,
       extracted,
-      "Brand matches after normalizing case, spacing, punctuation and smart quotes.",
+      'Brand matches except for punctuation/symbols (e.g. "&", "-") — confirm they are the same brand.',
     );
   }
   // Brand mark vs producer name: "ABC" and "ABC Distillery" are the same brand family. Equal after
@@ -241,19 +254,80 @@ export function compareAlcohol(args: {
 }
 
 /**
+ * Label-INTERNAL alcohol validity — defects visible on the label's own face, with NO application
+ * value needed. Reused by completeness.ts (the no-application headline) and confirm.ts so they
+ * enforce the same internal checks compareAlcohol already applies when a claimed value IS present
+ * (previously these only ran on the claimed-comparison path):
+ *   - US proof must equal 2 × ABV (definitional);
+ *   - a "low/reduced alcohol" malt beverage must be under 2.5% ABV (27 CFR 7.65(d)).
+ * Returns a human-readable reason when the label is internally invalid, else null.
+ */
+export function checkAlcoholInternalConsistency(
+  alcoholText: string | undefined,
+  classText: string | undefined,
+  cls: BeverageClass,
+): string | null {
+  const { abv, proof } = parseAlcoholText(alcoholText);
+  if (abv === undefined) return null; // nothing numeric to validate; presence is handled elsewhere
+  if (proof !== undefined && Math.abs(proof - abvToProof(abv)) > 0.1) {
+    return `Label is internally inconsistent: ${proof} proof ≠ 2 × ${abv}% ABV (proof = 2 × ABV).`;
+  }
+  if (cls === "maltBeverage" && isLowOrReducedAlcoholClaim(classText) && abv >= MALT_LOW_ALCOHOL_CAP - EPS) {
+    return `"Low/reduced alcohol" malt beverages must be under 2.5% ABV (27 CFR 7.65(d)).`;
+  }
+  return null;
+}
+
+/**
+ * Net contents — class-specific. Validates the stated quantity (not just presence):
+ *   - the unit SYSTEM is mandated per class — metric for distilled spirits (27 CFR 5.71) and wine
+ *     (27 CFR 4.73); US-customary for malt beverages (27 CFR 7.70);
+ *   - the SIZE must be an authorized standard of fill for distilled spirits (27 CFR 5.203) and wine
+ *     (27 CFR 4.72); malt beverages have NO standard of fill (any size is lawful).
+ * Returns a human-readable reason when the stated net contents is non-compliant on its face, else
+ * null. A non-listed metric SIZE is surfaced (review) rather than asserted impossible — TTB adds sizes.
+ */
+export function validateNetContents(value: string | undefined, cls: BeverageClass): string | null {
+  const nc = parseNetContents(value);
+  if (!nc.parsed) {
+    return "Net contents is not a recognizable quantity with a unit (e.g. \"750 mL\" or \"12 FL OZ\").";
+  }
+  if (cls === "maltBeverage") {
+    // No standard of fill for malt; only the US-customary statement is required (27 CFR 7.70).
+    if (!nc.hasUsCustomary) {
+      return "Malt beverages must state net contents in US-customary units, e.g. fluid ounces (27 CFR 7.70).";
+    }
+    return null;
+  }
+  if (cls === "distilledSpirits" || cls === "wineUnder14" || cls === "wineOver14" || cls === "cider") {
+    const kind = cls === "distilledSpirits" ? "spirits" : "wine";
+    const metricCite = kind === "spirits" ? "27 CFR 5.71" : "27 CFR 4.73";
+    const fillCite = kind === "spirits" ? "27 CFR 5.203" : "27 CFR 4.72";
+    if (nc.ml === undefined) {
+      return `${kind === "spirits" ? "Distilled spirits" : "Wine"} must state net contents in metric (mL or L) (${metricCite}).`;
+    }
+    if (!isAuthorizedFill(nc.ml, kind)) {
+      return `${nc.ml} mL is not an authorized standard of fill for ${kind === "spirits" ? "distilled spirits" : "wine"} (${fillCite}) — confirm the container size.`;
+    }
+    return null;
+  }
+  return null; // unknown class — don't assert a rule we can't determine
+}
+
+/**
  * Government warning — strict. Body must match the canonical statutory wording; the prefix's
  * required ALL-CAPS (and BOLD where detectable) is read from the extracted flags, not re-derived
  * from raw text. Title-case, reworded, or missing = fail. Products under 0.5% ABV are exempt.
  */
 export function compareWarning(args: {
   warningText?: string;
-  warningPrefixIsAllCaps?: boolean;
+  warningPrefixIsAllCaps?: boolean | null;
   warningPrefixIsBold?: boolean | null;
   abv?: number;
 }): FieldResult {
   const canonical = CANONICAL_GOVERNMENT_WARNING;
   const text = args.warningText ?? "";
-  const allCaps = args.warningPrefixIsAllCaps ?? false;
+  const allCaps = args.warningPrefixIsAllCaps ?? null;
   const bold = args.warningPrefixIsBold ?? null;
 
   // Exemption: products under 0.5% ABV are not required to carry the warning (27 CFR 16.10).
@@ -276,7 +350,7 @@ export function compareWarning(args: {
       "Warning text does not match the canonical statutory wording (27 CFR 16.21).",
     );
   }
-  if (!allCaps) {
+  if (allCaps === false) {
     return result(
       "fail",
       canonical,

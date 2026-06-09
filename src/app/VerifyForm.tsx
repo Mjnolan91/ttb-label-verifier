@@ -307,10 +307,23 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
               headingRef={verdictHeadingRef}
             />
           )}
+          {/* The confirm panel above already presents every required element + the verdict, so the
+              full completeness breakdown and the raw field read are tucked behind disclosures to keep
+              the screen calm — the checks still run; only the duplicate display is one tap away. */}
           {response.completeness && (
-            <CompletenessView completeness={response.completeness} headingRef={completenessHeadingRef} />
+            <details className="mt-6 rounded-card border border-border bg-surface-muted p-4">
+              <summary className="min-h-[44px] cursor-pointer py-2 text-sm font-semibold text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2">
+                Full TTB completeness breakdown
+              </summary>
+              <CompletenessView completeness={response.completeness} headingRef={completenessHeadingRef} />
+            </details>
           )}
-          <ExtractedFieldsView extracted={response.extracted} headingRef={resultHeadingRef} />
+          <details className="mt-4 rounded-card border border-border bg-surface-muted p-4">
+            <summary className="min-h-[44px] cursor-pointer py-2 text-sm font-semibold text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2">
+              What the AI read off the label
+            </summary>
+            <ExtractedFieldsView extracted={response.extracted} headingRef={resultHeadingRef} />
+          </details>
           <div className="mt-4 flex flex-wrap gap-3">
             <button type="button" onClick={onDownloadJson} className={secondaryButtonClass}>
               Download JSON

@@ -43,3 +43,12 @@ export {
 // TTB mandatory label-element matrix per beverage class (drives the completeness check).
 export { mandatoryElementsFor } from "./labelRequirements";
 export type { RequirementKey, RequirementSpec } from "./labelRequirements";
+
+// TTB authorized container sizes (standards of fill) + net-contents parsing.
+export {
+  SPIRITS_STANDARDS_OF_FILL_ML,
+  WINE_STANDARDS_OF_FILL_ML,
+  parseNetContents,
+  isAuthorizedFill,
+} from "./standardsOfFill";
+export type { ParsedNetContents } from "./standardsOfFill";

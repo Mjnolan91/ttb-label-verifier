@@ -147,10 +147,12 @@ export interface ExtractedFields {
   warningText?: string;
   /**
    * Whether the "GOVERNMENT WARNING:" prefix was rendered in ALL CAPITAL LETTERS, per
-   * 27 CFR 16.22(a)(2). true = all-caps as required; false = not all-caps (e.g. title-case
-   * "Government Warning", which must fail).
+   * 27 CFR 16.22(a)(2). Tri-state (mirrors warningPrefixIsBold):
+   *   - true  = clearly all-caps as required.
+   *   - false = clearly NOT all-caps (e.g. title-case "Government Warning") — a real violation.
+   *   - null  = cannot tell from the image; surfaced for human confirmation, never hard-failed.
    */
-  warningPrefixIsAllCaps: boolean;
+  warningPrefixIsAllCaps: boolean | null;
   /**
    * Whether the "GOVERNMENT WARNING:" prefix was rendered in BOLD TYPE, per 27 CFR
    * 16.22(a)(2). Tri-state on purpose:

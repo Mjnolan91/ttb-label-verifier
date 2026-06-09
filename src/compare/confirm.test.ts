@@ -131,6 +131,15 @@ describe("confirmVerdict — the government warning is auto-evaluated, never fre
     expect(v.overall).toBe("reject");
   });
 
+  it("an undetectable-all-caps (null) prefix is a flagged review the human can accept", () => {
+    const before = confirmVerdict(spirits({ warningPrefixIsAllCaps: null }), {});
+    const w = before.fields.find((f) => f.key === "governmentWarning")!;
+    expect(w.status).toBe("review");
+    expect(w.needsConfirmation).toBe(true);
+    const after = confirmVerdict(spirits({ warningPrefixIsAllCaps: null }), { governmentWarning: { state: "accepted" } });
+    expect(after.fields.find((f) => f.key === "governmentWarning")!.status).toBe("pass");
+  });
+
   it("an undetectable-bold warning is a flagged review the human can accept to pass", () => {
     const e = spirits({ warningPrefixIsBold: null });
     const before = confirmVerdict(e, {});
@@ -140,6 +149,22 @@ describe("confirmVerdict — the government warning is auto-evaluated, never fre
     const after = confirmVerdict(e, { governmentWarning: { state: "accepted" } });
     expect(after.fields.find((f) => f.key === "governmentWarning")!.status).toBe("pass");
     expect(after.awaitingConfirmation).toBe(false);
+  });
+});
+
+describe("confirmVerdict — label-internal alcohol consistency", () => {
+  it("an impossible ABV/proof (proof != 2xABV) is review, not pass — even unconfirmed", () => {
+    const v = confirmVerdict(spirits({ alcoholContentText: "45% Alc./Vol. (80 Proof)" }), {});
+    const alc = v.fields.find((f) => f.key === "alcoholContent")!;
+    expect(alc.status).toBe("review");
+    expect(alc.flagged).toBe(true);
+    expect(v.overall).toBe("review");
+  });
+
+  it("accepting an internally-inconsistent ABV/proof still cannot approve it", () => {
+    const v = confirmVerdict(spirits({ alcoholContentText: "45% Alc./Vol. (80 Proof)" }), { alcoholContent: { state: "accepted" } });
+    expect(v.fields.find((f) => f.key === "alcoholContent")!.status).toBe("review");
+    expect(v.overall).toBe("review");
   });
 });
 

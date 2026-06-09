@@ -30,6 +30,10 @@ describe("compareBrand", () => {
   it("PASS: identical brand with a producer suffix stays a pass", () => {
     expect(compareBrand({ claimed: "Old Tom Distillery", extracted: "OLD TOM DISTILLERY" }).status).toBe("pass");
   });
+  it("REVIEW: a symbol-only difference is not an auto-pass ('Smith & Co' vs 'Smith Co')", () => {
+    expect(compareBrand({ claimed: "Smith & Co", extracted: "Smith Co" }).status).toBe("review");
+    expect(compareBrand({ claimed: "St. George", extracted: "St George" }).status).toBe("review");
+  });
   it("FAIL: a different brand", () => {
     const r = compareBrand({ claimed: "Old Tom Distillery", extracted: "New Barrel Co" });
     expect(r.status).toBe("fail");

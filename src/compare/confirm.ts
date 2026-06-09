@@ -14,7 +14,7 @@ import type { FieldStatus } from "./types";
 import { overallVerdict } from "./verify";
 import type { OverallVerdict } from "./verify";
 import { fieldFor, evaluateWarningElement, evaluateAbsentAlcohol } from "./completeness";
-import { compareBrand, compareAlcohol } from "./comparators";
+import { compareBrand, compareAlcohol, checkAlcoholInternalConsistency, validateNetContents } from "./comparators";
 import { resolveBeverageClass, parseAlcoholText } from "./alcohol";
 import { FIELD_REVIEW_CONFIDENCE } from "./thresholds";
 import { normalizeText } from "./text";
@@ -131,10 +131,12 @@ export function confirmVerdict(
       if (el.status === "unverifiable") {
         return { ...base, flagged: false, needsConfirmation: false, status: "pass", reason: el.detail };
       }
-      if (extracted.warningPrefixIsBold === null && c.state !== "accepted") {
+      // "Cannot tell" on EITHER the bold or the all-caps prefix flag is surfaced for confirmation.
+      const uncertain = extracted.warningPrefixIsBold === null || extracted.warningPrefixIsAllCaps === null;
+      if (uncertain && c.state !== "accepted") {
         return { ...base, flagged: true, needsConfirmation: true, status: "review", reason: el.detail };
       }
-      return { ...base, flagged: extracted.warningPrefixIsBold === null, needsConfirmation: false, status: "pass", reason: el.detail };
+      return { ...base, flagged: uncertain, needsConfirmation: false, status: "pass", reason: el.detail };
     }
 
     // ---- Every other element. ----
@@ -147,6 +149,19 @@ export function confirmVerdict(
       key: spec.key, label: spec.label, necessity: spec.necessity,
       aiValue, confidence, editable: true, state: c.state,
     };
+
+    // A present alcohol statement that is internally impossible (proof ≠ 2×ABV; over-cap "low alcohol"
+    // malt) is a label defect no confirmation can cure — it downgrades the field to review regardless
+    // of confirm state (edits re-run the full comparator via statusForEdit, which already checks this).
+    const alcoholProblem =
+      spec.key === "alcoholContent" && present
+        ? checkAlcoholInternalConsistency(extracted.alcoholContentText, extracted.classType ?? extracted.class, beverageClass)
+        : null;
+    // Net contents must be a valid quantity in the right unit system + an authorized standard of fill;
+    // like the alcohol check, this is a label defect confirmation can't cure -> review (not pass).
+    const netContentsProblem =
+      spec.key === "netContents" && present ? validateNetContents(aiValue, beverageClass) : null;
+    const presentProblem = alcoholProblem ?? netContentsProblem;
 
     if (c.state === "edited") {
       const edited = (c.editedValue ?? "").trim();
@@ -167,6 +182,9 @@ export function confirmVerdict(
     }
 
     if (c.state === "accepted" && present) {
+      if (presentProblem) {
+        return { ...base, value: aiValue, flagged: true, needsConfirmation: false, status: "review", reason: presentProblem };
+      }
       return { ...base, value: aiValue, flagged: lowConf, needsConfirmation: false, status: "pass",
         reason: "Confirmed: matches the application." };
     }
@@ -185,6 +203,9 @@ export function confirmVerdict(
       if (lowConf) {
         return { ...base, value: aiValue, flagged: true, needsConfirmation: true, status: "review",
           reason: "The AI wasn't fully sure it read this correctly — confirm it or type the right value." };
+      }
+      if (presentProblem) {
+        return { ...base, value: aiValue, flagged: true, needsConfirmation: true, status: "review", reason: presentProblem };
       }
       return { ...base, value: aiValue, flagged: false, needsConfirmation: false, status: "pass",
         reason: "Read confidently from the label." };
