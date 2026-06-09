@@ -8,15 +8,47 @@
  */
 import { isWarningRequired, type ClaimedFields, type ExtractedFields } from "@/domain";
 import type { FieldResult, FieldStatus } from "./types";
-import { compareBrand, compareAlcohol, compareWarning } from "./comparators";
+import {
+  compareBrand,
+  compareAlcohol,
+  compareWarning,
+  compareClassType,
+  compareNetContents,
+  compareName,
+  compareAddress,
+  compareOrigin,
+} from "./comparators";
 import { parseAlcoholText } from "./alcohol";
 import { applyConfidenceGate } from "./thresholds";
 
 /** Overall label verdict. Asymmetric reduction biases away from false approval. */
 export type OverallVerdict = "approve" | "review" | "reject";
 
-/** Per-field results plus the reduced overall verdict. */
+/** Stable identity for each comparison, so the UI and CSV can iterate the field list generically. */
+export type VerifyFieldKey =
+  | "brand"
+  | "classType"
+  | "alcohol"
+  | "netContents"
+  | "name"
+  | "address"
+  | "countryOfOrigin"
+  | "warning";
+
+/** One field comparison with its identity + label, for uniform rendering/iteration. */
+export interface VerifyField extends FieldResult {
+  key: VerifyFieldKey;
+  label: string;
+}
+
+/**
+ * The full label-vs-application comparison. `fields` is the ordered, present-only list of every
+ * comparison that RAN (a field the application didn't supply is omitted) — the uniform render/iterate
+ * surface. `brand`/`alcohol`/`warning` are convenience accessors (the SAME verdicts as in `fields`,
+ * always present: the gate guarantees brand+alcohol and warning is auto) to avoid churn in eval/CSV.
+ */
 export interface VerifyResult {
+  fields: VerifyField[];
   brand: FieldResult;
   alcohol: FieldResult;
   warning: FieldResult;
@@ -34,29 +66,94 @@ export function overallVerdict(statuses: readonly FieldStatus[]): OverallVerdict
   return "approve";
 }
 
-/** Run all three checks and reduce to an overall verdict. */
+/**
+ * Compare the label against the application, field by field. Brand, alcohol and the (auto) government
+ * warning ALWAYS appear; every OTHER field appears only when the application supplied a value, so a
+ * blank application field never produces a false "no match". Each value-based verdict passes through
+ * the asymmetric confidence gate (a pass/fail below the field-review threshold -> `review`), then the
+ * field list reduces to one overall verdict.
+ */
 export function verifyLabel(
   claimed: ClaimedFields,
   extracted: ExtractedFields,
 ): VerifyResult {
-  // Value-based verdicts, then the asymmetric confidence gate: a pass/fail below the field-review
-  // threshold is downgraded to `review` (this is how the reconciler's disagreement-confidence and
-  // any low-confidence read become a `review` verdict — never an asserted approval).
-  const brand = applyConfidenceGate(
-    compareBrand({ claimed: claimed.brand, extracted: extracted.brand }),
-    extracted.confidence.brand,
+  const fields: VerifyField[] = [];
+  const add = (key: VerifyFieldKey, label: string, r: FieldResult): FieldResult => {
+    fields.push({ key, label, ...r });
+    return r;
+  };
+
+  const brand = add(
+    "brand",
+    "Brand name",
+    applyConfidenceGate(compareBrand({ claimed: claimed.brand, extracted: extracted.brand }), extracted.confidence.brand),
   );
 
-  const alcohol = applyConfidenceGate(
-    compareAlcohol({
-      claimedText: claimed.alcoholContentText,
-      extractedText: extracted.alcoholContentText,
-      claimedClass: claimed.classType,
-      extractedClass: extracted.classType,
-      beverageClass: claimed.beverageClass,
-    }),
-    extracted.confidence.alcoholContent,
+  // Class/type — compared against the label's specific designation (falling back to the broad class).
+  if (claimed.classType?.trim()) {
+    add(
+      "classType",
+      "Class / type",
+      applyConfidenceGate(
+        compareClassType({
+          claimed: claimed.classType,
+          extracted: extracted.classType?.trim() ? extracted.classType : extracted.class,
+          claimedBeverageClass: claimed.beverageClass,
+        }),
+        extracted.confidence.classType ?? extracted.confidence.class,
+      ),
+    );
+  }
+
+  const alcohol = add(
+    "alcohol",
+    "Alcohol content",
+    applyConfidenceGate(
+      compareAlcohol({
+        claimedText: claimed.alcoholContentText,
+        extractedText: extracted.alcoholContentText,
+        claimedClass: claimed.classType,
+        extractedClass: extracted.classType,
+        beverageClass: claimed.beverageClass,
+      }),
+      extracted.confidence.alcoholContent,
+    ),
   );
+
+  if (claimed.netContents?.trim()) {
+    add(
+      "netContents",
+      "Net contents",
+      applyConfidenceGate(
+        compareNetContents({ claimed: claimed.netContents, extracted: extracted.netContents }),
+        extracted.confidence.netContents,
+      ),
+    );
+  }
+  if (claimed.name?.trim()) {
+    add(
+      "name",
+      "Producer / bottler name",
+      applyConfidenceGate(compareName({ claimed: claimed.name, extracted: extracted.name }), extracted.confidence.name),
+    );
+  }
+  if (claimed.address?.trim()) {
+    add(
+      "address",
+      "Producer / bottler address",
+      applyConfidenceGate(compareAddress({ claimed: claimed.address, extracted: extracted.address }), extracted.confidence.address),
+    );
+  }
+  if (claimed.countryOfOrigin?.trim()) {
+    add(
+      "countryOfOrigin",
+      "Country of origin",
+      applyConfidenceGate(
+        compareOrigin({ claimed: claimed.countryOfOrigin, extracted: extracted.countryOfOrigin }),
+        extracted.confidence.countryOfOrigin,
+      ),
+    );
+  }
 
   // The government-warning <0.5% exemption (27 CFR 16.10) is granted ONLY when BOTH the application's
   // claimed ABV AND the label's own (extracted) ABV prove sub-0.5% — so a mis-stated/understated
@@ -76,10 +173,12 @@ export function verifyLabel(
     abv: warningExempt ? claimedAbv : undefined,
   });
   // When exempt the verdict rests on the ABV, not the extracted warning read, so it is not gated.
-  const warning = warningExempt
-    ? warningResult
-    : applyConfidenceGate(warningResult, extracted.confidence.warningText);
+  const warning = add(
+    "warning",
+    "Government warning",
+    warningExempt ? warningResult : applyConfidenceGate(warningResult, extracted.confidence.warningText),
+  );
 
-  const overall = overallVerdict([brand.status, alcohol.status, warning.status]);
-  return { brand, alcohol, warning, overall };
+  const overall = overallVerdict(fields.map((f) => f.status));
+  return { fields, brand, alcohol, warning, overall };
 }

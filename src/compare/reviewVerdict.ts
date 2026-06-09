@@ -17,6 +17,36 @@ import { checkCompleteness, type CompletenessResult, type CompletenessOverall } 
 
 const RANK: Record<OverallVerdict, number> = { approve: 0, review: 1, reject: 2 };
 
+/**
+ * Build ClaimedFields from loose application inputs, or null when there isn't enough to compare —
+ * the claimed-vs-label verdict needs BOTH a brand AND an alcohol content. The SINGLE home of that
+ * "enough to compare?" rule: the single screen and the batch screen both funnel their raw inputs
+ * through this instead of re-deriving the check (and combinedVerdict keeps its own guard as a net).
+ */
+export function toClaimedFields(input: {
+  brand?: string;
+  alcoholContentText?: string;
+  classType?: string;
+  netContents?: string;
+  name?: string;
+  address?: string;
+  countryOfOrigin?: string;
+}): ClaimedFields | null {
+  const brand = (input.brand ?? "").trim();
+  const alcoholContentText = (input.alcoholContentText ?? "").trim();
+  if (!brand || !alcoholContentText) return null;
+  const opt = (v?: string): string | undefined => (v?.trim() ? v.trim() : undefined);
+  return {
+    brand,
+    alcoholContentText,
+    classType: opt(input.classType),
+    netContents: opt(input.netContents),
+    name: opt(input.name),
+    address: opt(input.address),
+    countryOfOrigin: opt(input.countryOfOrigin),
+  };
+}
+
 /** The worse (more conservative) of two verdicts. */
 export function worstVerdict(a: OverallVerdict, b: OverallVerdict): OverallVerdict {
   return RANK[a] >= RANK[b] ? a : b;

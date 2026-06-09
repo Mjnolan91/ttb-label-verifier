@@ -110,8 +110,14 @@ export interface ClaimedFields {
    * SAME free-text form the application/label actually carry (claimed vs extracted, symmetric).
    */
   alcoholContentText?: string;
-  /** Claimed net contents, e.g. "750 mL". Free text; not one of the three core checks. */
+  /** Claimed net contents, e.g. "750 mL". Compared (when supplied) against the label's net contents. */
   netContents?: string;
+  /** Claimed producer/bottler name, e.g. "ABC Distillery". Compared fuzzily when supplied. */
+  name?: string;
+  /** Claimed producer/bottler address, e.g. "Frederick, MD". Compared fuzzily when supplied. */
+  address?: string;
+  /** Claimed country of origin (imports), e.g. "Scotland". Compared when supplied. */
+  countryOfOrigin?: string;
   /**
    * Claimed/expected government warning text. Usually the canonical statutory text; present
    * so the comparator can be driven by claimed-vs-extracted symmetrically, though warning

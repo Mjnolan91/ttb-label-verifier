@@ -63,16 +63,16 @@ export const FIELD_CATALOG: readonly FieldDescriptor[] = [
   {
     key: "brand", rawKey: "brand", confKey: "brand", label: "Brand name", csvColumn: "brand", group: "headline",
     description:
-      "The BRAND NAME — the name the product is SOLD / marketed under (the masthead brand, often the " +
-      "largest distinct wordmark or logo, e.g. \"Stone's Throw\"). It is NOT a descriptive or fanciful " +
-      "phrase such as \"Single Barrel\", \"Small Batch\", or \"Reserve\" (those are fanciful names or part " +
-      "of the class/type), and NOT the class/type designation itself. " +
-      "This is NOT automatically the bottling company: the legally responsible company belongs in `name`. " +
-      "Two decisive cases: (a) if the label shows a SHORT mark AND a longer producer name that CONTAINS it " +
-      "(mark \"ABC\" + producer \"ABC Distillery\"), `brand` is the SHORT mark (\"ABC\") and `name` is the producer " +
-      "(\"ABC Distillery\") — never put the producer in `brand`; (b) if the SAME words are the ONLY prominent name " +
-      "(a label whose only large text is \"OLD TOM DISTILLERY\"), populate BOTH `brand` and `name` with them. " +
-      "Transcribe verbatim; do not normalize.",
+      "The BRAND NAME as it appears in the product's primary masthead / wordmark — the FULL name the " +
+      "product is marketed under, e.g. \"Stone's Throw\", \"ABC Single Barrel\". Capture the COMPLETE " +
+      "prominent brand presentation, INCLUDING descriptor words shown as part of it such as \"Single Barrel\", " +
+      "\"Small Batch\", or \"Reserve\" — do NOT drop them. EXCLUDE only: the class/type designation " +
+      "(e.g. \"Straight Rye Whisky\", \"India Pale Ale\" — that goes in classType) and the separate, " +
+      "legally-responsible producer/bottler entity (that goes in `name`). Producer handling: (a) if the label " +
+      "shows the marketed brand AND a separate longer producer name (brand \"ABC Single Barrel\" + producer " +
+      "\"ABC Distillery\"), put the marketed brand in `brand` and the producer in `name` — never the producer " +
+      "entity in `brand`; (b) if the SAME words are the ONLY prominent name (only large text is " +
+      "\"OLD TOM DISTILLERY\"), populate BOTH `brand` and `name`. Transcribe verbatim; do not normalize.",
   },
   {
     key: "classType", rawKey: "classType", confKey: "classType", label: "Class / type", csvColumn: "type", group: "headline",

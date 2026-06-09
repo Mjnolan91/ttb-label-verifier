@@ -76,6 +76,15 @@ review). The three checks are the claimed-vs-application comparison; completenes
 label-carries-every-required-element check (`src/compare/completeness.ts`). `combinedVerdict`
 (`src/compare/reviewVerdict.ts`) takes the worse of the two.
 
+> **Scope note (2026-06-09):** the claimed-vs-application comparison was expanded from these three to a
+> **full field-by-field application match** — it ALSO compares net contents, class/type, producer
+> name, producer address, and country of origin, each only when the application supplies that value
+> (`verifyLabel` returns an ordered `VerifyResult.fields` list). The three below remain the
+> CFR-grounded core; the added comparators bias uncertainty to `review` (producer name/address never
+> hard-fail) and class/type uses `resolveBeverageClass` so a broad application class matches the
+> label's specific standard of identity. On the single screen the application is now REQUIRED for a
+> verdict (no completeness-only headline).
+
 - **Brand name — fuzzy.** Normalize case, whitespace, punctuation, and smart quotes, then
   compare. Exact-after-normalization = pass; high similarity = review (show the
   discrepancy); low = fail. "STONE'S THROW" vs "Stone's Throw" must pass.

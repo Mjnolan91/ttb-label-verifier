@@ -78,18 +78,27 @@ pipeline and the "why". As built, the load-bearing pieces are:
   `combinedVerdict` (`reviewVerdict.ts`) is the auditable HEADLINE verdict: it takes the worse of the
   claimed-vs-label comparison (`verifyLabel`) and the per-type completeness check, so a label missing
   a TTB-required field for its beverage type can't be Approved (a missing/malformed mandatory element
-  → `review`; the warning keeps its hard fail). The **eval** reads this combined verdict. The
-  interactive UI is driven by `confirmVerdict` (`confirm.ts`) — the confirm-to-approve layer (Feature A
-  Part 2) that REUSES the same CFR comparators, computes a per-element pass/review/fail with a
-  human-confirmation state, and **blocks Approve until every flagged/low-confidence element is
-  confirmed** (the government warning is auto-evaluated, never an editable field).
-- **`src/app/`** — verify-first single screen (`VerifyForm`: always-visible application form +
-  auto-read on upload; results LEAD with the interactive `ConfirmPanel` (the confirm-to-approve verdict
-  from `confirmVerdict`, where a reviewer accepts/edits/marks-missing each element), then
-  `CompletenessView`, then `ExtractedFieldsView`; thumbnails open the accessible `ImageLightbox`; a
-  non-blocking `ForwardLookingNote` lists 2025 proposals) + `/api/verify` route + `/batch`;
-  `src/app/ui/` holds shared primitives. **`eval/`** — the harness and filename-keyed
-  fixtures (`eval/fixtures/cases.json`).
+  → `review`; the warning keeps its hard fail). The **eval** AND the interactive single screen both read
+  this combined verdict — same engine, no parallel UI verdict logic. `verifyLabel` compares the FULL
+  application field-by-field — brand, class/type, alcohol, net contents, producer name, producer
+  address, country of origin (each compared ONLY when the application supplies it) plus the auto
+  government warning — and returns an ordered `VerifyResult.fields` list (with `brand`/`alcohol`/
+  `warning` named accessors kept for the eval/CSV). Each comparator biases uncertainty to `review`;
+  class/type uses `resolveBeverageClass` so a broad application class ("distilled spirits") matches the
+  label's specific designation ("Kentucky Straight Bourbon Whiskey"). `toClaimedFields` (also in
+  `reviewVerdict.ts`) is the single "enough to compare?" rule (needs brand AND alcohol), shared by both
+  screens. (Historical note: a `confirmVerdict`/`ConfirmPanel` confirm-to-approve layer existed briefly
+  and was removed 2026-06-09 when the screen was realigned to lead with the comparison — ignore older
+  docs/plans that reference it.)
+- **`src/app/`** — verify-first single screen (`VerifyForm`: front/back upload + auto-read on upload,
+  plus the REQUIRED "The application" inputs — brand + alcohol (required) and class/net/name/address/
+  origin (compared when listed). Once brand+alcohol are entered the results LEAD with `ResultView` — the
+  field-by-field label-vs-application comparison (`combinedVerdict`) → Approve/Needs review/Reject;
+  until then the headline is an **"Enter the application to verify"** prompt (the label read is shown,
+  but completeness is a collapsed SUPPORTING check, NEVER the headline). The completeness breakdown +
+  `ExtractedFieldsView` sit in collapsed disclosures. Thumbnails open the accessible `ImageLightbox`; a
+  non-blocking `ForwardLookingNote` lists 2025 proposals) + `/api/verify` route + `/batch`; `src/app/ui/` holds
+  shared primitives. **`eval/`** — the harness and filename-keyed fixtures (`eval/fixtures/cases.json`).
 - **`src/extraction/fieldCatalog.ts`** — THE single source of truth for the extracted field set. One
   ordered descriptor list (`key`/`rawKey`/`confKey`/`label`/`csvColumn`/`group`) that the raw→domain
   mapper (`extractedShape.ts`), the front/back merge (`reconcile.ts`), the field table

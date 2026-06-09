@@ -3,8 +3,36 @@
  * reviewVerdict.test.ts — the verdict that gates approval on per-type completeness.
  */
 import { describe, it, expect } from "vitest";
-import { combinedVerdict, worstVerdict } from "./reviewVerdict";
+import { combinedVerdict, worstVerdict, toClaimedFields } from "./reviewVerdict";
 import { CANONICAL_GOVERNMENT_WARNING, type ClaimedFields, type ExtractedFields } from "@/domain";
+
+describe("toClaimedFields — the single 'enough to compare?' rule", () => {
+  it("returns null unless BOTH a brand and an alcohol content are present", () => {
+    expect(toClaimedFields({ brand: "Acme" })).toBeNull();
+    expect(toClaimedFields({ alcoholContentText: "40% Alc./Vol." })).toBeNull();
+    expect(toClaimedFields({ brand: "   ", alcoholContentText: "40% Alc./Vol." })).toBeNull();
+    expect(toClaimedFields({})).toBeNull();
+  });
+
+  it("builds ClaimedFields from loose inputs, trimming and dropping empty optional fields", () => {
+    expect(toClaimedFields({ brand: " Acme ", alcoholContentText: " 40% Alc./Vol. ", classType: " Vodka " }))
+      .toEqual({ brand: "Acme", alcoholContentText: "40% Alc./Vol.", classType: "Vodka", netContents: undefined, name: undefined, address: undefined, countryOfOrigin: undefined });
+    expect(toClaimedFields({ brand: "Acme", alcoholContentText: "40% Alc./Vol.", classType: "  " }))
+      .toEqual({ brand: "Acme", alcoholContentText: "40% Alc./Vol.", classType: undefined, netContents: undefined, name: undefined, address: undefined, countryOfOrigin: undefined });
+  });
+
+  it("forwards the full application field set (net contents, producer name/address, origin)", () => {
+    expect(
+      toClaimedFields({
+        brand: "Acme", alcoholContentText: "40% Alc./Vol.", classType: "Vodka",
+        netContents: " 750 mL ", name: " Acme Distillery ", address: " Peoria, IL ", countryOfOrigin: " USA ",
+      }),
+    ).toEqual({
+      brand: "Acme", alcoholContentText: "40% Alc./Vol.", classType: "Vodka",
+      netContents: "750 mL", name: "Acme Distillery", address: "Peoria, IL", countryOfOrigin: "USA",
+    });
+  });
+});
 
 const CLAIMED: ClaimedFields = {
   brand: "Old Tom Distillery",

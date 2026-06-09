@@ -118,6 +118,9 @@ export async function POST(request: Request): Promise<Response> {
   const alcoholContent = field(form, "alcoholContent");
   const classType = field(form, "classType");
   const netContents = field(form, "netContents");
+  const name = field(form, "name");
+  const address = field(form, "address");
+  const countryOfOrigin = field(form, "countryOfOrigin");
 
   // At least one image is required — extraction is the primary path.
   if (paired.length === 0) {
@@ -149,6 +152,9 @@ export async function POST(request: Request): Promise<Response> {
         classType: classType || undefined,
         alcoholContentText: alcoholContent,
         netContents: netContents || undefined,
+        name: name || undefined,
+        address: address || undefined,
+        countryOfOrigin: countryOfOrigin || undefined,
       }
     : undefined;
 

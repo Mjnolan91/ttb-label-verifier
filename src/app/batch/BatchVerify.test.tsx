@@ -114,6 +114,15 @@ describe("BatchVerify — verify against an application CSV", () => {
     expect(rows[0]).toHaveProperty("result");
   });
 
+  it("prompts for the missing alcohol value when a matched claim has a brand but no alcohol", { retry: 2 }, async () => {
+    // The verdict needs BOTH brand and alcohol; a brand-only row used to render a blank cell (or a
+    // misleading 're-scan' on a perfectly readable label). Surface a clear, actionable prompt instead.
+    const q = await run("filename,brand\nacme-front.png,Acme");
+    expect(await q.findByText(/add alcohol content/i)).toBeTruthy();
+    expect(q.queryByText(/no application row/i)).toBeNull();
+    expect(q.queryByText(/re-scan/i)).toBeNull();
+  });
+
   it("flags a matched-but-unreadable product as 're-scan', not 'no application row'", { retry: 2 }, async () => {
     const unreadable: VerifyApiResponse = {
       provider: "mock",

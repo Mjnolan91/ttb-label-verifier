@@ -3,8 +3,22 @@
  * (filename -> claimed) and serializing results to CSV. No DOM, fully unit-testable.
  */
 import type { ExtractedFields } from "@/domain";
-import type { VerifyResult, CompletenessResult } from "@/compare";
+import type { VerifyResult, VerifyFieldKey, CompletenessResult } from "@/compare";
 import { FIELD_CATALOG } from "@/extraction/fieldCatalog";
+
+/** The per-field verdict columns, in display order. A stable union of every comparable field so the
+ *  header is consistent across a heterogeneous batch (rows compare different subsets); a field a row
+ *  didn't compare is left blank. `overall` is appended after these. */
+const VERDICT_FIELDS: readonly { key: VerifyFieldKey; col: string }[] = [
+  { key: "brand", col: "brand_status" },
+  { key: "classType", col: "class_type_status" },
+  { key: "alcohol", col: "alcohol_status" },
+  { key: "netContents", col: "net_contents_status" },
+  { key: "name", col: "name_status" },
+  { key: "address", col: "address_status" },
+  { key: "countryOfOrigin", col: "country_of_origin_status" },
+  { key: "warning", col: "warning_status" },
+];
 
 /** Claimed values for one label, keyed by its image filename. */
 export interface ClaimedRow {
@@ -13,6 +27,9 @@ export interface ClaimedRow {
   alcoholContent?: string;
   classType?: string;
   netContents?: string;
+  name?: string;
+  address?: string;
+  countryOfOrigin?: string;
 }
 
 /** Parse a single CSV line into fields, honoring double-quoted fields (with escaped "" quotes). */
@@ -73,6 +90,9 @@ export function parseClaimedCsv(text: string): Map<string, ClaimedRow> {
       alcoholContent: r.alcoholContent || r.alcohol || undefined,
       classType: r.classType || r.class || r.type || undefined,
       netContents: r.netContents || r.net || undefined,
+      name: r.name || r.producer || undefined,
+      address: r.address || r.addr || undefined,
+      countryOfOrigin: r.countryOfOrigin || r.country || r.origin || undefined,
     });
   }
   return map;
@@ -106,21 +126,32 @@ const fmtConf = (n: number | undefined): string => (typeof n === "number" ? n.to
 const fmtBool = (b: boolean | null | undefined): string =>
   b === true ? "yes" : b === false ? "no" : "";
 
+/** Name each element a label is failing on, so a reviewer triaging a big batch can see WHICH TTB
+ *  element is wrong from the export alone (not just an aggregate "incomplete"). A mandatory element
+ *  that's missing, or any element that's present-but-malformed, is a defect; conditional-absent is not. */
+function fmtCompletenessIssues(c: CompletenessResult | undefined): string {
+  if (!c) return "";
+  return c.elements
+    .filter((el) => el.status === "malformed" || (el.status === "missing" && el.necessity === "mandatory"))
+    .map((el) => `${el.label} (${el.status === "malformed" ? "wrong format" : "missing"})`)
+    .join("; ");
+}
+
 /**
  * Serialize extracted label data to CSV (the extraction-first export). The per-field columns are
  * DERIVED from FIELD_CATALOG — one `<col>` value + one `<col>_conf` per field — so the CSV covers
  * exactly the field set the JSON export dumps (no silently-dropped wine/spirits fields). The two
- * warning format flags and the completeness summary follow; verdict columns (brand_status,
- * alcohol_status, warning_status, overall) are appended ONLY when at least one row carries a
- * verification result, leaving them blank for rows without one.
+ * warning format flags and the completeness summary follow; the per-field verdict columns (one
+ * `<field>_status` per comparable field + `overall`) are appended ONLY when at least one row carries a
+ * verification result, left blank for fields a row didn't compare (and for rows without a verdict).
  */
 export function analysisToCsv(rows: AnalysisRow[]): string {
   // Emit the verdict columns when a row carries EITHER a per-field result (batch) or just a gated
-  // headline `overall` (the single confirm-to-approve screen, which has no per-field VerifyResult).
+  // headline `overall` (the single screen passes the field list + the gated overall).
   const hasVerdict = rows.some((r) => r.result || r.overall);
   const fieldCols = FIELD_CATALOG.flatMap((d) => [d.csvColumn, `${d.csvColumn}_conf`]);
-  const base = ["filename", ...fieldCols, "warning_all_caps", "warning_bold", "completeness"];
-  const verdictCols = ["brand_status", "alcohol_status", "warning_status", "overall"];
+  const base = ["filename", ...fieldCols, "warning_all_caps", "warning_bold", "completeness", "completeness_issues"];
+  const verdictCols = [...VERDICT_FIELDS.map((f) => f.col), "overall"];
   const header = hasVerdict ? [...base, ...verdictCols] : base;
 
   const body = rows.map((r) => {
@@ -134,15 +165,12 @@ export function analysisToCsv(rows: AnalysisRow[]): string {
       fmtBool(e.warningPrefixIsAllCaps),
       fmtBool(e.warningPrefixIsBold),
       r.completeness ? r.completeness.overall : "",
+      fmtCompletenessIssues(r.completeness),
     );
     if (hasVerdict) {
-      const v = r.result;
-      cells.push(
-        v ? v.brand.status : "",
-        v ? v.alcohol.status : "",
-        v ? v.warning.status : "",
-        r.overall ?? (v ? v.overall : ""),
-      );
+      const statusByKey = new Map((r.result?.fields ?? []).map((f) => [f.key, f.status]));
+      for (const f of VERDICT_FIELDS) cells.push(statusByKey.get(f.key) ?? "");
+      cells.push(r.overall ?? r.result?.overall ?? "");
     }
     return cells.map(csvCell).join(",");
   });

@@ -16,12 +16,13 @@ const claimedClean: ClaimedFields = {
 function extractedClean(): ExtractedFields {
   return {
     brand: "OLD TOM DISTILLERY",
+    classType: "Kentucky Straight Bourbon Whiskey",
     alcoholContentText: "45% Alc./Vol. (90 Proof)",
     netContents: "750 mL",
     warningText: CANONICAL_GOVERNMENT_WARNING,
     warningPrefixIsAllCaps: true,
     warningPrefixIsBold: true,
-    confidence: { brand: 0.98, alcoholContent: 0.98, warningText: 0.97 },
+    confidence: { brand: 0.98, classType: 0.97, alcoholContent: 0.98, netContents: 0.96, warningText: 0.97 },
   };
 }
 
@@ -113,5 +114,51 @@ describe("verifyLabel", () => {
     expect(r.alcohol.status).toBe("review");
     expect(r.brand.status).toBe("pass"); // high-confidence fields still pass
     expect(r.overall).toBe("review");
+  });
+});
+
+describe("verifyLabel — full field-by-field application match", () => {
+  it("emits an ordered fields list of the compared elements", () => {
+    const r = verifyLabel(claimedClean, extractedClean());
+    expect(r.fields.map((f) => f.key)).toEqual(["brand", "classType", "alcohol", "netContents", "warning"]);
+    expect(r.fields.every((f) => typeof f.label === "string" && f.label.length > 0)).toBe(true);
+    // the named accessors are the same verdicts as the list entries (back-compat)
+    expect(r.brand.status).toBe(r.fields.find((f) => f.key === "brand")!.status);
+  });
+
+  it("compares a field ONLY when the application provides it (blank class/type + net -> no card)", () => {
+    const claimed: ClaimedFields = { brand: "OLD TOM DISTILLERY", alcoholContentText: "45% Alc./Vol. (90 Proof)" };
+    const keys = verifyLabel(claimed, extractedClean()).fields.map((f) => f.key);
+    expect(keys).toEqual(["brand", "alcohol", "warning"]);
+  });
+
+  it("a broad application class matches the label's specific designation — no false reject", () => {
+    // claimed "distilled-spirits" vs label "Kentucky Straight Bourbon Whiskey" -> pass
+    const r = verifyLabel(claimedClean, extractedClean());
+    expect(r.fields.find((f) => f.key === "classType")!.status).toBe("pass");
+    expect(r.overall).toBe("approve");
+  });
+
+  it("a mismatched net contents worsens the headline (reject)", () => {
+    const ex = extractedClean();
+    ex.netContents = "375 mL";
+    const r = verifyLabel(claimedClean, ex);
+    expect(r.fields.find((f) => f.key === "netContents")!.status).toBe("fail");
+    expect(r.overall).toBe("reject");
+  });
+
+  it("compares producer name / address / origin when the application supplies them", () => {
+    const ex = extractedClean();
+    ex.name = "ABC Distillery";
+    ex.address = "Frederick, MD";
+    ex.countryOfOrigin = "USA";
+    ex.confidence = { ...ex.confidence, name: 0.95, address: 0.95, countryOfOrigin: 0.95 };
+    const claimed: ClaimedFields = { ...claimedClean, name: "ABC Distillery", address: "Frederick, MD", countryOfOrigin: "USA" };
+    const r = verifyLabel(claimed, ex);
+    expect(r.fields.map((f) => f.key)).toEqual([
+      "brand", "classType", "alcohol", "netContents", "name", "address", "countryOfOrigin", "warning",
+    ]);
+    expect(r.fields.find((f) => f.key === "name")!.status).toBe("pass");
+    expect(r.overall).toBe("approve");
   });
 });
