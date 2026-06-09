@@ -28,7 +28,10 @@
  *    the label, so it is surfaced as conditional, never a hard "missing".
  *  - `ageStatement` is conditional (e.g., whisky < 4 years); `appellation` is conditional. These are
  *    surfaced for review, not failed by default.
- *  - `cider` is treated as wine (its default resolution in tolerances.ts).
+ *  - `cider` is treated as wine (its default resolution in tolerances.ts) — the common apple/pear
+ *    case at >= 7% ABV. Not modeled here: cider/wine < 7% ABV falls under FDA food-labeling
+ *    jurisdiction (the FAA Act defines "wine" for labeling as >= 7% ABV), and malt-based cider is a
+ *    malt beverage under Part 7.
  */
 import type { BeverageClass } from "./types";
 
@@ -80,7 +83,7 @@ const ALC_WINE_UNDER14: RequirementSpec = {
   key: "alcoholContent",
   label: "Alcohol content",
   necessity: "conditional",
-  note: 'Numeric % Alc./Vol., OR a "table wine"/"light wine" designation may stand in for it on wine <= 14% ABV (27 CFR 4.36(a)).',
+  note: 'Numeric % Alc./Vol., OR a "table wine"/"light wine" designation may stand in for it on wine <= 14% ABV (27 CFR 4.36(a); tolerance 4.36(b)(1), 14% tax-class clamp 4.36(c)).',
 };
 const ALC_MALT: RequirementSpec = {
   key: "alcoholContent",
@@ -111,7 +114,7 @@ const AGE_STATEMENT: RequirementSpec = {
   key: "ageStatement",
   label: "Age statement",
   necessity: "conditional",
-  note: "Mandatory for whisky < 4 years and certain spirits (27 CFR 5.74).",
+  note: "Mandatory for whisky < 4 years and for brandy and certain other spirits (27 CFR 5.74).",
 };
 
 const WINE_UNDER14: RequirementSpec[] = [...COMMON_HEAD, ALC_WINE_UNDER14, ...COMMON_TAIL, SULFITES, APPELLATION, COUNTRY_OF_ORIGIN];
@@ -121,7 +124,7 @@ const REQUIREMENTS: Record<BeverageClass, RequirementSpec[]> = {
   distilledSpirits: [...COMMON_HEAD, ALC_MANDATORY, ...COMMON_TAIL, AGE_STATEMENT, COUNTRY_OF_ORIGIN],
   wineUnder14: WINE_UNDER14,
   wineOver14: WINE_OVER14,
-  cider: WINE_UNDER14, // resolves to wine <= 14% by default (see tolerances.ts)
+  cider: WINE_UNDER14, // apple/pear cider >= 7% ABV -> wine <= 14% (see tolerances.ts); < 7% ABV is FDA-regulated, malt-based cider is Part 7 (see header note)
   maltBeverage: [...COMMON_HEAD, ALC_MALT, ...COMMON_TAIL, COUNTRY_OF_ORIGIN],
   // Conservative default: ABV mandatory + country-of-origin (conditional) like every concrete class;
   // class-specific elements (sulfites/appellation/age) can't be asserted without a known class.
