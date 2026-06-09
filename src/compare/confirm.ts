@@ -19,6 +19,11 @@ import { resolveBeverageClass, parseAlcoholText } from "./alcohol";
 import { FIELD_REVIEW_CONFIDENCE } from "./thresholds";
 import { normalizeText } from "./text";
 
+/** The five human-facing beverage-class choices a reviewer can pick in the confirm panel. Each value
+ *  is a token resolveBeverageClass already recognizes (compare/alcohol.ts), so an override feeds the
+ *  SAME resolver the AI reading uses — the wine ≤14/>14 split and the unknown fallback come for free. */
+export type ClassChoice = "distilledSpirits" | "wine" | "maltBeverage" | "cider" | "unknown";
+
 /** The human's action on a field. */
 export type ConfirmState = "unconfirmed" | "accepted" | "edited" | "missing";
 
@@ -96,8 +101,10 @@ function statusForEdit(
 export function confirmVerdict(
   extracted: ExtractedFields,
   confirmations: Partial<Record<RequirementKey, FieldConfirmation>> = {},
+  classOverride?: ClassChoice,
 ): ConfirmVerdict {
-  const classText = extracted.classType?.trim() ? extracted.classType : extracted.class;
+  const aiClassText = extracted.classType?.trim() ? extracted.classType : extracted.class;
+  const classText = classOverride ?? aiClassText;
   const beverageClass: BeverageClass = resolveBeverageClass(classText, parseAlcoholText(extracted.alcoholContentText).abv);
 
   const fields: ConfirmFieldResult[] = mandatoryElementsFor(beverageClass).map((spec): ConfirmFieldResult => {

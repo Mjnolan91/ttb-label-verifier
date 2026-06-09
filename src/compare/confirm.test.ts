@@ -142,3 +142,44 @@ describe("confirmVerdict — the government warning is auto-evaluated, never fre
     expect(after.awaitingConfirmation).toBe(false);
   });
 });
+
+describe("confirmVerdict — classOverride drives the required set (Thread B)", () => {
+  it("defaults to the AI-resolved class (bourbon -> distilled spirits: age in, appellation out)", () => {
+    const v = confirmVerdict(spirits(), {});
+    expect(v.beverageClass).toBe("distilledSpirits");
+    expect(v.fields.some((f) => f.key === "ageStatement")).toBe(true);
+    expect(v.fields.some((f) => f.key === "appellation")).toBe(false);
+  });
+
+  it("overriding to wine recomputes the set: appellation + sulfites in, age out", () => {
+    // 45% ABV + wine override -> wine > 14%
+    const v = confirmVerdict(spirits(), {}, "wine");
+    expect(v.beverageClass).toBe("wineOver14");
+    expect(v.fields.some((f) => f.key === "appellation")).toBe(true);
+    expect(v.fields.some((f) => f.key === "sulfiteDeclaration")).toBe(true);
+    expect(v.fields.some((f) => f.key === "ageStatement")).toBe(false);
+  });
+
+  it("wine override + ABV picks the tax-class tier (<=14 vs >14)", () => {
+    expect(confirmVerdict(spirits({ alcoholContentText: "12% Alc./Vol." }), {}, "wine").beverageClass).toBe("wineUnder14");
+    expect(confirmVerdict(spirits({ alcoholContentText: "16% Alc./Vol." }), {}, "wine").beverageClass).toBe("wineOver14");
+  });
+
+  it("overriding to malt makes the alcohol statement conditional (optional)", () => {
+    const v = confirmVerdict(spirits(), {}, "maltBeverage");
+    expect(v.beverageClass).toBe("maltBeverage");
+    expect(v.fields.find((f) => f.key === "alcoholContent")!.necessity).toBe("conditional");
+  });
+
+  it("'unknown' (Other / not sure) yields the conservative set with mandatory alcohol content", () => {
+    const v = confirmVerdict(spirits(), {}, "unknown");
+    expect(v.beverageClass).toBe("unknown");
+    expect(v.fields.find((f) => f.key === "alcoholContent")!.necessity).toBe("mandatory");
+  });
+
+  it("confirmations are honored under an overridden class (keyed by field, not class)", () => {
+    const e = spirits({ confidence: { ...spirits().confidence, brand: 0.4 } });
+    const v = confirmVerdict(e, { brand: { state: "accepted" } }, "wine");
+    expect(v.fields.find((f) => f.key === "brand")!.status).toBe("pass");
+  });
+});
