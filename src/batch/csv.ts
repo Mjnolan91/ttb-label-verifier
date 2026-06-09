@@ -112,7 +112,8 @@ function csvCell(v: string): string {
   return /[",\n]/.test(defanged) ? `"${defanged.replace(/"/g, '""')}"` : defanged;
 }
 
-/** One analysis row: the extracted fields for an image, plus an optional verification verdict. */
+/** One analysis row: the extracted fields for an image, plus an optional verification verdict and the
+ *  reviewer's recorded worklist decision. */
 export interface AnalysisRow {
   filename: string;
   extracted: ExtractedFields;
@@ -120,7 +121,17 @@ export interface AnalysisRow {
   completeness?: CompletenessResult;
   /** The headline verdict after gating on completeness; falls back to result.overall. */
   overall?: VerifyResult["overall"] | null;
+  /** The reviewer's recorded decision (worklist), distinct from the AI/effective verdict. */
+  decision?: "approve" | "reject";
+  /** A free-text note captured with the decision. */
+  note?: string;
 }
+
+/** Human-readable forms for the recorded decision, for the export. */
+const DECISION_LABEL: Record<"approve" | "reject", string> = {
+  approve: "approved",
+  reject: "returned for revision",
+};
 
 const fmtConf = (n: number | undefined): string => (typeof n === "number" ? n.toFixed(2) : "");
 const fmtBool = (b: boolean | null | undefined): string =>
@@ -149,10 +160,14 @@ export function analysisToCsv(rows: AnalysisRow[]): string {
   // Emit the verdict columns when a row carries EITHER a per-field result (batch) or just a gated
   // headline `overall` (the single screen passes the field list + the gated overall).
   const hasVerdict = rows.some((r) => r.result || r.overall);
+  // The worklist decision columns appear only once any row has been decided (so a plain extraction
+  // export stays unchanged).
+  const hasDecision = rows.some((r) => r.decision || r.note);
   const fieldCols = FIELD_CATALOG.flatMap((d) => [d.csvColumn, `${d.csvColumn}_conf`]);
   const base = ["filename", ...fieldCols, "warning_all_caps", "warning_bold", "completeness", "completeness_issues"];
   const verdictCols = [...VERDICT_FIELDS.map((f) => f.col), "overall"];
-  const header = hasVerdict ? [...base, ...verdictCols] : base;
+  const decisionCols = ["decision", "reviewer_note"];
+  const header = [...base, ...(hasVerdict ? verdictCols : []), ...(hasDecision ? decisionCols : [])];
 
   const body = rows.map((r) => {
     const e = r.extracted;
@@ -171,6 +186,9 @@ export function analysisToCsv(rows: AnalysisRow[]): string {
       const statusByKey = new Map((r.result?.fields ?? []).map((f) => [f.key, f.status]));
       for (const f of VERDICT_FIELDS) cells.push(statusByKey.get(f.key) ?? "");
       cells.push(r.overall ?? r.result?.overall ?? "");
+    }
+    if (hasDecision) {
+      cells.push(r.decision ? DECISION_LABEL[r.decision] : "", r.note ?? "");
     }
     return cells.map(csvCell).join(",");
   });

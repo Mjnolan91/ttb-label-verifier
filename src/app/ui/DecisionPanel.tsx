@@ -51,6 +51,9 @@ export function DecisionPanel({
   brand,
   approveNotes,
   rejectNotes,
+  onRecord,
+  initialDecision = null,
+  initialNote,
 }: {
   verdict: OverallVerdict;
   brand: string;
@@ -58,14 +61,23 @@ export function DecisionPanel({
   approveNotes: string;
   /** Reviewer notes seeded into a SEND-BACK email: the open issues with their reasons. */
   rejectNotes: string;
+  /** Called when the reviewer commits (sends) — lets a worklist record the decision + note. */
+  onRecord?: (decision: Decision, note: string) => void;
+  /** A previously recorded decision to resume (e.g. reopening a worklist item). */
+  initialDecision?: Decision | null;
+  /** The note captured with a previously recorded decision. */
+  initialNote?: string;
 }) {
-  const [decision, setDecision] = useState<Decision | null>(null);
-  const [to, setTo] = useState("");
-  const [subject, setSubject] = useState("");
-  const [notes, setNotes] = useState("");
-  const [sent, setSent] = useState(false);
-
   const seedFor = (d: Decision) => (d === "approve" ? approveNotes : rejectNotes);
+  const [decision, setDecision] = useState<Decision | null>(initialDecision);
+  const [to, setTo] = useState("");
+  const [subject, setSubject] = useState(() =>
+    initialDecision ? emailFor(initialDecision, brand, initialNote ?? seedFor(initialDecision)).subject : "",
+  );
+  const [notes, setNotes] = useState(() =>
+    initialDecision ? (initialNote ?? seedFor(initialDecision)) : "",
+  );
+  const [sent, setSent] = useState(false);
 
   function choose(d: Decision) {
     const seeded = seedFor(d);
@@ -73,6 +85,11 @@ export function DecisionPanel({
     setSubject(emailFor(d, brand, seeded).subject);
     setNotes(seeded);
     setSent(false);
+  }
+
+  function send() {
+    if (decision) onRecord?.(decision, notes);
+    setSent(true);
   }
 
   // The live draft — recomposed from the editable notes so the preview always matches what will "send".
@@ -164,10 +181,10 @@ export function DecisionPanel({
           </div>
           <button
             type="button"
-            onClick={() => setSent(true)}
+            onClick={send}
             className="mt-3 inline-flex min-h-[44px] items-center gap-2 rounded-field bg-brand-600 px-5 font-semibold text-white shadow-sm transition hover:bg-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2"
           >
-            Send email to applicant
+            {onRecord ? "Record decision & send email" : "Send email to applicant"}
           </button>
         </div>
       )}

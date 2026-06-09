@@ -1,0 +1,65 @@
+/**
+ * labelReview.test.ts — the shared review derivation used by BOTH the single screen and the batch
+ * worklist. Locks the load-bearing behavior: a completeness-gated "review" settles to approve/reject
+ * from the reviewer's overrides, the gated-but-matched field surfaces a concern, and the email notes
+ * reflect the tool status.
+ */
+import { describe, expect, it } from "vitest";
+import { combinedVerdict } from "@/compare";
+import { CANONICAL_GOVERNMENT_WARNING, type ClaimedFields, type ExtractedFields } from "@/domain";
+import { deriveLabelReview } from "./labelReview";
+
+// A bourbon whose net contents (740 mL) MATCH the application but are not an authorized standard of
+// fill — so the comparison passes while completeness flags it: the screenshot's gated-review case.
+const extracted: ExtractedFields = {
+  brand: "Old Tom Distillery",
+  classType: "Kentucky Straight Bourbon Whiskey",
+  alcoholContentText: "45% Alc./Vol. (90 Proof)",
+  netContents: "740 mL",
+  name: "Old Tom Distillery",
+  address: "Louisville, KY",
+  warningText: CANONICAL_GOVERNMENT_WARNING,
+  warningPrefixIsAllCaps: true,
+  warningPrefixIsBold: true,
+  confidence: {
+    brand: 0.98, classType: 0.97, alcoholContent: 0.98, netContents: 0.96, name: 0.95, address: 0.95, warningText: 0.96,
+  },
+};
+const claimed: ClaimedFields = {
+  brand: "Old Tom Distillery",
+  alcoholContentText: "45% Alc./Vol. (90 Proof)",
+  classType: "Kentucky Straight Bourbon Whiskey",
+  netContents: "740 mL",
+  name: "Old Tom Distillery",
+  address: "Louisville, KY",
+  beverageClass: "distilledSpirits",
+};
+const combined = combinedVerdict(claimed, extracted);
+
+describe("deriveLabelReview", () => {
+  it("gates a values-match-but-incomplete label to review, and surfaces the field as a concern", () => {
+    const r = deriveLabelReview(combined, {});
+    expect(r.effectiveOverall).toBe("review");
+    expect(r.effectiveGatedByCompleteness).toBe(true);
+    expect(r.completenessConcerns.netContents).toBeTruthy();
+  });
+
+  it("settles to approve when the reviewer confirms the flagged field (gate recomputes)", () => {
+    const r = deriveLabelReview(combined, { netContents: "ok" });
+    expect(r.effectiveOverall).toBe("approve");
+    expect(r.approveNotes).toMatch(/Net contents/i);
+  });
+
+  it("settles to reject when the reviewer flags the field, and lists it in the send-back notes", () => {
+    const r = deriveLabelReview(combined, { netContents: "issue" });
+    expect(r.effectiveOverall).toBe("reject");
+    expect(r.rejectNotes).toMatch(/Net contents/i);
+    expect(r.rejectNotes).toMatch(/flagged by the reviewer/i);
+  });
+
+  it("returns a null verdict (completeness-only) when there are no application values", () => {
+    const completenessOnly = combinedVerdict(null, extracted);
+    const r = deriveLabelReview(completenessOnly, {});
+    expect(r.effectiveOverall).toBeNull();
+  });
+});

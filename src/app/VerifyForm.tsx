@@ -21,18 +21,15 @@ import {
   requiredInputKeysFor,
   classChoiceFor,
   CLASS_CHOICES,
-  overallVerdict,
-  worstVerdict,
-  resolveCompletenessOverall,
   type ClassChoice,
   type CombinedVerdict,
-  type VerifyField,
   type VerifyFieldKey,
 } from "@/compare";
 import type { BeverageClass, ClaimedFields, RequirementKey } from "@/domain";
 import { ExtractedFieldsView } from "./ui/ExtractedFieldsView";
 import { CompletenessView } from "./ui/CompletenessView";
 import { ResultView, type FieldOverride } from "./ui/ResultView";
+import { deriveLabelReview, toggleOverride } from "./ui/labelReview";
 import { DecisionPanel } from "./ui/DecisionPanel";
 import { PipelineSteps } from "./ui/PipelineSteps";
 import { CLASS_DISPLAY_LABEL } from "./ui/beverageClass";
@@ -75,26 +72,6 @@ const KEY_LABEL: Record<RequirementKey, string> = {
   appellation: "Appellation of origin",
 };
 
-/** A comparison field (VerifyFieldKey) -> the completeness element (RequirementKey) it stands for, so
- *  a reviewer's confirm/flag on a card mirrors onto the supporting completeness row. */
-const FIELD_TO_REQUIREMENT: Record<VerifyFieldKey, RequirementKey> = {
-  brand: "brand",
-  classType: "classType",
-  alcohol: "alcoholContent",
-  netContents: "netContents",
-  name: "name",
-  address: "address",
-  countryOfOrigin: "countryOfOrigin",
-  warning: "governmentWarning",
-};
-
-/** The inverse: a completeness element -> the comparison card a reviewer resolves it on, so a TTB
- *  problem on a field whose VALUE matched still surfaces a confirm/flag control (it can't get stranded
- *  in the collapsed completeness panel with no way to clear the gated verdict). */
-const REQUIREMENT_TO_FIELD: Partial<Record<RequirementKey, VerifyFieldKey>> = Object.fromEntries(
-  (Object.entries(FIELD_TO_REQUIREMENT) as [VerifyFieldKey, RequirementKey][]).map(([f, r]) => [r, f]),
-);
-
 /** The amber input treatment for a LOW-CONFIDENCE AI suggestion — the agent should scrutinise it
  *  before accepting. Distinct from inputClass so the "yellow highlight" is unmistakable. */
 const LOW_CONF_INPUT =
@@ -127,12 +104,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
   // flags one the AI passed. The headline recomputes from these (cleared on every fresh read).
   const [fieldOverrides, setFieldOverrides] = useState<Partial<Record<VerifyFieldKey, FieldOverride>>>({});
   function setOverride(key: VerifyFieldKey, value: FieldOverride | undefined) {
-    setFieldOverrides((prev) => {
-      const next = { ...prev };
-      if (value === undefined) delete next[key];
-      else next[key] = value;
-      return next;
-    });
+    setFieldOverrides((prev) => toggleOverride(prev, key, value));
   }
   // The image currently shown full-size in the lightbox, if any.
   const [zoom, setZoom] = useState<{ src: string; alt: string } | null>(null);
@@ -217,67 +189,17 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
   // top once the application is complete. Pure + client-side, so typing recomputes instantly (no re-read).
   const combined: CombinedVerdict | null = extracted ? combinedVerdict(claimed, extracted) : null;
 
-  // The reviewer's per-field calls, also keyed for the completeness rows, so the supporting check AND the
-  // headline gate below both track the human's decisions (one resolution, mirrored — no second control).
-  const completenessOverrides: Partial<Record<RequirementKey, FieldOverride>> = {};
-  for (const key of Object.keys(fieldOverrides) as VerifyFieldKey[]) {
-    const v = fieldOverrides[key];
-    if (v) completenessOverrides[FIELD_TO_REQUIREMENT[key]] = v;
-  }
-
-  // The effective status of one comparison field after the reviewer's call: confirmed -> pass, flagged
-  // -> fail, otherwise the AI's read.
-  const effStatusOf = (f: VerifyField) => {
-    const o = fieldOverrides[f.key];
-    return o === "ok" ? "pass" : o === "issue" ? "fail" : f.status;
-  };
-
-  // The headline AFTER the reviewer's per-field overrides: a confirmed field counts as pass, a flagged
-  // field as fail. The completeness check only GATES the headline when the label is structurally
-  // INCOMPLETE (a missing/malformed mandatory element) — and that gate is RECOMPUTED from the same human
-  // overrides (resolveCompletenessOverall), so confirming the flagged field clears the gate and the
-  // verdict settles on Approve/Reject instead of being stranded on "Needs review".
-  const effectiveComparison: CombinedVerdict["overall"] = combined?.verify
-    ? overallVerdict(combined.verify.fields.map(effStatusOf))
-    : null;
-  const completenessGate =
-    combined && resolveCompletenessOverall(combined.completeness, completenessOverrides) === "incomplete"
-      ? "review"
-      : "approve";
-  const effectiveOverall: CombinedVerdict["overall"] = effectiveComparison
-    ? worstVerdict(effectiveComparison, completenessGate)
-    : (combined?.overall ?? null);
-  const effectiveGatedByCompleteness = Boolean(effectiveComparison) && effectiveOverall !== effectiveComparison;
-
-  // A TTB completeness problem (missing / wrong format) on a field whose VALUE matched the application is
-  // surfaced on its comparison card, so the reviewer can confirm or flag it there rather than hunting in
-  // the collapsed completeness panel. Kept regardless of the reviewer's override so the card still knows
-  // it's clearing a hard CFR check (the card hides the note once resolved, but the confirm-guard stays).
-  const completenessConcerns: Partial<Record<VerifyFieldKey, string>> = {};
-  if (combined?.verify) {
-    for (const el of combined.completeness.elements) {
-      if (el.status !== "missing" && el.status !== "malformed") continue;
-      const fk = REQUIREMENT_TO_FIELD[el.key];
-      if (fk) completenessConcerns[fk] = el.detail;
-    }
-  }
-
-  // Reviewer notes for the applicant email, drawn from the tool's status: a send-back lists every field
-  // not resolved to a match (with the reason or that the reviewer flagged it); an approval lists what the
-  // reviewer confirmed by hand. Both feed the editable draft so the email reflects the actual review.
-  const reviewedFields = combined?.verify?.fields ?? [];
-  const rejectNotes = reviewedFields
-    .filter((f) => effStatusOf(f) !== "pass")
-    .map((f) =>
-      fieldOverrides[f.key] === "issue"
-        ? `  - ${f.label}: flagged by the reviewer as a problem.`
-        : `  - ${f.label}: ${f.reason}`,
-    )
-    .join("\n");
-  const approveNotes = reviewedFields
-    .filter((f) => fieldOverrides[f.key] === "ok")
-    .map((f) => `  - ${f.label}: confirmed correct on review of the label.`)
-    .join("\n");
+  // The full human-in-the-loop review state (effective verdict after overrides, completeness gate +
+  // concerns, applicant-email notes) — derived by the SAME shared function the batch worklist uses, so
+  // the single screen and batch can't drift.
+  const {
+    effectiveOverall,
+    effectiveGatedByCompleteness,
+    completenessOverrides,
+    completenessConcerns,
+    approveNotes,
+    rejectNotes,
+  } = deriveLabelReview(combined, fieldOverrides);
 
   // Accept the AI's grey suggestion for one field by pressing Tab while it's empty (the agent confirms
   // the read as the application value) — fast, but deliberate, so an unaccepted required field still blocks.

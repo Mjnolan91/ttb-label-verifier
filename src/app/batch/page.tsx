@@ -16,8 +16,8 @@ export default function BatchPage() {
         </p>
         <h1 className="mt-1 text-4xl font-bold tracking-tight text-ink">Batch label reading</h1>
         <p className="mt-3 text-lg text-ink-muted">
-          Read many labels at once into a JSON/CSV export, built for the big-importer drops of
-          200–300 at a time. For one label,{" "}
+          Read many labels at once, then review and decide each one in a worklist that tracks your
+          progress. Built for the big-importer drops of 200 to 300 at a time. For one label,{" "}
           <Link href="/" className={linkClass}>
             use the single-label screen
           </Link>

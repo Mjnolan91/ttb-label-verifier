@@ -10,7 +10,7 @@
  */
 import { useId, useMemo, useState } from "react";
 import type { ExtractedFields } from "@/domain";
-import type { CompletenessResult } from "@/compare";
+import type { CompletenessResult, CombinedVerdict } from "@/compare";
 import type { LabelPosition } from "@/extraction";
 import { groupImagesByProduct } from "@/batch/pairing";
 import { analysisToCsv, parseClaimedCsv, type ClaimedRow } from "@/batch/csv";
@@ -26,7 +26,11 @@ import { inputClass, primaryButtonClass, secondaryButtonClass } from "../ui/fiel
 import { downloadJson, downloadCsv } from "../ui/download";
 import { DropZone } from "../ui/DropZone";
 import { ImageLightbox } from "../ui/ImageLightbox";
-import { IconZoom } from "../ui/icons";
+import { Drawer } from "../ui/Drawer";
+import { ProductReview } from "../ui/ProductReview";
+import { deriveLabelReview, toggleOverride } from "../ui/labelReview";
+import { useWorklist } from "./useWorklist";
+import { IconZoom, IconPass, IconFail } from "../ui/icons";
 
 const CONCURRENCY = 4;
 
@@ -40,6 +44,10 @@ interface BatchRow {
   status: "pending" | "done" | "error";
   extracted?: ExtractedFields;
   completeness?: CompletenessResult;
+  /** The full combined verdict (verify + completeness), the source the worklist review re-derives from. */
+  combined?: CombinedVerdict | null;
+  /** The product's label image previews, for the review drawer. */
+  images?: { src: string; alt: string }[];
   /** Application-match verdict, when an application-values CSV row matched this product. */
   result?: VerifyResult | null;
   /** Headline verdict after gating on completeness. */
@@ -72,8 +80,10 @@ function groupFiles(files: File[]): ProductImages[] {
 async function analyzeProduct(
   group: ProductImages,
   claimedMap: Map<string, ClaimedRow>,
+  previewByName: Map<string, string>,
 ): Promise<BatchRow> {
-  const base: BatchRow = { product: group.product, imageCount: group.images.length, status: "error" };
+  const images = group.images.map((im) => ({ src: previewByName.get(im.file.name) ?? "", alt: im.file.name }));
+  const base: BatchRow = { product: group.product, imageCount: group.images.length, status: "error", images };
   try {
     const form = new FormData();
     for (const img of group.images) {
@@ -108,12 +118,15 @@ async function analyzeProduct(
       !claimedRow?.brand?.trim() && "a brand",
       !claimedRow?.alcoholContent?.trim() && "alcohol content",
     ].filter(Boolean).join(" + ");
-    const combined = claimedFields && r.readable ? combinedVerdict(claimedFields, r.extracted) : null;
+    // Every readable product gets a combined verdict (completeness-only when no application row matched),
+    // so it can be reviewed in the worklist — not just the ones with a matched claim.
+    const combined = r.readable ? combinedVerdict(claimedFields, r.extracted) : null;
     return {
       ...base,
       status: "done",
       extracted: r.extracted,
       completeness: r.completeness,
+      combined,
       result: combined?.verify ?? null,
       overall: combined?.overall ?? null,
       matchedClaim: Boolean(claimedRow),
@@ -142,8 +155,16 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
   const [running, setRunning] = useState(false);
   const [done, setDone] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  // The review worklist (localStorage-backed) + which row's review drawer is open.
+  const worklist = useWorklist();
+  const [reviewIndex, setReviewIndex] = useState<number | null>(null);
 
   const groups = useMemo(() => groupFiles(images.map((im) => im.file)), [images]);
+  const previewByName = useMemo(() => new Map(images.map((im) => [im.file.name, im.preview])), [images]);
+
+  /** The headline verdict for a row AFTER the reviewer's resolved flags (parity with the single screen). */
+  const effectiveVerdictOf = (r: BatchRow) =>
+    r.combined ? deriveLabelReview(r.combined, worklist.worklist[r.product]?.overrides ?? {}).effectiveOverall : null;
 
   function addFiles(newFiles: File[]) {
     setImages((prev) => [...prev, ...newFiles.map((file) => ({ file, preview: URL.createObjectURL(file) }))]);
@@ -174,7 +195,7 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
     const worker = async () => {
       while (next < groups.length) {
         const idx = next++;
-        const row = await analyzeProduct(groups[idx], claimed);
+        const row = await analyzeProduct(groups[idx], claimed, previewByName);
         setRows((prev) => {
           const copy = prev.slice();
           copy[idx] = row;
@@ -196,41 +217,72 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
   function exportJson() {
     downloadJson(
       "ttb-extractions.json",
-      completedRows.map((r) => ({
-        product: r.product,
-        extracted: r.extracted,
-        completeness: r.completeness,
-        // Mirror the single-screen JSON: carry the application-match verdict so JSON and CSV agree.
-        ...(r.result ? { result: r.result } : {}),
-        ...(r.overall ? { overall: r.overall } : {}),
-      })),
+      completedRows.map((r) => {
+        const rec = worklist.worklist[r.product];
+        const overall = effectiveVerdictOf(r) ?? r.overall ?? null;
+        return {
+          product: r.product,
+          extracted: r.extracted,
+          completeness: r.completeness,
+          // Mirror the single-screen JSON: carry the (override-aware) verdict so JSON and CSV agree.
+          ...(r.result ? { result: r.result } : {}),
+          ...(overall ? { overall } : {}),
+          // The worklist lifecycle: the reviewer's recorded decision, distinct from the AI verdict.
+          ...(rec?.decision ? { decision: rec.decision, note: rec.note ?? "" } : {}),
+        };
+      }),
     );
   }
   function exportCsv() {
     downloadCsv(
       "ttb-extractions.csv",
       analysisToCsv(
-        completedRows.map((r) => ({
-          filename: r.product,
-          extracted: r.extracted as ExtractedFields,
-          completeness: r.completeness,
-          result: r.result,
-          overall: r.overall,
-        })),
+        completedRows.map((r) => {
+          const rec = worklist.worklist[r.product];
+          return {
+            filename: r.product,
+            extracted: r.extracted as ExtractedFields,
+            completeness: r.completeness,
+            result: r.result,
+            overall: effectiveVerdictOf(r) ?? r.overall,
+            decision: rec?.decision,
+            note: rec?.note,
+          };
+        }),
       ),
     );
   }
 
-  const COLS = ["Product", "Type", "Brand", "Class / type", "Alcohol", "Completeness", "Application match"];
+  const COLS = ["Product", "Type", "Brand", "Alcohol", "Completeness", "Verdict", "Decision", "Review"];
+
+  // Worklist roll-up: how many products the agent has decided, for the summary bar.
+  const decisions = completedRows.map((r) => worklist.worklist[r.product]?.decision);
+  const approvedCount = decisions.filter((d) => d === "approve").length;
+  const returnedCount = decisions.filter((d) => d === "reject").length;
+  const decidedCount = approvedCount + returnedCount;
+
+  function clearWorklist() {
+    if (typeof window !== "undefined" && !window.confirm("Clear all recorded decisions and resolved flags? This can't be undone.")) {
+      return;
+    }
+    worklist.clearAll();
+  }
+
+  const DECISION_CHIP: Record<"approve" | "reject", { label: string; tone: Tone }> = {
+    approve: { label: "Approved", tone: "pass" },
+    reject: { label: "Returned", tone: "fail" },
+  };
 
   return (
     <section className="rounded-card border border-border border-t-4 border-t-brand-600 bg-surface p-6 shadow-card sm:p-8">
-      <h2 className="text-xl font-semibold text-ink">Batch read</h2>
+      <h2 className="text-xl font-semibold text-ink">Batch read &amp; review</h2>
       <p className="mt-1 text-ink-muted">
-        Upload many label images. They&apos;re grouped into products and read into a table you can
-        export. Pair a front and back by naming them alike with a suffix, e.g.{" "}
-        <code>acme-ipa-front.jpg</code> + <code>acme-ipa-back.jpg</code>; a file with no suffix is its
-        own single-label product.
+        Upload many label images. They&apos;re grouped into products and read into a table. Open any
+        product to <strong className="font-semibold text-ink">Review</strong> it like the single screen:
+        resolve flagged fields, record an Approve or send-back, and draft the applicant email. Your
+        decisions are saved in this browser and included in the export. Pair a front and back by naming
+        them alike with a suffix, e.g. <code>acme-ipa-front.jpg</code> + <code>acme-ipa-back.jpg</code>;
+        a file with no suffix is its own single-label product.
       </p>
 
       {mockMode && (
@@ -357,6 +409,27 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
         )}
       </div>
 
+      {decidedCount > 0 && (
+        <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-card border border-border bg-surface-muted p-3 text-sm">
+          <span className="font-semibold text-ink">Worklist</span>
+          <span className="inline-flex items-center gap-1.5 text-pass-700">
+            <IconPass className="h-4 w-4" /> {approvedCount} approved
+          </span>
+          <span className="inline-flex items-center gap-1.5 text-fail-700">
+            <IconFail className="h-4 w-4" /> {returnedCount} returned
+          </span>
+          <span className="text-ink-muted">{completedRows.length - decidedCount} not yet decided</span>
+          <button
+            type="button"
+            onClick={clearWorklist}
+            className="ml-auto rounded-field border-2 border-border-strong px-3 py-1.5 font-semibold text-ink transition hover:border-fail-600 hover:text-fail-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2"
+          >
+            Clear worklist
+          </button>
+          <span className="w-full text-xs text-ink-muted">Decisions are saved in this browser only and never transmitted.</span>
+        </div>
+      )}
+
       {rows.length > 0 && (
         <div
           tabIndex={0}
@@ -376,48 +449,97 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
               </tr>
             </thead>
             <tbody>
-              {rows.map((r, i) => (
-                <tr key={`${r.product}-${i}`} className="border-b border-border align-top odd:bg-surface-muted hover:bg-brand-50">
-                  <td className="px-3 py-2.5 text-ink">
-                    <span className="font-mono text-xs">{r.product}</span>
-                    <span className="block text-xs text-ink-muted">
-                      {r.imageCount} image{r.imageCount === 1 ? "" : "s"}
-                    </span>
-                    {r.note && <span className="mt-0.5 block text-ink-muted">{r.note}</span>}
-                  </td>
-                  <td className="px-3 py-2.5 text-ink">
-                    {r.completeness ? CLASS_DISPLAY_LABEL[r.completeness.beverageClass] : r.status === "pending" ? "…" : "—"}
-                  </td>
-                  <td className="px-3 py-2.5 text-ink">{cell(r, (e) => e.brand)}</td>
-                  <td className="px-3 py-2.5 text-ink">{cell(r, (e) => e.classType)}</td>
-                  <td className="px-3 py-2.5 text-ink">{cell(r, (e) => e.alcoholContentText)}</td>
-                  <td className="px-3 py-2.5">
-                    {r.completeness ? (
-                      <StatusBadge
-                        tone={COMPLETENESS_TONE[r.completeness.overall]}
-                        label={COMPLETENESS_LABEL[r.completeness.overall]}
-                      />
-                    ) : (
-                      <span className="text-ink-muted">{r.status === "pending" ? "…" : "—"}</span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2.5">
-                    {r.overall ? (
-                      <StatusBadge tone={toneForStatus(r.overall)} label={VERDICT_LABEL[r.overall]} />
-                    ) : r.matchedClaim && r.readable === false ? (
-                      <span className="text-sm text-review-700">Matched, couldn&apos;t read label; re-scan</span>
-                    ) : r.matchedClaim && r.claimedNeeds ? (
-                      <span className="text-sm text-review-700">Matched, add {r.claimedNeeds} to compare</span>
-                    ) : (
-                      <span className="text-ink-muted">{claimed.size > 0 ? "no application row" : "—"}</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
+              {rows.map((r, i) => {
+                const verdict = effectiveVerdictOf(r);
+                const decision = worklist.worklist[r.product]?.decision;
+                const canReview = r.status === "done" && r.readable === true && r.combined != null;
+                return (
+                  <tr key={`${r.product}-${i}`} className="border-b border-border align-top odd:bg-surface-muted hover:bg-brand-50">
+                    <td className="px-3 py-2.5 text-ink">
+                      <span className="font-mono text-xs">{r.product}</span>
+                      <span className="block text-xs text-ink-muted">
+                        {r.imageCount} image{r.imageCount === 1 ? "" : "s"}
+                      </span>
+                      {r.note && <span className="mt-0.5 block text-ink-muted">{r.note}</span>}
+                    </td>
+                    <td className="px-3 py-2.5 text-ink">
+                      {r.completeness ? CLASS_DISPLAY_LABEL[r.completeness.beverageClass] : r.status === "pending" ? "…" : "—"}
+                    </td>
+                    <td className="px-3 py-2.5 text-ink">{cell(r, (e) => e.brand)}</td>
+                    <td className="px-3 py-2.5 text-ink">{cell(r, (e) => e.alcoholContentText)}</td>
+                    <td className="px-3 py-2.5">
+                      {r.completeness ? (
+                        <StatusBadge
+                          tone={COMPLETENESS_TONE[r.completeness.overall]}
+                          label={COMPLETENESS_LABEL[r.completeness.overall]}
+                        />
+                      ) : (
+                        <span className="text-ink-muted">{r.status === "pending" ? "…" : "—"}</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2.5">
+                      {verdict ? (
+                        <StatusBadge tone={toneForStatus(verdict)} label={VERDICT_LABEL[verdict]} />
+                      ) : r.matchedClaim && r.readable === false ? (
+                        <span className="text-sm text-review-700">Matched, couldn&apos;t read label; re-scan</span>
+                      ) : r.matchedClaim && r.claimedNeeds ? (
+                        <span className="text-sm text-review-700">Matched, add {r.claimedNeeds} to compare</span>
+                      ) : (
+                        <span className="text-ink-muted">{claimed.size > 0 ? "no application row" : "—"}</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2.5">
+                      {decision ? (
+                        <StatusBadge tone={DECISION_CHIP[decision].tone} label={DECISION_CHIP[decision].label} />
+                      ) : (
+                        <span className="text-ink-muted">—</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2.5">
+                      {canReview ? (
+                        <button
+                          type="button"
+                          onClick={() => setReviewIndex(i)}
+                          className="inline-flex min-h-[36px] items-center rounded-field border border-brand-600 bg-surface px-3 py-1.5 text-sm font-semibold text-brand-700 transition hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2"
+                        >
+                          {decision ? "Re-review" : "Review"}
+                        </button>
+                      ) : (
+                        <span className="text-ink-muted">{r.status === "pending" ? "…" : "—"}</span>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       )}
+
+      {reviewIndex !== null &&
+        rows[reviewIndex] &&
+        (() => {
+          const r = rows[reviewIndex];
+          const rec = worklist.worklist[r.product];
+          return (
+            <Drawer open onClose={() => setReviewIndex(null)} title={`Review · ${r.product}`}>
+              <ProductReview
+                brand={r.extracted?.brand ?? r.product}
+                images={r.images ?? []}
+                combined={r.combined ?? null}
+                readable={r.readable ?? false}
+                unreadableMessage={r.note}
+                overrides={rec?.overrides ?? {}}
+                onOverride={(key, value) =>
+                  worklist.setOverrides(r.product, toggleOverride(rec?.overrides ?? {}, key, value))
+                }
+                decision={rec?.decision}
+                note={rec?.note}
+                onRecordDecision={(decision, note) => worklist.recordDecision(r.product, decision, note)}
+              />
+            </Drawer>
+          );
+        })()}
 
       <ImageLightbox
         open={zoom !== null}

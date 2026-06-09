@@ -4,7 +4,7 @@
  * per-product Approve/Review/Reject verdict alongside the completeness check.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { BatchVerify } from "./BatchVerify";
 import { downloadJson } from "../ui/download";
 import type { VerifyApiResponse } from "../api/verify/contract";
@@ -38,6 +38,7 @@ const RESPONSE: VerifyApiResponse = {
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  window.localStorage.clear(); // the worklist persists across mounts; isolate each test
 });
 
 describe("BatchVerify — verify against an application CSV", () => {
@@ -121,6 +122,36 @@ describe("BatchVerify — verify against an application CSV", () => {
     expect(await q.findByText(/add alcohol content/i)).toBeTruthy();
     expect(q.queryByText(/no application row/i)).toBeNull();
     expect(q.queryByText(/re-scan/i)).toBeNull();
+  });
+
+  it("opens a product's review drawer, records a decision, and persists it to the worklist", { retry: 2 }, async () => {
+    const q = await run("filename,brand,alcohol\nacme-front.png,Acme,40% Alc./Vol.");
+    expect(await q.findByText("Approve")).toBeTruthy();
+    fireEvent.click(q.getByRole("button", { name: /^Review$/i }));
+    // The drawer is portaled to document.body, so query the whole screen, not the render container.
+    const dialog = within(await screen.findByRole("dialog"));
+    fireEvent.click(dialog.getByRole("button", { name: /Approve COLA/i }));
+    fireEvent.click(dialog.getByRole("button", { name: /Record decision & send email/i }));
+    // The recorded decision persists to the worklist (the lifecycle, distinct from the AI verdict).
+    const stored = JSON.parse(window.localStorage.getItem("ttb-worklist-v1") ?? "{}");
+    expect(Object.values(stored).some((r) => (r as { decision?: string }).decision === "approve")).toBe(true);
+  });
+
+  it("brings single-mode flag resolution to batch: confirming a gated field settles the verdict", { retry: 2 }, async () => {
+    // 740 mL matches the application but is not an authorized standard of fill -> completeness gates it.
+    const oddFill = { ...RESPONSE, extracted: { ...RESPONSE.extracted, netContents: "740 mL" } };
+    const q = await run(
+      "filename,brand,alcohol,net\nacme-front.png,Acme,40% Alc./Vol.,740 mL",
+      vi.fn(async () => ({ ok: true, json: async () => oddFill })) as unknown as typeof fetch,
+    );
+    expect(await q.findByText("Needs review")).toBeTruthy(); // gated in the table
+    fireEvent.click(q.getByRole("button", { name: /^Review$/i }));
+    const dialog = within(await screen.findByRole("dialog"));
+    const netCard = dialog.getAllByText("Net contents")[0].closest("li") as HTMLElement;
+    fireEvent.click(within(netCard).getByRole("button", { name: /Looks correct/i }));
+    // Clearing a hard CFR violation takes the deliberate confirm step, then the verdict settles.
+    fireEvent.click(within(netCard).getByRole("button", { name: /Yes, mark correct/i }));
+    expect(dialog.getByText("Approve")).toBeTruthy();
   });
 
   it("flags a matched-but-unreadable product as 're-scan', not 'no application row'", { retry: 2 }, async () => {
