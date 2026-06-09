@@ -189,6 +189,61 @@ describe("VerifyForm — verify against the application", () => {
     expect(verdict.getByText("Approve")).toBeTruthy();
   });
 
+  // A completeness-gated review: the label VALUE matches the application, but a TTB-required field is in
+  // the wrong format (740 mL is not an authorized standard of fill). The verdict must be RESOLVABLE — the
+  // reviewer confirms or flags the field on its card and the headline settles, never stranded on review.
+  const ODD_FILL = () => extractedBourbon({ netContents: "740 mL" });
+
+  it("settles a completeness-gated 'Needs review' to Approve when the reviewer confirms the flagged field", ASYNC, async () => {
+    mockFetch(READ_OK(ODD_FILL()));
+    const { container } = render(<VerifyForm />);
+    const q = within(container);
+    dropLabelImage(container);
+    await q.findByText("Complete the application to verify");
+    fireEvent.click(q.getByRole("button", { name: /Accept all AI suggestions/i }));
+    const verdict = within(await q.findByRole("region", { name: "Verification result" }));
+    expect(verdict.getAllByText("Needs review").length).toBeGreaterThan(0);
+    // The matching net-contents card surfaces the completeness concern with a confirm control. Clearing a
+    // hard CFR violation takes a deliberate second step, so "Looks correct" prompts before it applies.
+    const netCard = verdict.getAllByText("Net contents")[0].closest("li") as HTMLElement;
+    fireEvent.click(within(netCard).getByRole("button", { name: /Looks correct/i }));
+    expect(verdict.queryByText("Approve")).toBeNull(); // not yet — still awaiting confirmation
+    fireEvent.click(within(netCard).getByRole("button", { name: /Yes, mark correct/i }));
+    expect(verdict.getByText("Approve")).toBeTruthy();
+  });
+
+  it("settles a completeness-gated 'Needs review' to Reject when the reviewer flags the field", ASYNC, async () => {
+    mockFetch(READ_OK(ODD_FILL()));
+    const { container } = render(<VerifyForm />);
+    const q = within(container);
+    dropLabelImage(container);
+    await q.findByText("Complete the application to verify");
+    fireEvent.click(q.getByRole("button", { name: /Accept all AI suggestions/i }));
+    const verdict = within(await q.findByRole("region", { name: "Verification result" }));
+    expect(verdict.getAllByText("Needs review").length).toBeGreaterThan(0);
+    const netCard = verdict.getAllByText("Net contents")[0].closest("li") as HTMLElement;
+    fireEvent.click(within(netCard).getByRole("button", { name: /Flag a problem/i }));
+    expect(verdict.getByText("Reject")).toBeTruthy();
+  });
+
+  it("warns before clearing a hard CFR violation, and Cancel leaves the verdict unchanged", ASYNC, async () => {
+    mockFetch(READ_OK(ODD_FILL()));
+    const { container } = render(<VerifyForm />);
+    const q = within(container);
+    dropLabelImage(container);
+    await q.findByText("Complete the application to verify");
+    fireEvent.click(q.getByRole("button", { name: /Accept all AI suggestions/i }));
+    const verdict = within(await q.findByRole("region", { name: "Verification result" }));
+    const netCard = verdict.getAllByText("Net contents")[0].closest("li") as HTMLElement;
+    fireEvent.click(within(netCard).getByRole("button", { name: /Looks correct/i }));
+    // A confirmation prompt appears (overriding a TTB requirement is deliberate), and Cancel backs out.
+    expect(within(netCard).getByText(/Override a TTB requirement\?/i)).toBeTruthy();
+    fireEvent.click(within(netCard).getByRole("button", { name: /Cancel/i }));
+    expect(within(netCard).queryByText(/Override a TTB requirement\?/i)).toBeNull();
+    expect(verdict.queryByText("Approve")).toBeNull();
+    expect(verdict.getAllByText("Needs review").length).toBeGreaterThan(0);
+  });
+
   it("shows two explicit upload slots (front + back), each with its own file input", () => {
     const { container } = render(<VerifyForm />);
     expect(container.querySelectorAll('input[type="file"]')).toHaveLength(2);

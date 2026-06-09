@@ -237,3 +237,38 @@ export function checkCompleteness(extracted: ExtractedFields): CompletenessResul
 
   return { beverageClass, elements, overall };
 }
+
+/** A reviewer's per-element decision over the AI's read: "ok" confirms it correct, "issue" flags a
+ *  real problem. Mirrored from the comparison cards (a person resolves a flag once, on one screen). */
+export type ReviewOverride = "ok" | "issue";
+
+/**
+ * The completeness overall AFTER the reviewer's per-element overrides — the SINGLE source of truth the
+ * headline gate (VerifyForm) and the supporting view (CompletenessView) BOTH read, so the two can never
+ * drift. A confirmed ("ok") element counts as resolved (no longer missing/malformed); a flagged ("issue")
+ * element is a hard issue. With no overrides it returns the pure check's own `overall`, leaving the
+ * deterministic result (and its tests) untouched. This is what lets confirming the flagged field turn
+ * an "incomplete"-gated verdict green instead of leaving it stuck on "Needs review".
+ */
+export function resolveCompletenessOverall(
+  completeness: CompletenessResult,
+  overrides?: Partial<Record<RequirementKey, ReviewOverride>>,
+): CompletenessOverall {
+  if (overrides == null || Object.keys(overrides).length === 0) return completeness.overall;
+  const effective = (el: CompletenessElement): ElementStatus | "confirmed" | "flagged" => {
+    const o = overrides[el.key];
+    return o === "ok" ? "confirmed" : o === "issue" ? "flagged" : el.status;
+  };
+  if (
+    completeness.elements.some((el) => {
+      const d = effective(el);
+      return d === "missing" || d === "malformed" || d === "flagged";
+    })
+  ) {
+    return "incomplete";
+  }
+  if (completeness.elements.some((el) => effective(el) === "present" && el.lowConfidence)) {
+    return "review";
+  }
+  return "complete";
+}

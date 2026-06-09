@@ -2,9 +2,11 @@
 
 /**
  * DecisionPanel — the terminal step a reviewer takes after the verdict: record an Approve or a
- * Reject / send-back decision and (optionally) send a notification email to the applicant. The email is
- * composed from the verdict plus any outstanding issues; "sending" is a DEMO confirmation only — this
- * offline prototype has no mail transport, stores no PII, and has no real COLA system behind it.
+ * Reject / send-back decision and (optionally) send a notification email to the applicant. The draft is
+ * seeded with REVIEWER NOTES drawn from the tool's status (the open issues with their reasons for a
+ * send-back; what the reviewer confirmed for an approval), which the reviewer can edit before sending.
+ * "Sending" is a DEMO confirmation only — this offline prototype has no mail transport, stores no PII,
+ * and has no real COLA system behind it.
  */
 import { useState } from "react";
 import { IconPass, IconFail } from "./icons";
@@ -13,27 +15,33 @@ import type { OverallVerdict } from "@/compare";
 
 type Decision = "approve" | "reject";
 
-function emailFor(decision: Decision, brand: string, issues: string[]): { subject: string; body: string } {
+/** Compose the applicant email from the decision and the (editable) reviewer notes. The notes are the
+ *  one place the tool's status reaches the applicant, so they are woven into the body verbatim. */
+function emailFor(decision: Decision, brand: string, notes: string): { subject: string; body: string } {
   const product = brand.trim() || "this product";
+  const trimmed = notes.trim();
   if (decision === "approve") {
+    const notesBlock = trimmed ? `\n\nReviewer notes:\n${trimmed}` : "";
     return {
       subject: `TTB COLA decision: ${product} approved`,
       body:
         `Dear Applicant,\n\n` +
         `Your Certificate of Label Approval (COLA) application for "${product}" has been APPROVED. The ` +
-        `label matches the application and meets the applicable TTB labeling requirements.\n\n` +
-        `You may proceed to market this product under the approved label.\n\n` +
+        `label matches the application and meets the applicable TTB labeling requirements.` +
+        notesBlock +
+        `\n\nYou may proceed to market this product under the approved label.\n\n` +
         `Regards,\nTTB Label Review`,
     };
   }
-  const list = issues.length ? issues.map((i) => `  - ${i}`).join("\n") : "  - See the reviewer's notes.";
+  const corrections = trimmed ? `\n\n${trimmed}` : `\n\n  - See the reviewer's notes.`;
   return {
     subject: `TTB COLA: ${product} returned for revision`,
     body:
       `Dear Applicant,\n\n` +
       `Your Certificate of Label Approval (COLA) application for "${product}" has been RETURNED FOR ` +
-      `REVISION. Please correct the following item(s) before resubmitting:\n\n${list}\n\n` +
-      `Resubmit the corrected label at your convenience.\n\n` +
+      `REVISION. Please correct the following item(s) before resubmitting:` +
+      corrections +
+      `\n\nResubmit the corrected label at your convenience.\n\n` +
       `Regards,\nTTB Label Review`,
   };
 }
@@ -41,25 +49,34 @@ function emailFor(decision: Decision, brand: string, issues: string[]): { subjec
 export function DecisionPanel({
   verdict,
   brand,
-  issues,
+  approveNotes,
+  rejectNotes,
 }: {
   verdict: OverallVerdict;
   brand: string;
-  issues: string[];
+  /** Reviewer notes seeded into an APPROVAL email, drawn from what the reviewer confirmed. */
+  approveNotes: string;
+  /** Reviewer notes seeded into a SEND-BACK email: the open issues with their reasons. */
+  rejectNotes: string;
 }) {
   const [decision, setDecision] = useState<Decision | null>(null);
   const [to, setTo] = useState("");
   const [subject, setSubject] = useState("");
-  const [body, setBody] = useState("");
+  const [notes, setNotes] = useState("");
   const [sent, setSent] = useState(false);
 
+  const seedFor = (d: Decision) => (d === "approve" ? approveNotes : rejectNotes);
+
   function choose(d: Decision) {
-    const e = emailFor(d, brand, issues);
+    const seeded = seedFor(d);
     setDecision(d);
-    setSubject(e.subject);
-    setBody(e.body);
+    setSubject(emailFor(d, brand, seeded).subject);
+    setNotes(seeded);
     setSent(false);
   }
+
+  // The live draft — recomposed from the editable notes so the preview always matches what will "send".
+  const draftBody = decision ? emailFor(decision, brand, notes).body : "";
 
   // The verdict suggests the decision (Needs review leaves it to the reviewer).
   const recommended: Decision | null = verdict === "approve" ? "approve" : verdict === "reject" ? "reject" : null;
@@ -126,14 +143,24 @@ export function DecisionPanel({
               <input type="text" value={subject} onChange={(e) => setSubject(e.target.value)} className={`mt-1 ${inputClass}`} />
             </label>
             <label className="block text-sm font-medium text-ink">
-              Message
+              Reviewer notes
+              <span className="ml-1 font-normal text-ink-muted">
+                ({decision === "approve" ? "what you confirmed" : "what to correct"} — drawn from the review; edit as needed)
+              </span>
               <textarea
-                value={body}
-                onChange={(e) => setBody(e.target.value)}
-                rows={9}
-                className={`mt-1 min-h-[11rem] w-full resize-y rounded-field border-2 border-border-strong bg-surface px-3 py-2.5 font-sans text-sm leading-relaxed text-ink shadow-sm transition focus-visible:border-brand-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2`}
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                rows={notes.split("\n").length > 4 ? notes.split("\n").length + 1 : 5}
+                placeholder="Add any notes for the applicant."
+                className={`mt-1 min-h-[6rem] w-full resize-y rounded-field border-2 border-border-strong bg-surface px-3 py-2.5 font-sans text-sm leading-relaxed text-ink shadow-sm transition focus-visible:border-brand-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2`}
               />
             </label>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Email preview</p>
+              <pre className="mt-1 max-h-72 overflow-auto whitespace-pre-wrap rounded-field border border-border bg-surface px-3 py-2.5 font-sans text-sm leading-relaxed text-ink">
+                {draftBody}
+              </pre>
+            </div>
           </div>
           <button
             type="button"

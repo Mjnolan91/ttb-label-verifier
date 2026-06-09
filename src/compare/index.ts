@@ -22,10 +22,12 @@ export {
 } from "./verify";
 export {
   checkCompleteness,
+  resolveCompletenessOverall,
   type CompletenessResult,
   type CompletenessElement,
   type CompletenessOverall,
   type ElementStatus,
+  type ReviewOverride,
 } from "./completeness";
 export {
   MIN_READABLE_CONFIDENCE,

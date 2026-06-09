@@ -1,4 +1,5 @@
 import type { Ref } from "react";
+import { resolveCompletenessOverall } from "@/compare";
 import type { CompletenessResult, CompletenessElement, ElementStatus } from "@/compare";
 import type { RequirementKey } from "@/domain";
 import { StatusBadge } from "./StatusBadge";
@@ -66,18 +67,10 @@ export function CompletenessView({
   overrides?: Partial<Record<RequirementKey, ElementOverride>>;
   headingRef?: Ref<HTMLHeadingElement>;
 }) {
-  // Recompute the headline ONLY when the human has acted (else use the AI's computed overall, so the
-  // pure check and its tests are untouched). A flagged/missing/malformed element -> incomplete; a
-  // still-unconfirmed low-confidence read -> review; otherwise complete.
-  const hasOverrides = overrides != null && Object.keys(overrides).length > 0;
-  const overall: CompletenessResult["overall"] = hasOverrides
-    ? (() => {
-        const effs = completeness.elements.map((el) => ({ el, d: displayOf(el, overrides?.[el.key]) }));
-        if (effs.some(({ d }) => d === "missing" || d === "malformed" || d === "flagged")) return "incomplete";
-        if (effs.some(({ el, d }) => d === "present" && el.lowConfidence)) return "review";
-        return "complete";
-      })()
-    : completeness.overall;
+  // The headline reflects the reviewer's resolutions via the SAME shared function the verdict gate uses
+  // (resolveCompletenessOverall), so the supporting check and the headline can never disagree. With no
+  // overrides it returns the pure check's own overall, leaving the deterministic result + tests untouched.
+  const overall = resolveCompletenessOverall(completeness, overrides);
 
   const tone = OVERALL_TONE[overall];
   const OverallIcon = TONE_ICON[tone];

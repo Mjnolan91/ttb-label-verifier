@@ -1,4 +1,4 @@
-import type { Ref } from "react";
+import { useState, type Ref } from "react";
 import type { VerifyResult, VerifyField, VerifyFieldKey } from "@/compare";
 import { StatusBadge } from "./StatusBadge";
 import {
@@ -48,11 +48,13 @@ function aiTone(f: VerifyField): Tone {
   return isGatedMatch(f) ? "verify" : f.status;
 }
 
-/** The EFFECTIVE tone after a human override (the override wins over the AI). */
-function effectiveTone(f: VerifyField, override?: FieldOverride): Tone {
+/** The EFFECTIVE tone after a human override (the override wins over the AI). A completeness concern on
+ *  an otherwise-matching field elevates it to `review` so it visibly asks for a person's confirmation. */
+function effectiveTone(f: VerifyField, override?: FieldOverride, hasConcern = false): Tone {
   if (override === "ok") return "pass";
   if (override === "issue") return "fail";
-  return aiTone(f);
+  const ai = aiTone(f);
+  return hasConcern && ai === "pass" ? "review" : ai;
 }
 
 function aiLabel(f: VerifyField): string {
@@ -95,57 +97,97 @@ function ViewPhotoButton({ onClick }: { onClick: () => void }) {
   );
 }
 
-/** The per-field resolution control: confirm the AI was right, or flag a problem it missed. */
+/** The per-field resolution control: confirm the AI was right, or flag a problem it missed. When the
+ *  field carries a hard TTB completeness violation (`concern`), confirming it overrides a statutory check,
+ *  so "Looks correct" takes a deliberate second step rather than clearing the violation on one click. */
 function ReviewControls({
   field,
   override,
   onOverride,
+  concern,
 }: {
   field: VerifyField;
   override?: FieldOverride;
   onOverride: (key: VerifyFieldKey, value: FieldOverride | undefined) => void;
+  concern?: string;
 }) {
-  const toggle = (v: FieldOverride) => onOverride(field.key, override === v ? undefined : v);
+  const [confirming, setConfirming] = useState(false);
+  const toggle = (v: FieldOverride) => {
+    setConfirming(false);
+    onOverride(field.key, override === v ? undefined : v);
+  };
+  // Setting "ok" on a field with an unresolved hard violation asks first; everything else applies at once.
+  const onLooksCorrect = () => {
+    if (concern && override !== "ok") setConfirming(true);
+    else toggle("ok");
+  };
   const base =
     "inline-flex min-h-[36px] items-center gap-1.5 rounded-field border px-3 py-1.5 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2";
   return (
-    <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-current/15 pt-3">
-      <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-ink-muted">Your review</span>
-      <button
-        type="button"
-        onClick={() => toggle("ok")}
-        aria-pressed={override === "ok"}
-        className={`${base} ${
-          override === "ok"
-            ? "border-pass-700 bg-pass-700 text-white"
-            : "border-border-strong bg-surface text-ink hover:border-pass-600 hover:text-pass-700"
-        }`}
-      >
-        <IconPass className="h-4 w-4" /> Looks correct
-      </button>
-      <button
-        type="button"
-        onClick={() => toggle("issue")}
-        aria-pressed={override === "issue"}
-        className={`${base} ${
-          override === "issue"
-            ? "border-fail-700 bg-fail-700 text-white"
-            : "border-border-strong bg-surface text-ink hover:border-fail-600 hover:text-fail-700"
-        }`}
-      >
-        <IconFail className="h-4 w-4" /> Flag a problem
-      </button>
-      {override && (
-        <span className="text-xs text-ink-muted">
-          The AI said {aiLabel(field)}.{" "}
-          <button
-            type="button"
-            onClick={() => onOverride(field.key, undefined)}
-            className="font-semibold text-brand-700 underline underline-offset-2 focus-visible:outline-none focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-brand-700"
-          >
-            Reset to AI
-          </button>
-        </span>
+    <div className="mt-3 border-t border-current/15 pt-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-ink-muted">Your review</span>
+        <button
+          type="button"
+          onClick={onLooksCorrect}
+          aria-pressed={override === "ok"}
+          className={`${base} ${
+            override === "ok"
+              ? "border-pass-700 bg-pass-700 text-white"
+              : "border-border-strong bg-surface text-ink hover:border-pass-600 hover:text-pass-700"
+          }`}
+        >
+          <IconPass className="h-4 w-4" /> Looks correct
+        </button>
+        <button
+          type="button"
+          onClick={() => toggle("issue")}
+          aria-pressed={override === "issue"}
+          className={`${base} ${
+            override === "issue"
+              ? "border-fail-700 bg-fail-700 text-white"
+              : "border-border-strong bg-surface text-ink hover:border-fail-600 hover:text-fail-700"
+          }`}
+        >
+          <IconFail className="h-4 w-4" /> Flag a problem
+        </button>
+        {override && (
+          <span className="text-xs text-ink-muted">
+            The AI said {aiLabel(field)}.{" "}
+            <button
+              type="button"
+              onClick={() => onOverride(field.key, undefined)}
+              className="font-semibold text-brand-700 underline underline-offset-2 focus-visible:outline-none focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-brand-700"
+            >
+              Reset to AI
+            </button>
+          </span>
+        )}
+      </div>
+      {confirming && concern && (
+        <div role="alert" className="mt-3 rounded-field border-l-4 border-fail-600 bg-fail-50 p-3 text-sm text-fail-900">
+          <p>
+            <span className="font-semibold">Override a TTB requirement?</span> Marking{" "}
+            <strong>{field.label}</strong> correct clears a compliance check: {concern}
+          </p>
+          <p className="mt-1">Confirm only if you have verified on the label image that it actually complies.</p>
+          <div className="mt-2.5 flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => toggle("ok")}
+              className={`${base} border-fail-700 bg-fail-700 text-white hover:bg-fail-800`}
+            >
+              <IconPass className="h-4 w-4" /> Yes, mark correct
+            </button>
+            <button
+              type="button"
+              onClick={() => setConfirming(false)}
+              className={`${base} border-border-strong bg-surface text-ink hover:border-brand-600 hover:text-brand-700`}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -179,23 +221,31 @@ function FieldCard({
   onViewImage,
   override,
   onOverride,
+  concern,
 }: {
   field: VerifyField;
   index: number;
   onViewImage?: () => void;
   override?: FieldOverride;
   onOverride?: (key: VerifyFieldKey, value: FieldOverride | undefined) => void;
+  /** A TTB completeness problem on this element (missing / wrong format) even though the value matched —
+   *  surfaces the full confirm/flag pair so the reviewer can clear it or escalate it. */
+  concern?: string;
 }) {
-  const tone = effectiveTone(field, override);
+  // A concern only matters while the reviewer hasn't acted; once they confirm/flag, their call governs.
+  const hasConcern = Boolean(concern) && !override;
+  const tone = effectiveTone(field, override, hasConcern);
   const Icon = TONE_ICON[tone];
   const badge =
     override === "ok"
       ? "Confirmed by you"
       : override === "issue"
         ? "Problem flagged"
-        : tone === "verify"
-          ? GATED_MATCH_LABEL
-          : FIELD_LABEL[field.status];
+        : hasConcern
+          ? FIELD_LABEL.review
+          : tone === "verify"
+            ? GATED_MATCH_LABEL
+            : FIELD_LABEL[field.status];
   return (
     <li
       className={`rounded-card border-l-4 p-4 shadow-card motion-safe:animate-reveal ${TONE_TINT[tone]}`}
@@ -222,12 +272,18 @@ function FieldCard({
         </div>
       </dl>
       <p className="mt-3 text-sm">{field.reason}</p>
-      {isGatedMatch(field) && onViewImage && <ViewPhotoButton onClick={onViewImage} />}
-      {/* Full resolve/flag controls only when there IS a flag (or the human already acted); a clean
-          match shows just a quiet "Flag a problem" so the screen stays calm. */}
+      {hasConcern && (
+        <p className="mt-2 rounded-field border-l-4 border-review-500 bg-review-50 px-3 py-2 text-sm text-review-900">
+          <span className="font-semibold">TTB completeness:</span> {concern} The value matched the
+          application, so confirm it on the label or flag it.
+        </p>
+      )}
+      {(isGatedMatch(field) || hasConcern) && onViewImage && <ViewPhotoButton onClick={onViewImage} />}
+      {/* Full resolve/flag controls when there IS a flag, a completeness concern, or the human already
+          acted; an otherwise-clean match shows just a quiet "Flag a problem" so the screen stays calm. */}
       {onOverride &&
-        (aiTone(field) !== "pass" || override ? (
-          <ReviewControls field={field} override={override} onOverride={onOverride} />
+        (aiTone(field) !== "pass" || override || hasConcern ? (
+          <ReviewControls field={field} override={override} onOverride={onOverride} concern={concern} />
         ) : (
           <SubtleFlag fieldKey={field.key} onOverride={onOverride} />
         ))}
@@ -243,6 +299,7 @@ export function ResultView({
   onViewImage,
   overrides,
   onOverride,
+  concerns,
 }: {
   result: VerifyResult;
   /** The headline verdict (comparison gated on completeness, recomputed after human overrides). */
@@ -254,6 +311,9 @@ export function ResultView({
   overrides?: Partial<Record<VerifyFieldKey, FieldOverride>>;
   /** Records a human override (or clears it with `undefined`). When omitted, the cards are read-only. */
   onOverride?: (key: VerifyFieldKey, value: FieldOverride | undefined) => void;
+  /** A TTB completeness problem per field (missing / wrong format) even though the value matched —
+   *  shown on the matching card so the reviewer can confirm or flag it. */
+  concerns?: Partial<Record<VerifyFieldKey, string>>;
 }) {
   const headline = overall ?? result.overall;
   const tone: Tone = toneForStatus(headline); // green / amber / red traffic-light
@@ -329,6 +389,7 @@ export function ResultView({
             onViewImage={onViewImage}
             override={overrides?.[field.key]}
             onOverride={onOverride}
+            concern={concerns?.[field.key]}
           />
         ))}
       </ul>
