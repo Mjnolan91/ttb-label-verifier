@@ -44,6 +44,15 @@ describe("useWorklist — persistence + resume", () => {
     expect(loadWorklist().acme.notes?.brand).toBe("label print is faded");
   });
 
+  it("keeps per-field notes when a decision is recorded AFTER them (no data loss on commit)", () => {
+    const { result } = renderHook(() => useWorklist());
+    act(() => result.current.setNotes("acme", { brand: "label print is faded" }));
+    act(() => result.current.recordDecision("acme", "reject", "send back"));
+    expect(result.current.worklist.acme.decision).toBe("reject");
+    expect(result.current.worklist.acme.notes?.brand).toBe("label print is faded"); // survived the commit
+    expect(loadWorklist().acme.notes?.brand).toBe("label print is faded"); // and persisted
+  });
+
   it("loadWorklist tolerates absent / corrupt storage", () => {
     window.localStorage.setItem("ttb-worklist-v1", "{not json");
     expect(loadWorklist()).toEqual({});

@@ -186,15 +186,21 @@ export function evaluateAbsentAlcohol(spec: RequirementSpec, e: ExtractedFields,
  * off the fanciful name because "specialty" can't be proven from the image alone — the reviewer confirms.
  */
 export function evaluateAbsentStatementOfComposition(spec: RequirementSpec, e: ExtractedFields): CompletenessElement {
-  const fanciful = e.fancifulName;
-  if (typeof fanciful === "string" && fanciful.trim() !== "") {
+  const fanciful = (e.fancifulName ?? "").trim();
+  const hasClassType = (e.classType ?? "").trim() !== "" || (e.class ?? "").trim() !== "";
+  // A statement of composition is mandatory only for a SPECIALTY — a product with NO standard of identity.
+  // A distinctive/fanciful ("sell") name does NOT by itself make a product a specialty: flavored spirits
+  // have their own standard of identity (27 CFR 5.151, post-2022 modernization), and a standard product may
+  // carry a sell name. So only flag when a fanciful name is present AND no class/type designation was read
+  // (genuinely unclassifiable). When a class/type IS present, no statement of composition is required here.
+  if (fanciful !== "" && !hasClassType) {
     return {
       ...base(spec),
       status: "missing",
       detail:
-        `A distinctive/fanciful name ("${fanciful}") is present but no statement of composition was found. ` +
-        "A specialty product (no standard of identity) must carry one (27 CFR 5.156; malt 7.141/7.147). " +
-        "Confirm whether this is a specialty.",
+        `A distinctive/fanciful name ("${fanciful}") is present with no class/type designation and no ` +
+        "statement of composition. A specialty product (no standard of identity) must carry a statement of " +
+        "composition (27 CFR 5.156; malt 7.141/7.147). Confirm the designation.",
     };
   }
   return { ...base(spec), status: "unverifiable", detail: spec.note };

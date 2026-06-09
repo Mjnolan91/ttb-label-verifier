@@ -90,6 +90,9 @@ export function useWorklist(): WorklistApi {
       update((prev) => ({
         ...prev,
         [product]: {
+          // Spread the prior record so the per-field notes (and any future fields) survive the commit —
+          // recording a decision must not wipe the notes the reviewer saved on the cards.
+          ...prev[product],
           overrides: prev[product]?.overrides ?? {},
           decision,
           note,

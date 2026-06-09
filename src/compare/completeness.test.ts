@@ -81,22 +81,32 @@ describe("checkCompleteness — statement of composition (specialties, 27 CFR 5.
     expect(statusOf(checkCompleteness(ds()), "statementOfComposition")).toBe("unverifiable");
   });
 
-  it("a fanciful name with NO statement of composition is flagged (specialty missing its designation) -> incomplete", () => {
+  it("a fanciful/sell name ALONGSIDE a real class/type (e.g. a flavored spirit) does NOT require one", () => {
+    // Flavored spirits have their own standard of identity (27 CFR 5.151); a sell name is not a specialty.
     const r = checkCompleteness(ds({ fancifulName: "Spiced Rum", confidence: conf({ fancifulName: 0.95 }) }));
+    expect(statusOf(r, "statementOfComposition")).toBe("unverifiable");
+    expect(r.overall).toBe("complete");
+  });
+
+  it("a fanciful name with NO class/type designation and no statement of composition is flagged (specialty)", () => {
+    const r = checkCompleteness(
+      ds({ classType: "", class: "", fancifulName: "Mystery Blend", confidence: conf({ fancifulName: 0.95 }) }),
+    );
     expect(statusOf(r, "statementOfComposition")).toBe("missing");
     expect(r.overall).toBe("incomplete");
   });
 
-  it("a fanciful name WITH a statement of composition is present -> complete", () => {
+  it("a statement of composition that IS present reads present", () => {
     const r = checkCompleteness(
       ds({
-        fancifulName: "Spiced Rum",
-        statementOfComposition: "Rum with natural flavors added",
+        classType: "",
+        class: "",
+        fancifulName: "Mystery Blend",
+        statementOfComposition: "Neutral spirits with natural flavors added",
         confidence: conf({ fancifulName: 0.95, statementOfComposition: 0.95 }),
       }),
     );
     expect(statusOf(r, "statementOfComposition")).toBe("present");
-    expect(r.overall).toBe("complete");
   });
 });
 

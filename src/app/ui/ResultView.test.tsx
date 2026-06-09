@@ -41,6 +41,32 @@ describe("ResultView — at-a-glance label-vs-application verdict", () => {
     expect(q.getByText("Net contents")).toBeTruthy();
   });
 
+  it("synthesizes a resolvable card for a completeness concern the application didn't supply (no stranding)", () => {
+    // Net contents flagged by completeness but never supplied by the application -> no real card. Without
+    // the synthesized card the gated verdict can't be resolved.
+    const onOverride = vi.fn();
+    const q = within(
+      render(
+        <ResultView
+          result={makeResult(CORE, "review")}
+          overall="review"
+          gatedByCompleteness
+          overrides={{}}
+          onOverride={onOverride}
+          concerns={{ netContents: "Required but not found on the label." }}
+        />,
+      ).container,
+    );
+    // A "Net contents" card now exists even though it was not in result.fields...
+    const netCard = q.getByText("Net contents").closest("li") as HTMLElement;
+    expect(netCard).toBeTruthy();
+    expect(within(netCard).getByText(/Required but not found on the label/)).toBeTruthy();
+    // ...and confirming it routes through the CFR-violation guard, then fires the override that clears it.
+    fireEvent.click(within(netCard).getByRole("button", { name: /Looks correct/i }));
+    fireEvent.click(within(netCard).getByRole("button", { name: /Yes, mark correct/i }));
+    expect(onOverride).toHaveBeenCalledWith("netContents", "ok");
+  });
+
   it("prefers the gated overall when supplied (completeness can worsen the headline)", () => {
     const q = within(render(<ResultView result={makeResult(CORE, "approve")} overall="review" gatedByCompleteness />).container);
     expect(q.getByText("Needs review")).toBeTruthy();

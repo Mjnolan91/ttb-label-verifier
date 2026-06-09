@@ -31,6 +31,32 @@ import { IconPhoto, IconPass, IconFail } from "./icons";
 /** A human override of one field's verdict: "ok" = confirmed correct, "issue" = a real problem. */
 export type FieldOverride = "ok" | "issue";
 
+/** Labels for synthesized "completeness concern" cards (fields the application didn't supply, so they
+ *  have no real comparison card). Mirrors the labels verifyLabel gives the real cards. */
+const SYNTH_CONCERN_LABEL: Record<VerifyFieldKey, string> = {
+  brand: "Brand name",
+  classType: "Class / type",
+  alcohol: "Alcohol content",
+  netContents: "Net contents",
+  name: "Producer / bottler name",
+  address: "Producer / bottler address",
+  countryOfOrigin: "Country of origin",
+  fancifulName: "Distinctive / fanciful name",
+  statementOfComposition: "Statement of composition",
+  warning: "Government warning",
+};
+
+/** Concern keys that have NO comparison card in `result.fields` (the application didn't supply them) —
+ *  these need a synthesized, resolvable card so a completeness-gated verdict can't get stranded. */
+function synthesizedConcernKeys(
+  result: VerifyResult,
+  concerns?: Partial<Record<VerifyFieldKey, string>>,
+): VerifyFieldKey[] {
+  if (!concerns) return [];
+  const present = new Set(result.fields.map((f) => f.key));
+  return (Object.keys(concerns) as VerifyFieldKey[]).filter((k) => !present.has(k) && Boolean(concerns[k]));
+}
+
 const NEXT_STEP: Record<VerifyResult["overall"], string> = {
   approve: "Everything matched the application, so this label can be approved.",
   review:
@@ -376,8 +402,8 @@ function FieldCard({
       <p className="mt-3 text-sm">{field.reason}</p>
       {hasConcern && (
         <p className="mt-2 rounded-field border-l-4 border-review-500 bg-review-50 px-3 py-2 text-sm text-review-900">
-          <span className="font-semibold">TTB completeness:</span> {concern} The value matched the
-          application, so confirm it on the label or flag it.
+          <span className="font-semibold">TTB completeness:</span> {concern} Confirm it on the label, or
+          flag the problem.
         </p>
       )}
       {(isGatedMatch(field) || hasConcern) && onViewImage && <ViewPhotoButton onClick={onViewImage} />}
@@ -516,6 +542,30 @@ export function ResultView({
             onNote={onNote}
           />
         ))}
+        {/* A TTB completeness problem on a field the application did NOT supply has no comparison card —
+            without this it would strand the verdict on "Needs review" with no way to resolve it. We
+            synthesize a resolvable card so the reviewer can confirm (the AI missed it) or flag it, using
+            the SAME override flow as the real cards. */}
+        {onOverride &&
+          synthesizedConcernKeys(result, concerns).map((key, i) => (
+            <FieldCard
+              key={`concern-${key}`}
+              field={{
+                key,
+                label: SYNTH_CONCERN_LABEL[key],
+                status: "review",
+                claimed: "Not supplied in the application",
+                extracted: "See the completeness note below",
+                reason: "",
+              }}
+              index={result.fields.length + i}
+              override={overrides?.[key]}
+              onOverride={onOverride}
+              concern={concerns?.[key]}
+              note={notes?.[key]}
+              onNote={onNote}
+            />
+          ))}
       </ul>
     </section>
   );

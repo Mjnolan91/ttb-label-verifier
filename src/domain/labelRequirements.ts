@@ -121,7 +121,11 @@ const STATEMENT_OF_COMPOSITION: RequirementSpec = {
   key: "statementOfComposition",
   label: "Statement of composition",
   necessity: "conditional",
-  note: "Mandatory for SPECIALTY products (no standard of identity): the distinctive/fanciful name + a statement of composition together serve as the class/type designation (27 CFR 5.156 spirits; 7.141/7.147 malt). Surfaced only when the label shows a fanciful name without a statement of composition; not required for a standard product.",
+  // A fanciful name does NOT by itself imply a specialty: flavored spirits have their own standard of
+  // identity (27 CFR 5.151) and standard products may carry a "sell" name. So this is surfaced only when a
+  // fanciful name appears WITHOUT a class/type designation (genuinely unclassifiable). Wine specialties
+  // (Part 4) are not modeled here — a documented simplification. Never an auto-reject; reviewer confirms.
+  note: "Mandatory for SPECIALTY products (no standard of identity): the distinctive/fanciful name + a statement of composition together serve as the class/type designation (27 CFR 5.156 spirits; 7.141/7.147 malt). Flagged only when a fanciful name appears with no class/type designation; not required for a standard or flavored product that has a designation.",
 };
 
 const WINE_UNDER14: RequirementSpec[] = [...COMMON_HEAD, ALC_WINE_UNDER14, ...COMMON_TAIL, SULFITES, APPELLATION, COUNTRY_OF_ORIGIN];
