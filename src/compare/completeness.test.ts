@@ -33,6 +33,20 @@ function ds(overrides: Partial<ExtractedFields> = {}): ExtractedFields {
 const statusOf = (r: ReturnType<typeof checkCompleteness>, key: string): ElementStatus | undefined =>
   r.elements.find((e) => e.key === key)?.status;
 
+describe("checkCompleteness — internal validity (no application value needed)", () => {
+  it("a reworded warning with a correct ALL-CAPS prefix is malformed, not present (27 CFR 16.21)", () => {
+    const r = checkCompleteness(ds({ warningText: "GOVERNMENT WARNING: drinking alcohol is bad for you." }));
+    expect(statusOf(r, "governmentWarning")).toBe("malformed");
+    expect(r.overall).toBe("incomplete");
+  });
+
+  it("an internally-inconsistent ABV/proof (proof != 2xABV) is malformed, not present", () => {
+    const r = checkCompleteness(ds({ alcoholContentText: "45% Alc./Vol. (80 Proof)" }));
+    expect(statusOf(r, "alcoholContent")).toBe("malformed");
+    expect(r.overall).toBe("incomplete");
+  });
+});
+
 describe("checkCompleteness", () => {
   it("a fully-compliant distilled-spirits label is complete (absent conditionals don't downgrade)", () => {
     const r = checkCompleteness(ds());

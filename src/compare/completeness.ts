@@ -8,8 +8,10 @@
  * the strict format check (ALL-CAPS prefix; bold when detectable).
  */
 import type { BeverageClass, ExtractedFields, RequirementKey, RequirementSpec } from "@/domain";
-import { mandatoryElementsFor, isWarningRequired } from "@/domain";
+import { mandatoryElementsFor, isWarningRequired, CANONICAL_GOVERNMENT_WARNING } from "@/domain";
 import { parseAlcoholText, resolveBeverageClass } from "./alcohol";
+import { normalizeWarning } from "./text";
+import { checkAlcoholInternalConsistency } from "./comparators";
 import { FIELD_REVIEW_CONFIDENCE } from "./thresholds";
 
 /** The ABV parsed from the as-written alcohol statement, or undefined if absent/unparseable.
@@ -92,6 +94,18 @@ export function evaluateWarningElement(spec: RequirementSpec, e: ExtractedFields
     }
     return { ...base(spec), status: "missing", detail: "Government warning not found on the label." };
   }
+  // The body must be the VERBATIM statutory text (27 CFR 16.21). A paraphrased, truncated, or reworded
+  // warning is malformed even if its prefix is correctly all-caps + bold — mirror compareWarning so the
+  // no-application completeness headline and the confirm-to-approve path enforce the same wording the
+  // claimed-comparison path does (case is folded here; the prefix CAPITALS are judged by the flag below).
+  if (normalizeWarning(w) !== normalizeWarning(CANONICAL_GOVERNMENT_WARNING)) {
+    return {
+      ...base(spec),
+      status: "malformed",
+      value: w,
+      detail: "The warning text does not match the canonical statutory wording verbatim (27 CFR 16.21).",
+    };
+  }
   // ALL-CAPS is a reliable transcription judgment, so a title/mixed-case prefix is a hard fail.
   if (!e.warningPrefixIsAllCaps) {
     return {
@@ -169,6 +183,12 @@ export function checkCompleteness(extracted: ExtractedFields): CompletenessResul
     const { value, confidence } = fieldFor(spec.key, extracted);
     const hasValue = typeof value === "string" && value.trim() !== "";
     if (hasValue) {
+      // A present alcohol statement must be internally valid (proof = 2×ABV; malt low/reduced cap),
+      // even with no application value to compare against — otherwise an impossible label reads "complete".
+      if (spec.key === "alcoholContent") {
+        const problem = checkAlcoholInternalConsistency(extracted.alcoholContentText, classText, beverageClass);
+        if (problem) return { ...base(spec), status: "malformed", value, detail: problem };
+      }
       const lowConf = confidence === undefined || confidence < FIELD_REVIEW_CONFIDENCE;
       if (lowConf) lowConfidencePresent = true;
       return {

@@ -14,7 +14,7 @@ import type { FieldStatus } from "./types";
 import { overallVerdict } from "./verify";
 import type { OverallVerdict } from "./verify";
 import { fieldFor, evaluateWarningElement, evaluateAbsentAlcohol } from "./completeness";
-import { compareBrand, compareAlcohol } from "./comparators";
+import { compareBrand, compareAlcohol, checkAlcoholInternalConsistency } from "./comparators";
 import { resolveBeverageClass, parseAlcoholText } from "./alcohol";
 import { FIELD_REVIEW_CONFIDENCE } from "./thresholds";
 import { normalizeText } from "./text";
@@ -148,6 +148,14 @@ export function confirmVerdict(
       aiValue, confidence, editable: true, state: c.state,
     };
 
+    // A present alcohol statement that is internally impossible (proof ≠ 2×ABV; over-cap "low alcohol"
+    // malt) is a label defect no confirmation can cure — it downgrades the field to review regardless
+    // of confirm state (edits re-run the full comparator via statusForEdit, which already checks this).
+    const alcoholProblem =
+      spec.key === "alcoholContent" && present
+        ? checkAlcoholInternalConsistency(extracted.alcoholContentText, extracted.classType ?? extracted.class, beverageClass)
+        : null;
+
     if (c.state === "edited") {
       const edited = (c.editedValue ?? "").trim();
       if (edited === "") {
@@ -167,6 +175,9 @@ export function confirmVerdict(
     }
 
     if (c.state === "accepted" && present) {
+      if (alcoholProblem) {
+        return { ...base, value: aiValue, flagged: true, needsConfirmation: false, status: "review", reason: alcoholProblem };
+      }
       return { ...base, value: aiValue, flagged: lowConf, needsConfirmation: false, status: "pass",
         reason: "Confirmed: matches the application." };
     }
@@ -185,6 +196,9 @@ export function confirmVerdict(
       if (lowConf) {
         return { ...base, value: aiValue, flagged: true, needsConfirmation: true, status: "review",
           reason: "The AI wasn't fully sure it read this correctly — confirm it or type the right value." };
+      }
+      if (alcoholProblem) {
+        return { ...base, value: aiValue, flagged: true, needsConfirmation: true, status: "review", reason: alcoholProblem };
       }
       return { ...base, value: aiValue, flagged: false, needsConfirmation: false, status: "pass",
         reason: "Read confidently from the label." };

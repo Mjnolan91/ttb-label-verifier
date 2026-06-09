@@ -241,6 +241,31 @@ export function compareAlcohol(args: {
 }
 
 /**
+ * Label-INTERNAL alcohol validity — defects visible on the label's own face, with NO application
+ * value needed. Reused by completeness.ts (the no-application headline) and confirm.ts so they
+ * enforce the same internal checks compareAlcohol already applies when a claimed value IS present
+ * (previously these only ran on the claimed-comparison path):
+ *   - US proof must equal 2 × ABV (definitional);
+ *   - a "low/reduced alcohol" malt beverage must be under 2.5% ABV (27 CFR 7.65(d)).
+ * Returns a human-readable reason when the label is internally invalid, else null.
+ */
+export function checkAlcoholInternalConsistency(
+  alcoholText: string | undefined,
+  classText: string | undefined,
+  cls: BeverageClass,
+): string | null {
+  const { abv, proof } = parseAlcoholText(alcoholText);
+  if (abv === undefined) return null; // nothing numeric to validate; presence is handled elsewhere
+  if (proof !== undefined && Math.abs(proof - abvToProof(abv)) > 0.1) {
+    return `Label is internally inconsistent: ${proof} proof ≠ 2 × ${abv}% ABV (proof = 2 × ABV).`;
+  }
+  if (cls === "maltBeverage" && isLowOrReducedAlcoholClaim(classText) && abv >= MALT_LOW_ALCOHOL_CAP - EPS) {
+    return `"Low/reduced alcohol" malt beverages must be under 2.5% ABV (27 CFR 7.65(d)).`;
+  }
+  return null;
+}
+
+/**
  * Government warning — strict. Body must match the canonical statutory wording; the prefix's
  * required ALL-CAPS (and BOLD where detectable) is read from the extracted flags, not re-derived
  * from raw text. Title-case, reworded, or missing = fail. Products under 0.5% ABV are exempt.

@@ -143,6 +143,22 @@ describe("confirmVerdict — the government warning is auto-evaluated, never fre
   });
 });
 
+describe("confirmVerdict — label-internal alcohol consistency", () => {
+  it("an impossible ABV/proof (proof != 2xABV) is review, not pass — even unconfirmed", () => {
+    const v = confirmVerdict(spirits({ alcoholContentText: "45% Alc./Vol. (80 Proof)" }), {});
+    const alc = v.fields.find((f) => f.key === "alcoholContent")!;
+    expect(alc.status).toBe("review");
+    expect(alc.flagged).toBe(true);
+    expect(v.overall).toBe("review");
+  });
+
+  it("accepting an internally-inconsistent ABV/proof still cannot approve it", () => {
+    const v = confirmVerdict(spirits({ alcoholContentText: "45% Alc./Vol. (80 Proof)" }), { alcoholContent: { state: "accepted" } });
+    expect(v.fields.find((f) => f.key === "alcoholContent")!.status).toBe("review");
+    expect(v.overall).toBe("review");
+  });
+});
+
 describe("confirmVerdict — classOverride drives the required set (Thread B)", () => {
   it("defaults to the AI-resolved class (bourbon -> distilled spirits: age in, appellation out)", () => {
     const v = confirmVerdict(spirits(), {});
