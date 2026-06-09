@@ -120,6 +120,23 @@ describe("VerifyForm — confirm-to-approve", () => {
     expect(within(container).getAllByText(/Back label/i).length).toBeGreaterThan(0);
   });
 
+  it("changing the beverage type recomputes the required-field set", ASYNC, async () => {
+    mockFetch({ provider: "mock", readable: true, extracted: extractedBourbon(), result: null });
+    const { container } = render(<VerifyForm />);
+    const q = within(container);
+    dropLabelImage(container);
+    await q.findByText("Confirm the required fields");
+    // Scope to the confirm panel only (the full reading below also lists every field).
+    const panel = within(q.getByRole("region", { name: "Confirm the label against the application" }));
+    // Bourbon -> distilled spirits: Age statement is in the required set, Appellation is not.
+    expect(panel.queryAllByText("Age statement").length).toBeGreaterThan(0);
+    expect(panel.queryAllByText("Appellation of origin").length).toBe(0);
+    // Override to Wine (45% ABV -> wine > 14%): Appellation joins the set, Age statement leaves it.
+    fireEvent.change(q.getByLabelText("Beverage type"), { target: { value: "wine" } });
+    expect((await panel.findAllByText("Appellation of origin")).length).toBeGreaterThan(0);
+    expect(panel.queryAllByText("Age statement").length).toBe(0);
+  });
+
   it("shows the re-upload prompt for an unreadable image (never a fabricated verdict)", ASYNC, async () => {
     mockFetch({
       provider: "mock", readable: false, extracted: extractedBourbon(), result: null,
