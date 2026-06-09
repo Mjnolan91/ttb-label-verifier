@@ -38,6 +38,12 @@ describe("useWorklist — persistence + resume", () => {
     expect(loadWorklist()).toEqual({});
   });
 
+  it("persists per-field reviewer notes via setNotes", () => {
+    const { result } = renderHook(() => useWorklist());
+    act(() => result.current.setNotes("acme", { brand: "label print is faded" }));
+    expect(loadWorklist().acme.notes?.brand).toBe("label print is faded");
+  });
+
   it("loadWorklist tolerates absent / corrupt storage", () => {
     window.localStorage.setItem("ttb-worklist-v1", "{not json");
     expect(loadWorklist()).toEqual({});

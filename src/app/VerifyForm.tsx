@@ -29,7 +29,7 @@ import type { BeverageClass, ClaimedFields, RequirementKey } from "@/domain";
 import { ExtractedFieldsView } from "./ui/ExtractedFieldsView";
 import { CompletenessView } from "./ui/CompletenessView";
 import { ResultView, type FieldOverride } from "./ui/ResultView";
-import { deriveLabelReview, toggleOverride } from "./ui/labelReview";
+import { deriveLabelReview, toggleOverride, setFieldNote, type FieldNotes } from "./ui/labelReview";
 import { DecisionPanel } from "./ui/DecisionPanel";
 import { PipelineSteps } from "./ui/PipelineSteps";
 import { CLASS_DISPLAY_LABEL } from "./ui/beverageClass";
@@ -105,6 +105,12 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
   const [fieldOverrides, setFieldOverrides] = useState<Partial<Record<VerifyFieldKey, FieldOverride>>>({});
   function setOverride(key: VerifyFieldKey, value: FieldOverride | undefined) {
     setFieldOverrides((prev) => toggleOverride(prev, key, value));
+  }
+  // A free-text note the reviewer can leave when confirming/flagging a field (why / what was checked).
+  // It feeds the applicant-email notes. Cleared on every fresh read alongside the overrides.
+  const [fieldNotes, setFieldNotes] = useState<FieldNotes>({});
+  function setNote(key: VerifyFieldKey, text: string) {
+    setFieldNotes((prev) => setFieldNote(prev, key, text));
   }
   // The image currently shown full-size in the lightbox, if any.
   const [zoom, setZoom] = useState<{ src: string; alt: string } | null>(null);
@@ -199,7 +205,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
     completenessConcerns,
     approveNotes,
     rejectNotes,
-  } = deriveLabelReview(combined, fieldOverrides);
+  } = deriveLabelReview(combined, fieldOverrides, fieldNotes);
 
   // Accept the AI's grey suggestion for one field by pressing Tab while it's empty (the agent confirms
   // the read as the application value) — fast, but deliberate, so an unaccepted required field still blocks.
@@ -222,6 +228,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
     setState("loading");
     setFormError(null);
     setFieldOverrides({}); // a fresh read re-evaluates; drop the prior verdict's human overrides
+    setFieldNotes({}); // and the notes that went with them
     try {
       const body = new FormData();
       for (const img of imgs) {
@@ -295,6 +302,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
             result: combined.verify,
             overall: effectiveOverall,
             ...(Object.keys(fieldOverrides).length ? { humanOverrides: fieldOverrides } : {}),
+            ...(Object.keys(fieldNotes).length ? { humanNotes: fieldNotes } : {}),
           }
         : {}),
     });
@@ -554,6 +562,8 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
                 overrides={fieldOverrides}
                 onOverride={setOverride}
                 concerns={completenessConcerns}
+                notes={fieldNotes}
+                onNote={setNote}
               />
               <details className="mt-6 rounded-card border border-border bg-surface-muted p-4">
                 <summary className="min-h-[44px] cursor-pointer py-2 text-sm font-semibold text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2">

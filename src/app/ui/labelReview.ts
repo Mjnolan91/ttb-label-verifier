@@ -14,6 +14,10 @@ import type { FieldOverride } from "./ResultView";
 /** A reviewer's per-field decisions over the AI verdict, keyed by comparison field. */
 export type FieldOverrides = Partial<Record<VerifyFieldKey, FieldOverride>>;
 
+/** A reviewer's free-text note left with a per-field decision (why it's flagged / what was confirmed),
+ *  keyed by comparison field. Surfaced on the card and woven into the applicant-email notes. */
+export type FieldNotes = Partial<Record<VerifyFieldKey, string>>;
+
 /** The terminal decision a reviewer records for a label: approve, or reject / send back. */
 export type ReviewDecision = "approve" | "reject";
 
@@ -63,6 +67,14 @@ export function toggleOverride(
   return next;
 }
 
+/** Set (or clear, when blank) a single field's reviewer note immutably. */
+export function setFieldNote(prev: FieldNotes, key: VerifyFieldKey, text: string): FieldNotes {
+  const next = { ...prev };
+  if (text.trim() === "") delete next[key];
+  else next[key] = text;
+  return next;
+}
+
 /**
  * Derive the full review state from one label's combined verdict + the reviewer's overrides. The
  * completeness GATE is recomputed from the same overrides (resolveCompletenessOverall), so confirming a
@@ -72,6 +84,7 @@ export function toggleOverride(
 export function deriveLabelReview(
   combined: CombinedVerdict | null,
   fieldOverrides: FieldOverrides,
+  fieldNotes: FieldNotes = {},
 ): LabelReviewState {
   const completenessOverrides: Partial<Record<RequirementKey, FieldOverride>> = {};
   for (const key of Object.keys(fieldOverrides) as VerifyFieldKey[]) {
@@ -105,18 +118,27 @@ export function deriveLabelReview(
     }
   }
 
+  // The reviewer's per-field note (when they left one) is their own words and takes precedence over the
+  // generic reason, so it reaches the applicant verbatim.
   const reviewedFields = combined?.verify?.fields ?? [];
   const rejectNotes = reviewedFields
     .filter((f) => effStatusOf(f) !== "pass")
-    .map((f) =>
-      fieldOverrides[f.key] === "issue"
+    .map((f) => {
+      const note = fieldNotes[f.key]?.trim();
+      if (note) return `  - ${f.label}: ${note}`;
+      return fieldOverrides[f.key] === "issue"
         ? `  - ${f.label}: flagged by the reviewer as a problem.`
-        : `  - ${f.label}: ${f.reason}`,
-    )
+        : `  - ${f.label}: ${f.reason}`;
+    })
     .join("\n");
   const approveNotes = reviewedFields
     .filter((f) => fieldOverrides[f.key] === "ok")
-    .map((f) => `  - ${f.label}: confirmed correct on review of the label.`)
+    .map((f) => {
+      const note = fieldNotes[f.key]?.trim();
+      return note
+        ? `  - ${f.label}: confirmed correct. ${note}`
+        : `  - ${f.label}: confirmed correct on review of the label.`;
+    })
     .join("\n");
 
   return {

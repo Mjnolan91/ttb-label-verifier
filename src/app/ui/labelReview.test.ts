@@ -57,6 +57,17 @@ describe("deriveLabelReview", () => {
     expect(r.rejectNotes).toMatch(/flagged by the reviewer/i);
   });
 
+  it("weaves a per-field note into the send-back notes (the reviewer's words over the generic reason)", () => {
+    const r = deriveLabelReview(combined, { netContents: "issue" }, { netContents: "Bottle is 750 mL; label was misread." });
+    expect(r.rejectNotes).toMatch(/Bottle is 750 mL; label was misread\./);
+    expect(r.rejectNotes).not.toMatch(/flagged by the reviewer/i); // the note replaces the generic line
+  });
+
+  it("weaves a per-field note into the approval notes when a field is confirmed", () => {
+    const r = deriveLabelReview(combined, { netContents: "ok" }, { netContents: "740 mL is a lawful sample size here." });
+    expect(r.approveNotes).toMatch(/740 mL is a lawful sample size here\./);
+  });
+
   it("returns a null verdict (completeness-only) when there are no application values", () => {
     const completenessOnly = combinedVerdict(null, extracted);
     const r = deriveLabelReview(completenessOnly, {});

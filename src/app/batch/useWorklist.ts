@@ -10,13 +10,15 @@
  * transmitted (mirrors the offline-by-default, no-PII posture of the rest of the app).
  */
 import { useState } from "react";
-import type { FieldOverrides, ReviewDecision } from "../ui/labelReview";
+import type { FieldNotes, FieldOverrides, ReviewDecision } from "../ui/labelReview";
 
 export type { ReviewDecision };
 
 export interface ReviewRecord {
   /** Resolved per-field flags — drives the resumed effective verdict. */
   overrides: FieldOverrides;
+  /** The reviewer's free-text note per field (why flagged / what confirmed). */
+  notes?: FieldNotes;
   /** The reviewer's recorded decision, once they commit one. */
   decision?: ReviewDecision;
   /** An optional free-text note captured with the decision. */
@@ -54,6 +56,8 @@ export interface WorklistApi {
   worklist: Worklist;
   /** Persist a product's resolved flags (called as the reviewer confirms/flags fields). */
   setOverrides: (product: string, overrides: FieldOverrides) => void;
+  /** Persist a product's per-field reviewer notes. */
+  setNotes: (product: string, notes: FieldNotes) => void;
   /** Record (or re-record) a product's decision + note. */
   recordDecision: (product: string, decision: ReviewDecision, note: string) => void;
   /** Forget one product's record (back to un-reviewed). */
@@ -80,6 +84,8 @@ export function useWorklist(): WorklistApi {
     worklist,
     setOverrides: (product, overrides) =>
       update((prev) => ({ ...prev, [product]: { ...prev[product], overrides } })),
+    setNotes: (product, notes) =>
+      update((prev) => ({ ...prev, [product]: { ...prev[product], overrides: prev[product]?.overrides ?? {}, notes } })),
     recordDecision: (product, decision, note) =>
       update((prev) => ({
         ...prev,

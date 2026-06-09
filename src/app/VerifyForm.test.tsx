@@ -244,6 +244,23 @@ describe("VerifyForm — verify against the application", () => {
     expect(verdict.getAllByText("Needs review").length).toBeGreaterThan(0);
   });
 
+  it("lets the reviewer leave a per-field note that flows into the send-back email", ASYNC, async () => {
+    mockFetch(READ_OK());
+    const { container } = render(<VerifyForm />);
+    const q = within(container);
+    dropLabelImage(container);
+    await q.findByText("Complete the application to verify");
+    fireEvent.click(q.getByRole("button", { name: /Accept all AI suggestions/i }));
+    const brandCard = q.getAllByText("Brand name")[0].closest("li") as HTMLElement;
+    fireEvent.click(within(brandCard).getByRole("button", { name: /Flag a problem/i }));
+    // A note field appears on the flagged card; the reviewer's words land in the applicant email.
+    const noteField = within(brandCard).getByPlaceholderText(/Explain the problem/i);
+    fireEvent.change(noteField, { target: { value: "Brand is misspelled on the label." } });
+    fireEvent.click(q.getByRole("button", { name: /Reject \/ send back/i }));
+    const composer = q.getByLabelText(/Reviewer notes/i) as HTMLTextAreaElement;
+    expect(composer.value).toMatch(/Brand is misspelled on the label\./);
+  });
+
   it("shows two explicit upload slots (front + back), each with its own file input", () => {
     const { container } = render(<VerifyForm />);
     expect(container.querySelectorAll('input[type="file"]')).toHaveLength(2);

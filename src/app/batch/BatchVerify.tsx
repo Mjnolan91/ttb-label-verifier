@@ -28,7 +28,7 @@ import { DropZone } from "../ui/DropZone";
 import { ImageLightbox } from "../ui/ImageLightbox";
 import { Drawer } from "../ui/Drawer";
 import { ProductReview } from "../ui/ProductReview";
-import { deriveLabelReview, toggleOverride } from "../ui/labelReview";
+import { deriveLabelReview, toggleOverride, setFieldNote } from "../ui/labelReview";
 import { useWorklist } from "./useWorklist";
 import { IconZoom, IconPass, IconFail } from "../ui/icons";
 
@@ -229,6 +229,7 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
           ...(overall ? { overall } : {}),
           // The worklist lifecycle: the reviewer's recorded decision, distinct from the AI verdict.
           ...(rec?.decision ? { decision: rec.decision, note: rec.note ?? "" } : {}),
+          ...(rec?.notes && Object.keys(rec.notes).length ? { fieldNotes: rec.notes } : {}),
         };
       }),
     );
@@ -533,6 +534,8 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
                 onOverride={(key, value) =>
                   worklist.setOverrides(r.product, toggleOverride(rec?.overrides ?? {}, key, value))
                 }
+                notes={rec?.notes ?? {}}
+                onNote={(key, text) => worklist.setNotes(r.product, setFieldNote(rec?.notes ?? {}, key, text))}
                 decision={rec?.decision}
                 note={rec?.note}
                 onRecordDecision={(decision, note) => worklist.recordDecision(r.product, decision, note)}

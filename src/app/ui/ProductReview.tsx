@@ -7,7 +7,7 @@
  * notes all behave identically to the single screen. The label image(s) are shown inline so the agent
  * can verify a flagged field without leaving the drawer.
  */
-import { deriveLabelReview, type FieldOverrides, type ReviewDecision } from "./labelReview";
+import { deriveLabelReview, type FieldNotes, type FieldOverrides, type ReviewDecision } from "./labelReview";
 import type { CombinedVerdict, VerifyFieldKey } from "@/compare";
 import type { FieldOverride } from "./ResultView";
 import { ResultView } from "./ResultView";
@@ -23,6 +23,8 @@ export function ProductReview({
   unreadableMessage,
   overrides,
   onOverride,
+  notes,
+  onNote,
   decision,
   note,
   onRecordDecision,
@@ -34,11 +36,13 @@ export function ProductReview({
   unreadableMessage?: string;
   overrides: FieldOverrides;
   onOverride: (key: VerifyFieldKey, value: FieldOverride | undefined) => void;
+  notes: FieldNotes;
+  onNote: (key: VerifyFieldKey, text: string) => void;
   decision?: ReviewDecision;
   note?: string;
   onRecordDecision: (decision: ReviewDecision, note: string) => void;
 }) {
-  const review = combined ? deriveLabelReview(combined, overrides) : null;
+  const review = combined ? deriveLabelReview(combined, overrides, notes) : null;
   // A completeness-only product (no application row) has no comparison verdict; suggest from completeness.
   const panelVerdict =
     review?.effectiveOverall ?? (combined?.completeness.overall === "complete" ? "approve" : "review");
@@ -74,6 +78,8 @@ export function ProductReview({
             overrides={overrides}
             onOverride={onOverride}
             concerns={review?.completenessConcerns}
+            notes={notes}
+            onNote={onNote}
           />
           <details className="rounded-card border border-border bg-surface-muted p-4">
             <summary className="min-h-[44px] cursor-pointer py-2 text-sm font-semibold text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2">

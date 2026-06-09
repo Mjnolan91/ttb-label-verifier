@@ -105,11 +105,15 @@ function ReviewControls({
   override,
   onOverride,
   concern,
+  note,
+  onNote,
 }: {
   field: VerifyField;
   override?: FieldOverride;
   onOverride: (key: VerifyFieldKey, value: FieldOverride | undefined) => void;
   concern?: string;
+  note?: string;
+  onNote?: (key: VerifyFieldKey, text: string) => void;
 }) {
   const [confirming, setConfirming] = useState(false);
   const toggle = (v: FieldOverride) => {
@@ -189,6 +193,27 @@ function ReviewControls({
           </div>
         </div>
       )}
+      {/* Once a decision is made, let the reviewer leave a note — their own words on why it's flagged or
+          what they confirmed. It's woven into the applicant email (the reviewer notes seed). */}
+      {override && onNote && (
+        <div className="mt-3">
+          <label htmlFor={`note-${field.key}`} className="block text-xs font-semibold uppercase tracking-wide text-ink-muted">
+            Note {override === "issue" ? "(what's wrong?)" : "(optional)"}
+          </label>
+          <textarea
+            id={`note-${field.key}`}
+            value={note ?? ""}
+            onChange={(e) => onNote(field.key, e.target.value)}
+            rows={2}
+            placeholder={
+              override === "issue"
+                ? "Explain the problem for the applicant. Added to the email."
+                : "Add a note for the record (optional)."
+            }
+            className="mt-1 w-full resize-y rounded-field border-2 border-border-strong bg-surface px-3 py-2 text-sm leading-relaxed text-ink shadow-sm transition focus-visible:border-brand-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2"
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -222,6 +247,8 @@ function FieldCard({
   override,
   onOverride,
   concern,
+  note,
+  onNote,
 }: {
   field: VerifyField;
   index: number;
@@ -231,6 +258,9 @@ function FieldCard({
   /** A TTB completeness problem on this element (missing / wrong format) even though the value matched —
    *  surfaces the full confirm/flag pair so the reviewer can clear it or escalate it. */
   concern?: string;
+  /** The reviewer's free-text note on this field, and the setter (when the cards are editable). */
+  note?: string;
+  onNote?: (key: VerifyFieldKey, text: string) => void;
 }) {
   // A concern only matters while the reviewer hasn't acted; once they confirm/flag, their call governs.
   const hasConcern = Boolean(concern) && !override;
@@ -283,7 +313,14 @@ function FieldCard({
           acted; an otherwise-clean match shows just a quiet "Flag a problem" so the screen stays calm. */}
       {onOverride &&
         (aiTone(field) !== "pass" || override || hasConcern ? (
-          <ReviewControls field={field} override={override} onOverride={onOverride} concern={concern} />
+          <ReviewControls
+            field={field}
+            override={override}
+            onOverride={onOverride}
+            concern={concern}
+            note={note}
+            onNote={onNote}
+          />
         ) : (
           <SubtleFlag fieldKey={field.key} onOverride={onOverride} />
         ))}
@@ -300,6 +337,8 @@ export function ResultView({
   overrides,
   onOverride,
   concerns,
+  notes,
+  onNote,
 }: {
   result: VerifyResult;
   /** The headline verdict (comparison gated on completeness, recomputed after human overrides). */
@@ -314,6 +353,9 @@ export function ResultView({
   /** A TTB completeness problem per field (missing / wrong format) even though the value matched —
    *  shown on the matching card so the reviewer can confirm or flag it. */
   concerns?: Partial<Record<VerifyFieldKey, string>>;
+  /** The reviewer's per-field notes, and the setter for them. */
+  notes?: Partial<Record<VerifyFieldKey, string>>;
+  onNote?: (key: VerifyFieldKey, text: string) => void;
 }) {
   const headline = overall ?? result.overall;
   const tone: Tone = toneForStatus(headline); // green / amber / red traffic-light
@@ -390,6 +432,8 @@ export function ResultView({
             override={overrides?.[field.key]}
             onOverride={onOverride}
             concern={concerns?.[field.key]}
+            note={notes?.[field.key]}
+            onNote={onNote}
           />
         ))}
       </ul>
