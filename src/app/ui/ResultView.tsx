@@ -31,7 +31,7 @@ import { IconPhoto } from "./icons";
 /** A plain next-action line under the verdict, so a non-technical agent knows what to DO, not just
  *  the status. Keyed off the same overall verdict — pure presentation, no new logic. */
 const NEXT_STEP: Record<VerifyResult["overall"], string> = {
-  approve: "Everything matched the application — this label can be approved.",
+  approve: "Everything matched the application, so this label can be approved.",
   review:
     "Some items need a person to confirm. Open the label image and check the highlighted fields below.",
   reject:
@@ -68,7 +68,7 @@ function ConfidenceChip({ value }: { value: number | undefined }) {
   return (
     <span
       className={`inline-flex shrink-0 items-center rounded-pill border px-2 py-0.5 text-xs font-semibold ${cls}`}
-      title="How clearly the AI read this value off the photo. Below 70% we ask a person to confirm — it is not a mismatch."
+      title="How clearly the AI read this value off the photo. Below 70% we ask a person to confirm. It is not a mismatch."
     >
       {pct}% read
     </span>
@@ -159,7 +159,7 @@ export function ResultView({
   const OverallIcon = TONE_ICON[tone];
 
   const nextStep = calmReadReview
-    ? `Everything you entered matched the label — no mismatches were found. We read ${
+    ? `Everything you entered matched the label, with no mismatches found. We read ${
         gatedMatches.length === 1 ? "one value" : `${gatedMatches.length} values`
       } from a slightly fuzzy photo, so a person should glance at the image to confirm before approving.`
     : NEXT_STEP[headline];
@@ -185,7 +185,7 @@ export function ResultView({
           {gatedByCompleteness && (
             <p className="mt-1.5 text-sm font-medium leading-relaxed">
               The label-vs-application values matched, but a field TTB requires for this beverage type is
-              missing or couldn&apos;t be read confidently — see the completeness check below.
+              missing or couldn&apos;t be read confidently. See the completeness check below.
             </p>
           )}
           {calmReadReview && onViewImage && (

@@ -8,17 +8,17 @@ const PROPOSALS: { title: string; detail: string }[] = [
   {
     title: "Cancer-risk health warning",
     detail:
-      "The Surgeon General's January 2025 advisory urges Congress to add a cancer warning to the statutory text. Only Congress can amend it (warning text at 27 U.S.C. 215 / 27 CFR 16.21; amendment mechanism at 27 U.S.C. 219a) — no bill has passed, so the warning text is unchanged.",
+      "The Surgeon General's January 2025 advisory urges Congress to add a cancer warning to the statutory text. Only Congress can amend it (warning text at 27 U.S.C. 215 / 27 CFR 16.21; amendment mechanism at 27 U.S.C. 219a). No bill has passed, so the warning text is unchanged.",
   },
   {
     title: "“Alcohol Facts” statement",
     detail:
-      "TTB proposed rule (Notice 237, Jan 2025) would add a serving-facts panel (serving size, ABV, calories, carbohydrates, fat, protein). Still a proposal — no final rule.",
+      "TTB proposed rule (Notice 237, Jan 2025) would add a serving-facts panel (serving size, ABV, calories, carbohydrates, fat, protein). Still a proposal, not a final rule.",
   },
   {
     title: "Major food allergen labeling",
     detail:
-      "TTB proposed rule (Notice 238, Jan 2025) would require declaring the nine major food allergens when used. Still a proposal — no final rule.",
+      "TTB proposed rule (Notice 238, Jan 2025) would require declaring the nine major food allergens when used. Still a proposal, not a final rule.",
   },
 ];
 
@@ -38,7 +38,7 @@ export function ForwardLookingNote() {
             <div className="flex flex-wrap items-center gap-2">
               <span className="font-semibold text-ink">{p.title}</span>
               <span className="rounded-pill border border-border bg-surface px-2 py-0.5 text-xs font-medium text-ink-muted">
-                Proposed — not yet required
+                Proposed, not yet required
               </span>
             </div>
             <p className="mt-0.5 text-ink-muted">{p.detail}</p>

@@ -54,11 +54,44 @@
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
 }
 
+/*
+ * Dark mode. Utilities reference the @theme CSS variables, so redefining the semantic tokens under
+ * `.dark` re-themes the whole app with no per-component changes. The `.dark` class is set before paint
+ * by the inline script in layout.tsx (no flash) and toggled by ThemeToggle. Status TINTS flip (dark
+ * surface + light text); the -600/-700 accents and solid badges keep their values because white text
+ * reads on them in either mode. Text pairings stay >= WCAG AA.
+ */
+.dark {
+  color-scheme: dark;
+
+  --color-brand-50: #172554; /* verify-tone / awaiting tint surface */
+  --color-brand-100: #1e3a8a;
+  --color-brand-500: #3b82f6;
+  --color-brand-600: #2563eb; /* primary button bg — white text ~4.6:1 */
+  --color-brand-700: #60a5fa; /* links / focus ring / accents on dark */
+  --color-brand-800: #93c5fd; /* verify-tone tint text */
+
+  --color-surface: #0f172a;
+  --color-surface-muted: #161f33;
+  --color-surface-sunken: #0b1220;
+  --color-border: #2b3a52;
+  --color-border-strong: #6b7a91;
+  --color-ink: #f1f5f9;
+  --color-ink-muted: #9fb0c3; /* ~6:1 on the dark surface */
+
+  --color-pass-50: #06281a;
+  --color-pass-900: #86efac;
+  --color-review-50: #3a2a06;
+  --color-review-900: #fcd34d;
+  --color-fail-50: #3a1212;
+  --color-fail-900: #fca5a5;
+}
+
 @layer base {
   body {
     font-family: var(--font-sans);
-    /* A calm, designed page backdrop (very subtle, high-contrast-safe). */
-    background-image: radial-gradient(60rem 40rem at 50% -10%, #ffffff 0%, var(--color-surface-muted) 60%);
+    /* A calm, designed page backdrop (very subtle, high-contrast-safe). Tokenized so it follows the theme. */
+    background-image: radial-gradient(60rem 40rem at 50% -10%, var(--color-surface) 0%, var(--color-surface-muted) 60%);
     background-attachment: fixed;
   }
 }

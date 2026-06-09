@@ -68,7 +68,7 @@ export function DropZone({
         </span>
         <span className="text-sm text-ink-muted">
           or <span className="font-semibold text-brand-700 underline underline-offset-2">browse</span>
-          {multiple ? " — add a front, back, neck…" : ""}
+          {multiple ? " (front, back, neck…)" : ""}
         </span>
         <input
           ref={inputRef}

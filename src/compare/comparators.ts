@@ -118,7 +118,7 @@ export function compareBrand(args: {
       "review",
       claimed,
       extracted,
-      'Brand matches except for punctuation/symbols (e.g. "&", "-") — confirm they are the same brand.',
+      'Brand matches except for punctuation/symbols (e.g. "&", "-"). Confirm they are the same brand.',
     );
   }
   // Brand mark vs producer name: "ABC" and "ABC Distillery" are the same brand family. Equal after
@@ -132,7 +132,7 @@ export function compareBrand(args: {
       "review",
       claimed,
       extracted,
-      'Brand matches once a producer suffix (e.g. "Distillery") is set aside — confirm the brand mark vs. the producer name.',
+      'Brand matches once a producer suffix (e.g. "Distillery") is set aside. Confirm the brand mark vs. the producer name.',
     );
   }
   if (wordBoundaryContains(ne, nc) || wordBoundaryContains(nc, ne)) {
@@ -140,7 +140,7 @@ export function compareBrand(args: {
       "review",
       claimed,
       extracted,
-      "One brand name contains the other (e.g. a brand mark vs. the fuller printed name) — confirm they refer to the same brand.",
+      "One brand name contains the other (e.g. a brand mark vs. the fuller printed name). Confirm they refer to the same brand.",
     );
   }
   const sim = similarity(nc, ne);
@@ -149,7 +149,7 @@ export function compareBrand(args: {
       "review",
       claimed,
       extracted,
-      `Brand is a close match (${Math.round(sim * 100)}% similar) but not identical — needs human review.`,
+      `Brand is a close match (${Math.round(sim * 100)}% similar) but not identical. Needs human review.`,
     );
   }
   return result("fail", claimed, extracted, "Brand does not match the claimed name.");
@@ -307,7 +307,7 @@ export function validateNetContents(value: string | undefined, cls: BeverageClas
       return `${kind === "spirits" ? "Distilled spirits" : "Wine"} must state net contents in metric (mL or L) (${metricCite}).`;
     }
     if (!isAuthorizedFill(nc.ml, kind)) {
-      return `${nc.ml} mL is not an authorized standard of fill for ${kind === "spirits" ? "distilled spirits" : "wine"} (${fillCite}) — confirm the container size.`;
+      return `${nc.ml} mL is not an authorized standard of fill for ${kind === "spirits" ? "distilled spirits" : "wine"} (${fillCite}). Confirm the container size.`;
     }
     return null;
   }
@@ -352,11 +352,11 @@ export function compareNetContents(args: { claimed?: string; extracted?: string 
     const nc = normalizeText(claimed);
     const ne = normalizeText(extracted);
     if (nc === ne) return result("pass", claimed, extracted, "Net contents match after normalizing.");
-    if (similarity(nc, ne) >= 0.8) return result("review", claimed, extracted, "Net contents are close but not identical — confirm.");
+    if (similarity(nc, ne) >= 0.8) return result("review", claimed, extracted, "Net contents are close but not identical. Confirm.");
     return result("fail", claimed, extracted, "Net contents do not match the application.");
   }
   return result("review", claimed, extracted,
-    "Application and label state net contents in different unit systems — confirm they're equal.");
+    "Application and label state net contents in different unit systems. Confirm they're equal.");
 }
 
 /**
@@ -385,19 +385,19 @@ export function compareClassType(args: {
   const isWine = (b: BeverageClass) => b === "wineUnder14" || b === "wineOver14";
   if (claimedClass !== "unknown" && (claimedClass === extractedClass || (isWine(claimedClass) && isWine(extractedClass)))) {
     return result("pass", claimed, extracted,
-      `Both resolve to ${CLASS_LABEL[extractedClass]} — the label's specific designation matches the application's class.`);
+      `Both resolve to ${CLASS_LABEL[extractedClass]}, so the label's specific designation matches the application's class.`);
   }
   if (wordBoundaryContains(ne, nc) || wordBoundaryContains(nc, ne)) {
-    return result("review", claimed, extracted, "One class/type designation contains the other — confirm they're the same.");
+    return result("review", claimed, extracted, "One class/type designation contains the other. Confirm they're the same.");
   }
   if (similarity(nc, ne) >= CLASS_REVIEW_SIMILARITY) {
-    return result("review", claimed, extracted, `Class/type is a close match (${Math.round(similarity(nc, ne) * 100)}%) — confirm.`);
+    return result("review", claimed, extracted, `Class/type is a close match (${Math.round(similarity(nc, ne) * 100)}%). Confirm.`);
   }
   if (claimedClass !== "unknown" && extractedClass !== "unknown") {
     return result("fail", claimed, extracted,
       `Class/type differs: the application is ${CLASS_LABEL[claimedClass]}, the label is ${CLASS_LABEL[extractedClass]}.`);
   }
-  return result("review", claimed, extracted, "Class/type couldn't be confidently matched — a person should confirm.");
+  return result("review", claimed, extracted, "Class/type couldn't be confidently matched. A person should confirm.");
 }
 
 /**
@@ -419,12 +419,12 @@ export function compareName(args: { claimed?: string; extracted?: string }): Fie
   const coreC = stripBrandEntitySuffixes(nc);
   const coreE = stripBrandEntitySuffixes(ne);
   if (coreC !== "" && coreC === coreE) {
-    return result("review", claimed, extracted, 'Producer name matches once a company suffix (e.g. "Co", "LLC") is set aside — confirm.');
+    return result("review", claimed, extracted, 'Producer name matches once a company suffix (e.g. "Co", "LLC") is set aside. Confirm.');
   }
   if (wordBoundaryContains(ne, nc) || wordBoundaryContains(nc, ne) || similarity(nc, ne) >= NAME_REVIEW_SIMILARITY) {
-    return result("review", claimed, extracted, "Producer name is close but not identical — confirm it's the same entity.");
+    return result("review", claimed, extracted, "Producer name is close but not identical. Confirm it's the same entity.");
   }
-  return result("review", claimed, extracted, "Producer name differs from the application — a person should confirm (e.g. importer vs. producer).");
+  return result("review", claimed, extracted, "Producer name differs from the application. A person should confirm (e.g. importer vs. producer).");
 }
 
 /**
@@ -443,9 +443,9 @@ export function compareAddress(args: { claimed?: string; extracted?: string }): 
     return result("pass", claimed, extracted, "Address matches after normalizing.");
   }
   if (wordBoundaryContains(ne, nc) || wordBoundaryContains(nc, ne) || similarity(nc, ne) >= ADDRESS_REVIEW_SIMILARITY) {
-    return result("review", claimed, extracted, "Address is close but not identical — confirm.");
+    return result("review", claimed, extracted, "Address is close but not identical. Confirm.");
   }
-  return result("review", claimed, extracted, "Address differs from the application — a person should confirm.");
+  return result("review", claimed, extracted, "Address differs from the application. A person should confirm.");
 }
 
 /**
@@ -464,7 +464,7 @@ export function compareOrigin(args: { claimed?: string; extracted?: string }): F
     return result("pass", claimed, extracted, "Country of origin matches.");
   }
   if (wordBoundaryContains(ne, nc) || wordBoundaryContains(nc, ne) || similarity(nc, ne) >= ORIGIN_REVIEW_SIMILARITY) {
-    return result("review", claimed, extracted, "Country of origin is close but not identical — confirm.");
+    return result("review", claimed, extracted, "Country of origin is close but not identical. Confirm.");
   }
   return result("fail", claimed, extracted, "Country of origin does not match the application.");
 }

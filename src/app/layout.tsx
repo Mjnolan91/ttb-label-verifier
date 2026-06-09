@@ -1,8 +1,14 @@
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { Inter } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 import { APP_TITLE, APP_DESCRIPTION } from "./constants";
+import { ThemeToggle } from "./ui/ThemeToggle";
+
+// Runs before hydration (next/script beforeInteractive) so the saved (or OS) theme is applied with no
+// flash of the wrong colors. Static, trusted literal — no user input.
+const NO_FLASH_THEME = `(function(){try{var t=localStorage.getItem('theme');if(t==='dark'||(!t&&window.matchMedia('(prefers-color-scheme: dark)').matches)){document.documentElement.classList.add('dark');}}catch(e){}})();`;
 
 // Self-hosted at build time (no runtime network); display:swap avoids invisible-text on load.
 const inter = Inter({ subsets: ["latin"], display: "swap", variable: "--font-inter" });
@@ -16,8 +22,11 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: ReactNode }>) {
   return (
-    <html lang="en" className={inter.variable}>
+    <html lang="en" className={inter.variable} suppressHydrationWarning>
       <body className="min-h-screen bg-surface-muted text-ink antialiased">
+        <Script id="theme-no-flash" strategy="beforeInteractive">
+          {NO_FLASH_THEME}
+        </Script>
         {/* Skip link: visually hidden until focused, so a keyboard/AT user can jump past the header. */}
         <a
           href="#main-content"
@@ -25,6 +34,9 @@ export default function RootLayout({
         >
           Skip to main content
         </a>
+        <div className="fixed right-3 top-3 z-40 sm:right-4 sm:top-4">
+          <ThemeToggle />
+        </div>
         {children}
       </body>
     </html>

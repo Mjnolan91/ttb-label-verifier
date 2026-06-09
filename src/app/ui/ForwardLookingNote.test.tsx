@@ -15,6 +15,6 @@ describe("ForwardLookingNote", () => {
     expect(screen.getByText(/Cancer-risk health warning/i)).toBeTruthy();
     expect(screen.getByText(/Alcohol Facts/i)).toBeTruthy();
     expect(screen.getByText(/Major food allergen labeling/i)).toBeTruthy();
-    expect(screen.getAllByText(/Proposed — not yet required/i)).toHaveLength(3);
+    expect(screen.getAllByText(/Proposed, not yet required/i)).toHaveLength(3);
   });
 });

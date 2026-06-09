@@ -82,7 +82,7 @@ export function applyConfidenceGate(
       valueStatus: result.status, // remember the pass/fail the values actually produced
       gatedByConfidence: true,
       readConfidence: c,
-      reason: `${result.reason} We're only ${Math.round(c * 100)}% sure we read this off the photo — open the label image to confirm before approving.`,
+      reason: `${result.reason} We're only ${Math.round(c * 100)}% sure we read this off the photo. Open the label image to confirm before approving.`,
     };
   }
   // Confident enough: keep the value verdict, but still expose the confidence so every card can show it.

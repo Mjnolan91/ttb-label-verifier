@@ -32,9 +32,9 @@ const OVERALL_TONE: Record<CompletenessResult["overall"], Tone> = {
 const NEXT_STEP: Record<CompletenessResult["overall"], string> = {
   complete: "Every element TTB requires for this beverage type was found on the label.",
   incomplete:
-    "One or more required items are missing or in the wrong format — check the rows marked MISSING or WRONG FORMAT below before approving.",
+    "One or more required items are missing or in the wrong format. Check the rows marked MISSING or WRONG FORMAT below before approving.",
   review:
-    "Some required items couldn't be confirmed from the image — open the label and check the highlighted rows below.",
+    "Some required items couldn't be confirmed from the image. Open the label and check the highlighted rows below.",
 };
 
 export function CompletenessView({

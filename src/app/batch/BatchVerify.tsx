@@ -227,7 +227,7 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
     <section className="rounded-card border border-border border-t-4 border-t-brand-600 bg-surface p-6 shadow-card sm:p-8">
       <h2 className="text-xl font-semibold text-ink">Batch read</h2>
       <p className="mt-1 text-ink-muted">
-        Upload many label images — they&apos;re grouped into products and read into a table you can
+        Upload many label images. They&apos;re grouped into products and read into a table you can
         export. Pair a front and back by naming them alike with a suffix, e.g.{" "}
         <code>acme-ipa-front.jpg</code> + <code>acme-ipa-back.jpg</code>; a file with no suffix is its
         own single-label product.
@@ -236,8 +236,8 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
       {mockMode && (
         <p className="mt-3 rounded-field border border-border bg-surface-muted px-3 py-2.5 text-sm text-ink-muted">
           <strong className="font-semibold text-ink">Demo mode.</strong> This preview recognizes the
-          built-in sample labels only. To read your own photos, a vision provider must be configured —
-          see the README.
+          built-in sample labels only. To read your own photos, a vision provider must be configured.
+          See the README.
         </p>
       )}
 
@@ -322,7 +322,7 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
             </button>
             {claimed.size > 0 && (
               <span className="text-sm text-ink-muted">
-                {claimed.size} application row(s) loaded — products that match get an Approve/Review/Reject verdict.
+                {claimed.size} application row(s) loaded. Products that match get an Approve/Review/Reject verdict.
               </span>
             )}
           </div>
@@ -405,9 +405,9 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
                     {r.overall ? (
                       <StatusBadge tone={toneForStatus(r.overall)} label={VERDICT_LABEL[r.overall]} />
                     ) : r.matchedClaim && r.readable === false ? (
-                      <span className="text-sm text-review-700">Matched — couldn&apos;t read label; re-scan</span>
+                      <span className="text-sm text-review-700">Matched, couldn&apos;t read label; re-scan</span>
                     ) : r.matchedClaim && r.claimedNeeds ? (
-                      <span className="text-sm text-review-700">Matched — add {r.claimedNeeds} to compare</span>
+                      <span className="text-sm text-review-700">Matched, add {r.claimedNeeds} to compare</span>
                     ) : (
                       <span className="text-ink-muted">{claimed.size > 0 ? "no application row" : "—"}</span>
                     )}

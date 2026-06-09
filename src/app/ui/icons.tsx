@@ -100,3 +100,20 @@ export function IconPhoto(props: IconProps) {
     </Svg>
   );
 }
+
+/** IconSun / IconMoon — the light/dark theme toggle glyphs. */
+export function IconSun(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <circle cx="10" cy="10" r="3.4" />
+      <path d="M10 2.4v2M10 15.6v2M2.4 10h2M15.6 10h2M4.6 4.6l1.4 1.4M14 14l1.4 1.4M15.4 4.6L14 6M6 14l-1.4 1.4" />
+    </Svg>
+  );
+}
+export function IconMoon(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M16 11.6A6.4 6.4 0 118.4 4a5 5 0 007.6 7.6z" />
+    </Svg>
+  );
+}

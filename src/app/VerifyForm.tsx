@@ -309,7 +309,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
         Read &amp; verify a label
       </h2>
       <p className="mt-1 text-ink-muted">
-        Upload the product&apos;s front label (and the back, if you have it) — the AI reads it — then
+        Upload the product&apos;s front label (and the back, if you have it). The AI reads it, then you
         confirm what the application claims. The screen checks the label against the application
         field-by-field and the statutory government warning, and flags every mismatch as Approve / Needs
         review / Reject.
@@ -318,8 +318,8 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
       {mockMode && (
         <p className="mt-3 rounded-field border border-border bg-surface-muted px-3 py-2.5 text-sm text-ink-muted">
           <strong className="font-semibold text-ink">Demo mode.</strong> This preview recognizes the
-          built-in sample labels only. To read your own photos, a vision provider must be configured —
-          see the README.
+          built-in sample labels only. To read your own photos, a vision provider must be configured.
+          See the README.
         </p>
       )}
 
@@ -400,12 +400,12 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
         <p className="mb-3 mt-1 text-sm text-ink-muted">
           {extracted ? (
             <>
-              The AI&apos;s reading is suggested in grey — press <kbd className="rounded border border-border bg-surface-muted px-1 font-sans text-xs">Tab</kbd> to accept a field, or use{" "}
+              The AI&apos;s reading is suggested in grey. Press <kbd className="rounded border border-border bg-surface-muted px-1 font-sans text-xs">Tab</kbd> to accept a field, or use{" "}
               <strong className="text-ink">Accept all</strong>. Fields TTB requires for this type are
               marked <span className="font-bold text-fail-700">*</span> and must be filled to verify.
             </>
           ) : (
-            <>Upload a label first — the AI&apos;s reading will pre-fill these as suggestions you can accept or correct.</>
+            <>Upload a label first. The AI&apos;s reading will pre-fill these as suggestions you can accept or correct.</>
           )}
         </p>
 
@@ -428,7 +428,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
               ))}
             </select>
             <span className="mt-1 block text-xs text-ink-muted">
-              {classChoice ? "Changed by you — required fields updated." : "The AI read this — change it if it's wrong."}
+              {classChoice ? "Changed by you. Required fields updated." : "The AI read this. Change it if it's wrong."}
             </span>
           </div>
         )}
@@ -449,7 +449,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
                   </span>
                   {lowConf && (
                     <span className="rounded-pill border border-review-500 bg-review-50 px-1.5 py-0.5 text-xs font-semibold text-review-900">
-                      AI unsure ({Math.round((f.confidence ?? 0) * 100)}%) — verify
+                      Low confidence ({Math.round((f.confidence ?? 0) * 100)}%)
                     </span>
                   )}
                   {accepted && (
@@ -471,7 +471,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
                 />
                 {f.value.trim() === "" && hasSuggestion && (
                   <span className="mt-1 block text-xs text-ink-muted">
-                    Suggested from the label — press Tab to accept.
+                    Suggested from the label. Press Tab to accept.
                   </span>
                 )}
               </div>
