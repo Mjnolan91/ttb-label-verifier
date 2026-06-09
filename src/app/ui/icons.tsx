@@ -87,3 +87,16 @@ export function IconZoom(props: IconProps) {
     </Svg>
   );
 }
+
+/**
+ * IconPhoto — a camera glyph for the "values match, just confirm the photo read" field state. Calm and
+ * distinct from the IconReview hazard triangle, so a confidence-gated match never wears the alarm icon.
+ */
+export function IconPhoto(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M3.5 7.5l1.2-2h3l1.3-1.6h2l1.3 1.6h3l1.2 2v7.5a1 1 0 01-1 1H4.5a1 1 0 01-1-1V7.5z" />
+      <circle cx="10" cy="11.2" r="2.6" />
+    </Svg>
+  );
+}

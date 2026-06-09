@@ -56,4 +56,52 @@ describe("ResultView — at-a-glance label-vs-application verdict", () => {
     expect(q.getByText("Reject")).toBeTruthy();
     expect(q.getByText("No match")).toBeTruthy();
   });
+
+  it("renders a confidence-gated MATCH as a calm 'confirm photo' state, distinct from a discrepancy", () => {
+    const gatedBrand: VerifyField = {
+      key: "brand",
+      label: "Brand name",
+      status: "review",
+      valueStatus: "pass",
+      gatedByConfidence: true,
+      readConfidence: 0.67,
+      claimed: "MALT & HOP BREWERY",
+      extracted: "MALT & HOP BREWERY",
+      reason:
+        "Brand matches after normalizing case, spacing and smart quotes. We're only 67% sure we read this off the photo — open the label image to confirm before approving.",
+    };
+    const q = within(
+      render(<ResultView result={makeResult([gatedBrand, CORE[1], CORE[2]], "review")} overall="review" />).container,
+    );
+    // The distinct fourth-state badge — NOT the orange "Needs review" a real mismatch gets.
+    expect(q.getByText("Match · confirm photo")).toBeTruthy();
+    // The read confidence is visible as a number, on the card, at the point of confusion.
+    expect(q.getByText("67% read")).toBeTruthy();
+    // The headline reassures (values matched; just confirm the photo) rather than alarming.
+    expect(q.getByText(/Everything you entered matched/)).toBeTruthy();
+  });
+
+  it("shows a 'View label photo' affordance on a gated field when onViewImage is wired", () => {
+    const gatedBrand: VerifyField = {
+      key: "brand",
+      label: "Brand name",
+      status: "review",
+      valueStatus: "pass",
+      gatedByConfidence: true,
+      readConfidence: 0.67,
+      claimed: "MALT & HOP BREWERY",
+      extracted: "MALT & HOP BREWERY",
+      reason: "Brand matches. We're only 67% sure we read this off the photo — open the label image to confirm.",
+    };
+    const q = within(
+      render(
+        <ResultView
+          result={makeResult([gatedBrand, CORE[1], CORE[2]], "review")}
+          overall="review"
+          onViewImage={() => {}}
+        />,
+      ).container,
+    );
+    expect(q.getAllByText("View label photo").length).toBeGreaterThan(0);
+  });
 });

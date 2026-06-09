@@ -9,10 +9,13 @@
  *    constraint is the US-customary net-contents STATEMENT (27 CFR 7.70). So there is deliberately
  *    NO malt list here.
  *
- * Lists current as of the 2020 amendment enumeration (T.D. TTB-158). TTB periodically ADDS sizes, so
- * a stated size that is NOT in these lists is surfaced for human REVIEW (a newer authorized size can
- * be cleared by a person), never hard-failed — this stays conservative without wrongly rejecting a
- * lawful new size. Treat as statutory: extend, never retune to pass a test.
+ * Lists current as of the "Standards of Fill for Wine and Distilled Spirits" FINAL RULE effective
+ * January 10, 2025 (FR 2025-00271), which ADDED 15 distilled-spirits sizes and 13 wine sizes and
+ * removed the spirits can/non-can distinction — so 700 mL and 750 mL (etc.) are now co-authorized for
+ * spirits. (This supersedes the earlier 2020 T.D. TTB-158 enumeration.) TTB periodically ADDS sizes,
+ * so a stated size that is NOT in these lists is surfaced for human REVIEW (a newer authorized size
+ * can be cleared by a person), never hard-failed — this stays conservative without wrongly rejecting
+ * a lawful new size. Treat as statutory: extend, never retune to pass a test.
  */
 
 /** 27 CFR 5.203 — distilled-spirits authorized fills (mL). */

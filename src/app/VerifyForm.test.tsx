@@ -68,7 +68,7 @@ describe("VerifyForm — verify against the application", () => {
     const q = within(container);
     dropLabelImage(container);
     expect(await q.findByText("Enter the application to verify")).toBeTruthy();
-    expect(q.queryByText("Label vs. application")).toBeNull();
+    expect(q.queryByText(/Label vs\. application/)).toBeNull();
   });
 
   it("entering matching application values leads with an Approve comparison", ASYNC, async () => {
@@ -79,7 +79,7 @@ describe("VerifyForm — verify against the application", () => {
     await q.findByText("Enter the application to verify");
     fireEvent.change(q.getByLabelText(/^Brand/i), { target: { value: "Old Tom Distillery" } });
     fireEvent.change(q.getByLabelText(/^Alcohol content/i), { target: { value: "45% Alc./Vol." } });
-    expect(await q.findByText("Label vs. application")).toBeTruthy();
+    expect(await q.findByText(/Label vs\. application/)).toBeTruthy();
     expect(q.getByText("Approve")).toBeTruthy();
   });
 
@@ -104,7 +104,7 @@ describe("VerifyForm — verify against the application", () => {
     fireEvent.change(q.getByLabelText(/^Brand/i), { target: { value: "Old Tom Distillery" } });
     fireEvent.change(q.getByLabelText(/^Alcohol content/i), { target: { value: "45% Alc./Vol." } });
     fireEvent.change(q.getByLabelText(/^Net contents/i), { target: { value: "375 mL" } }); // label says 750 mL
-    await q.findByText("Label vs. application");
+    await q.findByText(/Label vs\. application/);
     const panel = within(q.getByRole("region", { name: "Verification result" }));
     expect(panel.getByText("Net contents")).toBeTruthy();
     expect(panel.getByText("No match")).toBeTruthy();
@@ -134,7 +134,7 @@ describe("VerifyForm — verify against the application", () => {
     const q = within(container);
     dropLabelImage(container);
     expect(await q.findByText(/Couldn.t read the label/i)).toBeTruthy();
-    expect(q.queryByText("Label vs. application")).toBeNull();
+    expect(q.queryByText(/Label vs\. application/)).toBeNull();
     expect(q.queryByText("Enter the application to verify")).toBeNull();
   });
 });

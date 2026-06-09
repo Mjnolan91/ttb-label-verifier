@@ -19,6 +19,7 @@ import type { ClaimedFields } from "@/domain";
 import { ExtractedFieldsView } from "./ui/ExtractedFieldsView";
 import { CompletenessView } from "./ui/CompletenessView";
 import { ResultView } from "./ui/ResultView";
+import { PipelineSteps } from "./ui/PipelineSteps";
 import { downscaleForUpload } from "./imageDownscale";
 import { DropZone } from "./ui/DropZone";
 import { ErrorAlert } from "./ui/ErrorAlert";
@@ -217,6 +218,18 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
       : "Label read. Enter the application's brand and alcohol content to verify it."
     : "";
 
+  // The first uploaded image — opened by the "View label photo" affordance the result surfaces when a
+  // field matched but the photo read was fuzzy (the actual remedy: glance at the image).
+  const firstImage = orderedImages[0];
+  const viewFirstImage = firstImage
+    ? () => setZoom({ src: firstImage.preview, alt: `Label — ${firstImage.file.name}` })
+    : undefined;
+
+  // Which stage of the read → compare → verdict pipeline we're in, for the always-visible spine that
+  // makes the order of operations legible (null until a label is uploaded).
+  const pipelineStage: "reading" | "awaiting" | "done" | null =
+    state === "loading" ? "reading" : readable ? (combined?.verify ? "done" : "awaiting") : null;
+
   return (
     <section
       aria-labelledby={ids.heading}
@@ -373,6 +386,15 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
         </div>
       </div>
 
+      {/* The order-of-operations spine: read the label → AI confidence → compare → verdict. Visible
+          once a label is uploaded so the AI READ reads as its own (fallible) step, not part of the
+          comparison — that's what makes a confidence flag legible instead of looking like a rejection. */}
+      {pipelineStage && (
+        <div className="mt-8 border-t border-border pt-6">
+          <PipelineSteps stage={pipelineStage} />
+        </div>
+      )}
+
       {/* Persistent live region: the headline can appear/refresh reactively as the agent types the
           application values (no `state` change), so the focus-move announcement never fires there.
           This polite region announces the headline outcome whenever it appears or changes. */}
@@ -411,6 +433,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
                 overall={combined.overall ?? undefined}
                 gatedByCompleteness={combined.gatedByCompleteness}
                 headingRef={headlineRef}
+                onViewImage={viewFirstImage}
               />
               <details className="mt-6 rounded-card border border-border bg-surface-muted p-4">
                 <summary className="min-h-[44px] cursor-pointer py-2 text-sm font-semibold text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2">

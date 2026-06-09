@@ -5,9 +5,18 @@
  * >=4.5:1).
  */
 import type { ComponentType } from "react";
-import { IconPass, IconReview, IconFail, type IconProps } from "./icons";
+import { IconPass, IconReview, IconFail, IconPhoto, type IconProps } from "./icons";
 
-export type Tone = "pass" | "review" | "fail" | "neutral";
+/**
+ * Tones, each with ONE meaning so the palette stays semantically clean:
+ *  - pass    = matched / complete (green)
+ *  - verify  = the values MATCHED, we just want a human to glance at a fuzzy photo (calm blue) — NOT
+ *              an alarm; categorically different from a real discrepancy
+ *  - review  = a genuine discrepancy a person must reconcile (amber/alarm)
+ *  - fail    = a hard mismatch / missing required element (red)
+ *  - neutral = not applicable / no signal (slate)
+ */
+export type Tone = "pass" | "verify" | "review" | "fail" | "neutral";
 
 /**
  * Human-facing labels for the overall outcomes — the SINGLE source so the single-label screen and
@@ -33,6 +42,9 @@ export const FIELD_LABEL: Record<"pass" | "review" | "fail", string> = {
   review: "Needs review",
   fail: "No match",
 };
+/** Badge label for a field that MATCHED on value but is held for a low-confidence (fuzzy) photo read —
+ *  deliberately distinct from "Needs review" so a match never wears the same words as a discrepancy. */
+export const GATED_MATCH_LABEL = "Match · confirm photo";
 
 /** Map any per-field or overall status string to a tone. Unknowns ("…", "—", "pending") -> neutral. */
 export function toneForStatus(value: string): Tone {
@@ -54,6 +66,7 @@ export function toneForStatus(value: string): Tone {
 /** Tinted surface for cards/banners: border accent + light bg + dark readable text. */
 export const TONE_TINT: Record<Tone, string> = {
   pass: "border-pass-600 bg-pass-50 text-pass-900",
+  verify: "border-brand-500 bg-brand-50 text-brand-800",
   review: "border-review-500 bg-review-50 text-review-900",
   fail: "border-fail-600 bg-fail-50 text-fail-900",
   neutral: "border-border bg-surface-sunken text-ink-muted",
@@ -62,6 +75,7 @@ export const TONE_TINT: Record<Tone, string> = {
 /** Solid pill: white text on the -700 status color (or muted ink for neutral). */
 export const TONE_SOLID: Record<Tone, string> = {
   pass: "bg-pass-700 text-white",
+  verify: "bg-brand-600 text-white",
   review: "bg-review-700 text-white",
   fail: "bg-fail-700 text-white",
   neutral: "bg-ink-muted text-white",
@@ -69,6 +83,7 @@ export const TONE_SOLID: Record<Tone, string> = {
 
 export const TONE_ICON: Record<Tone, ComponentType<IconProps> | null> = {
   pass: IconPass,
+  verify: IconPhoto,
   review: IconReview,
   fail: IconFail,
   neutral: null,

@@ -73,4 +73,30 @@ describe("applyConfidenceGate (asymmetric per-field threshold)", () => {
     expect(gated.status).toBe("review");
     expect(gated.reason).toContain("ok");
   });
+
+  it("records the value verdict + confidence when a matching field is gated (the MALT & HOP case)", () => {
+    const gated = applyConfidenceGate(pass, 0.67);
+    expect(gated.status).toBe("review"); // gated verdict unchanged — compliance preserved
+    expect(gated.valueStatus).toBe("pass"); // …but the UI can see the values actually matched
+    expect(gated.gatedByConfidence).toBe(true);
+    expect(gated.readConfidence).toBeCloseTo(0.67);
+    // Positive-first: the match leads, the photo caveat follows.
+    expect(gated.reason.indexOf("ok")).toBeLessThan(gated.reason.indexOf("67%"));
+    expect(gated.reason).not.toContain("routed to human review");
+  });
+
+  it("marks a confident pass as NOT confidence-gated but still exposes the value verdict + confidence", () => {
+    const ok = applyConfidenceGate(pass, 0.95);
+    expect(ok.status).toBe("pass");
+    expect(ok.valueStatus).toBe("pass");
+    expect(ok.gatedByConfidence).toBe(false);
+    expect(ok.readConfidence).toBeCloseTo(0.95);
+  });
+
+  it("does NOT label an existing value-review as confidence-gated", () => {
+    const r = applyConfidenceGate(review, 0.4);
+    expect(r.status).toBe("review");
+    expect(r.valueStatus).toBe("review");
+    expect(r.gatedByConfidence).toBe(false);
+  });
 });

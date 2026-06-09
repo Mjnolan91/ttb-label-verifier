@@ -50,23 +50,41 @@ export function isExtractionReadable(
 export const FIELD_REVIEW_CONFIDENCE = 0.7;
 
 /**
- * Apply the asymmetric confidence gate to one field result: a `pass` or `fail` below the threshold
- * is downgraded to `review` (never assert a verdict we are not confident in); an existing `review`
- * is left as-is. The original reason is preserved so the human reviewer sees the underlying check.
+ * Apply the asymmetric confidence gate to one field result: a `pass` or `fail` whose read confidence
+ * is below the threshold is downgraded to `review` (never assert a verdict we are not confident in);
+ * an existing `review` is left as-is.
+ *
+ * Crucially this is now ADDITIVE, not destructive. The gated `status` is unchanged in meaning (still
+ * `review` when gated, so the reduction and the eval are byte-for-byte identical), but we also record
+ * the value comparison's ORIGINAL verdict (`valueStatus`), whether the downgrade was confidence-driven
+ * (`gatedByConfidence`), and the confidence number itself (`readConfidence`). That lets the UI tell
+ * "the values matched, just confirm the fuzzy photo" apart from "the values disagree" — the two states
+ * that used to collapse into one indistinguishable orange "Needs review" card.
+ *
+ * The reason is composed POSITIVE-FIRST: the value outcome ("Brand matches…") leads and the photo
+ * caveat follows, so a matching field never reads like a rejection.
  */
 export function applyConfidenceGate(
   result: FieldResult,
   confidence: number | undefined,
   threshold: number = FIELD_REVIEW_CONFIDENCE,
 ): FieldResult {
-  if (result.status === "review") return result;
   const c = confidence ?? 0;
+  // An already-`review` value verdict (e.g. a close-but-not-identical brand) is value uncertainty,
+  // not a confidence downgrade — record the confidence but don't claim it was confidence-gated.
+  if (result.status === "review") {
+    return { ...result, valueStatus: "review", gatedByConfidence: false, readConfidence: c };
+  }
   if (c < threshold) {
     return {
       ...result,
-      status: "review",
-      reason: `Low extraction confidence (${Math.round(c * 100)}%) — routed to human review. ${result.reason}`,
+      status: "review", // STILL review — compliance posture unchanged, only the presentation gains nuance
+      valueStatus: result.status, // remember the pass/fail the values actually produced
+      gatedByConfidence: true,
+      readConfidence: c,
+      reason: `${result.reason} We're only ${Math.round(c * 100)}% sure we read this off the photo — open the label image to confirm before approving.`,
     };
   }
-  return result;
+  // Confident enough: keep the value verdict, but still expose the confidence so every card can show it.
+  return { ...result, valueStatus: result.status, gatedByConfidence: false, readConfidence: c };
 }

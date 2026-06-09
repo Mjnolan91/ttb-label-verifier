@@ -420,6 +420,37 @@
       "notes": "MALT-BEVERAGE class-selected-tolerance case. Class/type 'India Pale Ale' resolves to maltBeverage, selecting the +/-0.3 pp band (27 CFR 7.65(c)). The application claims 6.5% and the label reads 6.7% -- a 0.2 pp gap, inside the band -> alcohol PASS. Above the 0.5% floor and not a 'low/reduced alcohol' product, so neither 7.65 absolute limit fires. Brand and the canonical all-caps/bold warning pass -> approve. Pairs with the wine cases so the eval exercises every concrete tolerance row, not just distilled spirits."
     },
     {
+      "id": "malt-beverage-fuzzy-read-review",
+      "imageFilename": "granite-peak-ipa-fuzzy.svg",
+      "claimed": {
+        "brand": "Granite Peak",
+        "classType": "India Pale Ale",
+        "beverageClass": "Malt beverage",
+        "alcoholContent": "6.5% Alc./Vol.",
+        "netContents": "12 FL OZ"
+      },
+      "extracted": {
+        "brand": { "value": "Granite Peak", "confidence": 0.62 },
+        "classType": { "value": "India Pale Ale", "confidence": 0.95 },
+        "alcoholContent": { "value": "6.7% Alc./Vol.", "confidence": 0.96 },
+        "netContents": { "value": "12 FL OZ", "confidence": 0.95 },
+        "class": { "value": "Malt beverage", "confidence": 0.9 },
+        "name": { "value": "Granite Peak Brewing Co.", "confidence": 0.93 },
+        "address": { "value": "Portland, OR", "confidence": 0.92 },
+        "warningText": {
+          "value": "GOVERNMENT WARNING: (1) According to the Surgeon General, women should not drink alcoholic beverages during pregnancy because of the risk of birth defects. (2) Consumption of alcoholic beverages impairs your ability to drive a car or operate machinery, and may cause health problems.",
+          "confidence": 0.97
+        },
+        "warningPrefixIsAllCaps": true,
+        "warningPrefixIsBold": true
+      },
+      "expected": {
+        "perField": { "brand": "review", "alcohol": "pass", "warning": "pass" },
+        "overall": "review"
+      },
+      "notes": "CONFIDENCE-GATED MATCH path. The brand VALUE matches the application ('Granite Peak'), but the photo-read confidence is 0.62, below the 0.70 field-review gate -> the matching brand is downgraded to review (never auto-approve a read we cannot trust), so overall is review. Distinct from the value-level near-miss review cases (e.g. 'Old Tomm Distillery'): here the values are IDENTICAL and only the read is fuzzy. Exercises applyConfidenceGate's valueStatus='pass' + gatedByConfidence=true path end-to-end -- the data behind the UI's calm 'Match - confirm photo' state. This is the MALT & HOP BREWERY scenario the user hit."
+    },
+    {
       "id": "missing-net-contents-review",
       "imageFilename": "old-tom-no-net-contents.svg",
       "claimed": {

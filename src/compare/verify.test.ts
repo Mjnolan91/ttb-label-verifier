@@ -115,6 +115,20 @@ describe("verifyLabel", () => {
     expect(r.brand.status).toBe("pass"); // high-confidence fields still pass
     expect(r.overall).toBe("review");
   });
+
+  it("preserves the underlying value verdict + confidence when a MATCH is gated on a fuzzy read", () => {
+    // The MALT & HOP BREWERY case: the values match, the read is just below the trust threshold.
+    const ex = extractedClean();
+    ex.confidence = { ...ex.confidence, brand: 0.67 };
+    const r = verifyLabel(claimedClean, ex);
+    expect(r.brand.status).toBe("review"); // gated verdict — a human still glances (compliance unchanged)
+    expect(r.brand.valueStatus).toBe("pass"); // …but the UI can see the values actually matched
+    expect(r.brand.gatedByConfidence).toBe(true);
+    expect(r.brand.readConfidence).toBeCloseTo(0.67);
+    // A confidently-read field exposes its confidence too, but is NOT flagged as confidence-gated.
+    expect(r.alcohol.gatedByConfidence).toBe(false);
+    expect(r.alcohol.readConfidence).toBeCloseTo(0.98);
+  });
 });
 
 describe("verifyLabel — full field-by-field application match", () => {
