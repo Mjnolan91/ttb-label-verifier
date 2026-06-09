@@ -22,8 +22,9 @@ export type FieldNotes = Partial<Record<VerifyFieldKey, string>>;
 export type ReviewDecision = "approve" | "reject";
 
 /** A comparison field (VerifyFieldKey) -> the completeness element (RequirementKey) it stands for, so a
- *  reviewer's confirm/flag on a card mirrors onto the supporting completeness row. */
-export const FIELD_TO_REQUIREMENT: Record<VerifyFieldKey, RequirementKey> = {
+ *  reviewer's confirm/flag on a card mirrors onto the supporting completeness row. Partial: a comparison
+ *  field with no completeness counterpart (e.g. `fancifulName`) is intentionally omitted. */
+export const FIELD_TO_REQUIREMENT: Partial<Record<VerifyFieldKey, RequirementKey>> = {
   brand: "brand",
   classType: "classType",
   alcohol: "alcoholContent",
@@ -31,6 +32,7 @@ export const FIELD_TO_REQUIREMENT: Record<VerifyFieldKey, RequirementKey> = {
   name: "name",
   address: "address",
   countryOfOrigin: "countryOfOrigin",
+  statementOfComposition: "statementOfComposition",
   warning: "governmentWarning",
 };
 
@@ -89,7 +91,8 @@ export function deriveLabelReview(
   const completenessOverrides: Partial<Record<RequirementKey, FieldOverride>> = {};
   for (const key of Object.keys(fieldOverrides) as VerifyFieldKey[]) {
     const v = fieldOverrides[key];
-    if (v) completenessOverrides[FIELD_TO_REQUIREMENT[key]] = v;
+    const req = FIELD_TO_REQUIREMENT[key];
+    if (v && req) completenessOverrides[req] = v;
   }
 
   const effStatusOf = (f: VerifyField) => {

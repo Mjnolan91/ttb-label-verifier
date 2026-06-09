@@ -47,7 +47,8 @@ export type RequirementKey =
   | "countryOfOrigin"
   | "sulfiteDeclaration"
   | "ageStatement"
-  | "appellation";
+  | "appellation"
+  | "statementOfComposition";
 
 export interface RequirementSpec {
   key: RequirementKey;
@@ -116,19 +117,25 @@ const AGE_STATEMENT: RequirementSpec = {
   necessity: "conditional",
   note: "Mandatory for whisky < 4 years and for brandy and certain other spirits (27 CFR 5.74).",
 };
+const STATEMENT_OF_COMPOSITION: RequirementSpec = {
+  key: "statementOfComposition",
+  label: "Statement of composition",
+  necessity: "conditional",
+  note: "Mandatory for SPECIALTY products (no standard of identity): the distinctive/fanciful name + a statement of composition together serve as the class/type designation (27 CFR 5.156 spirits; 7.141/7.147 malt). Surfaced only when the label shows a fanciful name without a statement of composition; not required for a standard product.",
+};
 
 const WINE_UNDER14: RequirementSpec[] = [...COMMON_HEAD, ALC_WINE_UNDER14, ...COMMON_TAIL, SULFITES, APPELLATION, COUNTRY_OF_ORIGIN];
 const WINE_OVER14: RequirementSpec[] = [...COMMON_HEAD, ALC_MANDATORY, ...COMMON_TAIL, SULFITES, APPELLATION, COUNTRY_OF_ORIGIN];
 
 const REQUIREMENTS: Record<BeverageClass, RequirementSpec[]> = {
-  distilledSpirits: [...COMMON_HEAD, ALC_MANDATORY, ...COMMON_TAIL, AGE_STATEMENT, COUNTRY_OF_ORIGIN],
+  distilledSpirits: [...COMMON_HEAD, ALC_MANDATORY, ...COMMON_TAIL, AGE_STATEMENT, STATEMENT_OF_COMPOSITION, COUNTRY_OF_ORIGIN],
   wineUnder14: WINE_UNDER14,
   wineOver14: WINE_OVER14,
   cider: WINE_UNDER14, // apple/pear cider >= 7% ABV -> wine <= 14% (see tolerances.ts); < 7% ABV is FDA-regulated, malt-based cider is Part 7 (see header note)
-  maltBeverage: [...COMMON_HEAD, ALC_MALT, ...COMMON_TAIL, COUNTRY_OF_ORIGIN],
+  maltBeverage: [...COMMON_HEAD, ALC_MALT, ...COMMON_TAIL, STATEMENT_OF_COMPOSITION, COUNTRY_OF_ORIGIN],
   // Conservative default: ABV mandatory + country-of-origin (conditional) like every concrete class;
   // class-specific elements (sulfites/appellation/age) can't be asserted without a known class.
-  unknown: [...COMMON_HEAD, ALC_MANDATORY, ...COMMON_TAIL, COUNTRY_OF_ORIGIN],
+  unknown: [...COMMON_HEAD, ALC_MANDATORY, ...COMMON_TAIL, STATEMENT_OF_COMPOSITION, COUNTRY_OF_ORIGIN],
 };
 
 /** The label elements TTB requires for a beverage class (mandatory + conditional). */

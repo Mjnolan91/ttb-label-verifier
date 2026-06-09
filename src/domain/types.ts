@@ -80,6 +80,8 @@ export interface FieldConfidence {
   sulfiteDeclaration?: number;
   ageStatement?: number;
   commodityStatement?: number;
+  fancifulName?: number;
+  statementOfComposition?: number;
 }
 
 /**
@@ -118,6 +120,10 @@ export interface ClaimedFields {
   address?: string;
   /** Claimed country of origin (imports), e.g. "Scotland". Compared when supplied. */
   countryOfOrigin?: string;
+  /** Claimed distinctive or fanciful ("sell") name, e.g. "Spiced Rum". Compared when supplied. */
+  fancifulName?: string;
+  /** Claimed statement of composition, e.g. "Rum with natural flavors added". Compared when supplied. */
+  statementOfComposition?: string;
   /**
    * Claimed/expected government warning text. Usually the canonical statutory text; present
    * so the comparator can be driven by claimed-vs-extracted symmetrically, though warning
@@ -190,6 +196,18 @@ export interface ExtractedFields {
   ageStatement?: string;
   /** Commodity statement (distilled spirits) when distinct from name/address. */
   commodityStatement?: string;
+  /**
+   * Distinctive or fanciful ("sell") name — a descriptive name/phrase used IN ADDITION to the brand,
+   * e.g. "Spiced Rum". Not the brand and not, by itself, the class/type. For a specialty it is part of
+   * the mandatory designation (paired with the statement of composition).
+   */
+  fancifulName?: string;
+  /**
+   * Statement of composition — what the product is made of, e.g. "Rum with natural flavors added".
+   * For a SPECIALTY (no standard of identity) the fanciful name + this statement together serve as the
+   * mandatory class/type designation (27 CFR 5.156; malt 7.141/7.147).
+   */
+  statementOfComposition?: string;
   /** Per-field confidence scores in [0, 1]. */
   confidence: FieldConfidence;
 }

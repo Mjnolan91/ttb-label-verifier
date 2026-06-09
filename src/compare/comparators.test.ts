@@ -15,6 +15,8 @@ import {
   compareName,
   compareAddress,
   compareOrigin,
+  compareFancifulName,
+  compareStatementOfComposition,
 } from "./comparators";
 import { CANONICAL_GOVERNMENT_WARNING } from "@/domain";
 
@@ -312,6 +314,23 @@ describe("compareAddress (fuzzy, never a hard fail)", () => {
   });
   it("REVIEW: nothing read from the label", () => {
     expect(compareAddress({ claimed: "Louisville, KY", extracted: "" }).status).toBe("review");
+  });
+});
+
+describe("compareFancifulName + compareStatementOfComposition (fuzzy, never a hard fail)", () => {
+  it("PASS: matching fanciful name / statement of composition after normalizing", () => {
+    expect(compareFancifulName({ claimed: "Spiced Rum", extracted: "SPICED RUM" }).status).toBe("pass");
+    expect(
+      compareStatementOfComposition({ claimed: "Rum with natural flavors added", extracted: "Rum with natural flavors added" }).status,
+    ).toBe("pass");
+  });
+  it("REVIEW (never fail): a different statement of composition is a human call", () => {
+    expect(
+      compareStatementOfComposition({ claimed: "Rum with natural flavors added", extracted: "Vodka with citrus" }).status,
+    ).toBe("review");
+  });
+  it("REVIEW: nothing read from the label", () => {
+    expect(compareFancifulName({ claimed: "Spiced Rum", extracted: "" }).status).toBe("review");
   });
 });
 

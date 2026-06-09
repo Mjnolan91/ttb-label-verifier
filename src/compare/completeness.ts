@@ -75,6 +75,8 @@ export function fieldFor(key: RequirementKey, e: ExtractedFields): { value?: str
       return { value: e.ageStatement, confidence: e.confidence.ageStatement };
     case "appellation":
       return { value: e.appellation, confidence: e.confidence.appellation };
+    case "statementOfComposition":
+      return { value: e.statementOfComposition, confidence: e.confidence.statementOfComposition };
     case "governmentWarning":
       return { value: e.warningText, confidence: e.confidence.warningText };
   }
@@ -177,6 +179,28 @@ export function evaluateAbsentAlcohol(spec: RequirementSpec, e: ExtractedFields,
 }
 
 /**
+ * Resolve an ABSENT statement of composition. It is mandatory only for SPECIALTY products (those with
+ * no standard of identity), which the label signals with a distinctive/fanciful name. So: a fanciful
+ * name present with NO statement of composition is the specialty-missing-its-designation case -> flag
+ * it (`missing`); otherwise (a standard product) it is not required -> neutral (`unverifiable`). We key
+ * off the fanciful name because "specialty" can't be proven from the image alone — the reviewer confirms.
+ */
+export function evaluateAbsentStatementOfComposition(spec: RequirementSpec, e: ExtractedFields): CompletenessElement {
+  const fanciful = e.fancifulName;
+  if (typeof fanciful === "string" && fanciful.trim() !== "") {
+    return {
+      ...base(spec),
+      status: "missing",
+      detail:
+        `A distinctive/fanciful name ("${fanciful}") is present but no statement of composition was found. ` +
+        "A specialty product (no standard of identity) must carry one (27 CFR 5.156; malt 7.141/7.147). " +
+        "Confirm whether this is a specialty.",
+    };
+  }
+  return { ...base(spec), status: "unverifiable", detail: spec.note };
+}
+
+/**
  * Evaluate every required element for the label's beverage class. The class is taken from the
  * extracted `beverageClass`, falling back to resolving it from the class/type text.
  */
@@ -217,6 +241,10 @@ export function checkCompleteness(extracted: ExtractedFields): CompletenessResul
     // Absent value. Alcohol content is class-specific (table-wine substitution; malt optional).
     if (spec.key === "alcoholContent") {
       return evaluateAbsentAlcohol(spec, extracted, beverageClass);
+    }
+    // Statement of composition is required only for specialties (signaled by a fanciful name).
+    if (spec.key === "statementOfComposition") {
+      return evaluateAbsentStatementOfComposition(spec, extracted);
     }
     if (spec.necessity === "mandatory") {
       return { ...base(spec), status: "missing", detail: "Required but not found on the label." };

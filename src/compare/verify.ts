@@ -17,6 +17,8 @@ import {
   compareName,
   compareAddress,
   compareOrigin,
+  compareFancifulName,
+  compareStatementOfComposition,
 } from "./comparators";
 import { parseAlcoholText } from "./alcohol";
 import { applyConfidenceGate } from "./thresholds";
@@ -33,6 +35,8 @@ export type VerifyFieldKey =
   | "name"
   | "address"
   | "countryOfOrigin"
+  | "fancifulName"
+  | "statementOfComposition"
   | "warning";
 
 /** One field comparison with its identity + label, for uniform rendering/iteration. */
@@ -151,6 +155,26 @@ export function verifyLabel(
       applyConfidenceGate(
         compareOrigin({ claimed: claimed.countryOfOrigin, extracted: extracted.countryOfOrigin }),
         extracted.confidence.countryOfOrigin,
+      ),
+    );
+  }
+  if (claimed.fancifulName?.trim()) {
+    add(
+      "fancifulName",
+      "Distinctive / fanciful name",
+      applyConfidenceGate(
+        compareFancifulName({ claimed: claimed.fancifulName, extracted: extracted.fancifulName }),
+        extracted.confidence.fancifulName,
+      ),
+    );
+  }
+  if (claimed.statementOfComposition?.trim()) {
+    add(
+      "statementOfComposition",
+      "Statement of composition",
+      applyConfidenceGate(
+        compareStatementOfComposition({ claimed: claimed.statementOfComposition, extracted: extracted.statementOfComposition }),
+        extracted.confidence.statementOfComposition,
       ),
     );
   }

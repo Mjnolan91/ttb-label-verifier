@@ -31,6 +31,8 @@ export type ExtractedValueKey = Extract<
   | "sulfiteDeclaration"
   | "ageStatement"
   | "commodityStatement"
+  | "fancifulName"
+  | "statementOfComposition"
 >;
 
 export interface FieldDescriptor {
@@ -166,6 +168,23 @@ export const FIELD_CATALOG: readonly FieldDescriptor[] = [
       "The full responsibility/commodity statement including the verb, e.g. " +
       "\"Distilled and bottled by ABC Distillery, Frederick, MD\". " +
       "NOTE: also populate `name` and `address` separately from this same line.",
+  },
+  {
+    key: "fancifulName", rawKey: "fancifulName", confKey: "fancifulName", label: "Distinctive / fanciful name", csvColumn: "fanciful_name", group: "detail",
+    description:
+      "The distinctive or fanciful (\"sell\") name — a descriptive name/phrase shown IN ADDITION to the " +
+      "brand to further identify the product, e.g. \"Spiced Rum\". It is NOT the brand name and NOT, by " +
+      "itself, the class/type designation. Capture it ONLY when the label clearly presents such a sell name; " +
+      "ordinary marketing puffery (\"Superior\", \"Premium\") is NOT a fanciful name. \"\" if none.",
+  },
+  {
+    key: "statementOfComposition", rawKey: "statementOfComposition", confKey: "statementOfComposition", label: "Statement of composition", csvColumn: "statement_of_composition", group: "detail",
+    description:
+      "The statement of composition — a plain description of what the product is made of, e.g. " +
+      "\"Rum with natural flavors added\", \"Neutral spirits with natural flavors and caramel color\". For a " +
+      "SPECIALTY product (one with no standard of identity), the fanciful name + this statement TOGETHER serve " +
+      "as the mandatory class/type designation (27 CFR 5.156; malt 27 CFR 7.141/7.147). Transcribe verbatim. " +
+      "\"\" if none.",
   },
 ];
 

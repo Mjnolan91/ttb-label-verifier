@@ -31,6 +31,8 @@ export function toClaimedFields(input: {
   name?: string;
   address?: string;
   countryOfOrigin?: string;
+  fancifulName?: string;
+  statementOfComposition?: string;
 }): ClaimedFields | null {
   const brand = (input.brand ?? "").trim();
   const alcoholContentText = (input.alcoholContentText ?? "").trim();
@@ -44,6 +46,8 @@ export function toClaimedFields(input: {
     name: opt(input.name),
     address: opt(input.address),
     countryOfOrigin: opt(input.countryOfOrigin),
+    fancifulName: opt(input.fancifulName),
+    statementOfComposition: opt(input.statementOfComposition),
   };
 }
 

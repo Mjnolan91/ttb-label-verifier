@@ -175,4 +175,21 @@ describe("verifyLabel — full field-by-field application match", () => {
     expect(r.fields.find((f) => f.key === "name")!.status).toBe("pass");
     expect(r.overall).toBe("approve");
   });
+
+  it("compares the fanciful name + statement of composition when the application supplies them (specialty)", () => {
+    const ex = extractedClean();
+    ex.fancifulName = "Spiced Rum";
+    ex.statementOfComposition = "Rum with natural flavors added";
+    ex.confidence = { ...ex.confidence, fancifulName: 0.95, statementOfComposition: 0.95 };
+    const claimed: ClaimedFields = {
+      ...claimedClean,
+      fancifulName: "Spiced Rum",
+      statementOfComposition: "Rum with natural flavors added",
+    };
+    const keys = verifyLabel(claimed, ex).fields.map((f) => f.key);
+    expect(keys).toContain("fancifulName");
+    expect(keys).toContain("statementOfComposition");
+    // they sit before the (always-last) warning
+    expect(keys.indexOf("statementOfComposition")).toBeLessThan(keys.indexOf("warning"));
+  });
 });

@@ -70,6 +70,7 @@ const KEY_LABEL: Record<RequirementKey, string> = {
   sulfiteDeclaration: "Sulfite declaration",
   ageStatement: "Age statement",
   appellation: "Appellation of origin",
+  statementOfComposition: "Statement of composition",
 };
 
 /** The amber input treatment for a LOW-CONFIDENCE AI suggestion — the agent should scrutinise it
@@ -97,6 +98,8 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
   const [claimName, setClaimName] = useState("");
   const [claimAddress, setClaimAddress] = useState("");
   const [claimCountry, setClaimCountry] = useState("");
+  const [claimFanciful, setClaimFanciful] = useState("");
+  const [claimSoc, setClaimSoc] = useState("");
   // The beverage type the required-field set is driven by. null = use the AI's reading; a value = the
   // agent overrode it. The wine ≤14/>14 split is derived from ABV, never a human pick.
   const [classChoice, setClassChoice] = useState<ClassChoice | null>(null);
@@ -128,6 +131,8 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
     appName: useId(),
     appAddress: useId(),
     appCountry: useId(),
+    appFanciful: useId(),
+    appSoc: useId(),
   };
   const headlineRef = useRef<HTMLHeadingElement>(null);
   const readToken = useRef(0);
@@ -143,7 +148,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
   // The AI's per-field suggestion + confidence, and which application input it maps to. The required
   // set is dynamic (below), so each input is rendered uniformly and marked required per the resolved type.
   const appInputs: {
-    key: RequirementKey;
+    key: RequirementKey | "fancifulName";
     id: string;
     label: string;
     value: string;
@@ -159,6 +164,8 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
     { key: "name", id: ids.appName, label: "Producer / bottler name", value: claimName, set: setClaimName, suggestion: extracted?.name, confidence: extracted?.confidence.name },
     { key: "address", id: ids.appAddress, label: "Producer / bottler address", value: claimAddress, set: setClaimAddress, suggestion: extracted?.address, confidence: extracted?.confidence.address },
     { key: "countryOfOrigin", id: ids.appCountry, label: "Country of origin", value: claimCountry, set: setClaimCountry, suggestion: extracted?.countryOfOrigin, confidence: extracted?.confidence.countryOfOrigin, hint: "imports only" },
+    { key: "fancifulName", id: ids.appFanciful, label: "Distinctive / fanciful name", value: claimFanciful, set: setClaimFanciful, suggestion: extracted?.fancifulName, confidence: extracted?.confidence.fancifulName, hint: "if any" },
+    { key: "statementOfComposition", id: ids.appSoc, label: "Statement of composition", value: claimSoc, set: setClaimSoc, suggestion: extracted?.statementOfComposition, confidence: extracted?.confidence.statementOfComposition, hint: "specialties" },
   ];
 
   // Resolve the beverage class that DRIVES the required set: the agent's override wins, else the AI's
@@ -187,6 +194,8 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
         name: opt(claimName),
         address: opt(claimAddress),
         countryOfOrigin: opt(claimCountry),
+        fancifulName: opt(claimFanciful),
+        statementOfComposition: opt(claimSoc),
         beverageClass,
       }
     : null;
@@ -471,7 +480,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
 
         <div className="grid gap-4 sm:grid-cols-2">
           {appInputs.map((f) => {
-            const required = requiredKeys.includes(f.key);
+            const required = requiredKeys.includes(f.key as RequirementKey);
             const hasSuggestion = Boolean(f.suggestion && f.suggestion.trim());
             const lowConf = hasSuggestion && typeof f.confidence === "number" && f.confidence < FIELD_REVIEW_CONFIDENCE;
             const accepted = hasSuggestion && f.value.trim() !== "" && norm(f.value) === norm(f.suggestion ?? "");

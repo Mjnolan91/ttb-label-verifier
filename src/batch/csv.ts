@@ -17,6 +17,8 @@ const VERDICT_FIELDS: readonly { key: VerifyFieldKey; col: string }[] = [
   { key: "name", col: "name_status" },
   { key: "address", col: "address_status" },
   { key: "countryOfOrigin", col: "country_of_origin_status" },
+  { key: "fancifulName", col: "fanciful_name_status" },
+  { key: "statementOfComposition", col: "statement_of_composition_status" },
   { key: "warning", col: "warning_status" },
 ];
 
@@ -30,6 +32,8 @@ export interface ClaimedRow {
   name?: string;
   address?: string;
   countryOfOrigin?: string;
+  fancifulName?: string;
+  statementOfComposition?: string;
 }
 
 /** Parse a single CSV line into fields, honoring double-quoted fields (with escaped "" quotes). */
@@ -93,6 +97,8 @@ export function parseClaimedCsv(text: string): Map<string, ClaimedRow> {
       name: r.name || r.producer || undefined,
       address: r.address || r.addr || undefined,
       countryOfOrigin: r.countryOfOrigin || r.country || r.origin || undefined,
+      fancifulName: r.fancifulName || r.fanciful || r.sellName || undefined,
+      statementOfComposition: r.statementOfComposition || r.composition || r.soc || undefined,
     });
   }
   return map;

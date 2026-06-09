@@ -11,6 +11,8 @@ export {
   compareName,
   compareAddress,
   compareOrigin,
+  compareFancifulName,
+  compareStatementOfComposition,
 } from "./comparators";
 export {
   verifyLabel,

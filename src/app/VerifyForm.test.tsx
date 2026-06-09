@@ -261,6 +261,22 @@ describe("VerifyForm — verify against the application", () => {
     expect(composer.value).toMatch(/Brand is misspelled on the label\./);
   });
 
+  it("offers fanciful name + statement of composition as OPTIONAL application inputs (don't block the verdict)", ASYNC, async () => {
+    mockFetch(READ_OK());
+    const { container } = render(<VerifyForm />);
+    const q = within(container);
+    dropLabelImage(container);
+    await q.findByText("Complete the application to verify");
+    const soc = q.getByLabelText(/Statement of composition/i) as HTMLInputElement;
+    const fanciful = q.getByLabelText(/Distinctive \/ fanciful name/i) as HTMLInputElement;
+    expect(soc.required).toBe(false);
+    expect(fanciful.required).toBe(false);
+    // Accepting the AI suggestions (which carry no fanciful/SoC for a standard bourbon) still verifies.
+    fireEvent.click(q.getByRole("button", { name: /Accept all AI suggestions/i }));
+    expect(await q.findByText(/Label vs\. application/)).toBeTruthy();
+    expect(q.getByText("Approve")).toBeTruthy();
+  });
+
   it("shows two explicit upload slots (front + back), each with its own file input", () => {
     const { container } = render(<VerifyForm />);
     expect(container.querySelectorAll('input[type="file"]')).toHaveLength(2);

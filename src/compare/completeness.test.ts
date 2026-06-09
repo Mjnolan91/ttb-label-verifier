@@ -74,6 +74,32 @@ describe("checkCompleteness — net contents standards of fill (27 CFR 5.203/4.7
   });
 });
 
+describe("checkCompleteness — statement of composition (specialties, 27 CFR 5.156)", () => {
+  const conf = (extra: Record<string, number>) => ({ ...ds().confidence, ...extra });
+
+  it("a standard product (no fanciful name) does not require a statement of composition", () => {
+    expect(statusOf(checkCompleteness(ds()), "statementOfComposition")).toBe("unverifiable");
+  });
+
+  it("a fanciful name with NO statement of composition is flagged (specialty missing its designation) -> incomplete", () => {
+    const r = checkCompleteness(ds({ fancifulName: "Spiced Rum", confidence: conf({ fancifulName: 0.95 }) }));
+    expect(statusOf(r, "statementOfComposition")).toBe("missing");
+    expect(r.overall).toBe("incomplete");
+  });
+
+  it("a fanciful name WITH a statement of composition is present -> complete", () => {
+    const r = checkCompleteness(
+      ds({
+        fancifulName: "Spiced Rum",
+        statementOfComposition: "Rum with natural flavors added",
+        confidence: conf({ fancifulName: 0.95, statementOfComposition: 0.95 }),
+      }),
+    );
+    expect(statusOf(r, "statementOfComposition")).toBe("present");
+    expect(r.overall).toBe("complete");
+  });
+});
+
 describe("checkCompleteness", () => {
   it("a fully-compliant distilled-spirits label is complete (absent conditionals don't downgrade)", () => {
     const r = checkCompleteness(ds());

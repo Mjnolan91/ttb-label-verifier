@@ -112,6 +112,8 @@ async function analyzeProduct(
           name: claimedRow.name,
           address: claimedRow.address,
           countryOfOrigin: claimedRow.countryOfOrigin,
+          fancifulName: claimedRow.fancifulName,
+          statementOfComposition: claimedRow.statementOfComposition,
         })
       : null;
     const needs = [
@@ -345,14 +347,17 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
           <span className="mb-1.5 block font-medium text-ink">
             The application{" "}
             <span className="font-normal text-ink-muted">
-              (CSV — one row per product: filename, brand, alcohol, class, net, name, address, country)
+              (CSV — one row per product: filename, brand, class, fanciful, composition, alcohol, net,
+              name, address, country)
             </span>
           </span>
           <p className="mb-2 text-sm text-ink-muted">
             Each row supplies the application values one product is checked against. <code>filename</code>{" "}
             must match an uploaded image (the front, for a paired product); <code>class</code> is the
-            class/type designation only (e.g. <code>Rum</code>, not <code>Superior Caribbean Rum</code>).
-            Download the template for a filled example.
+            class/type designation only (e.g. <code>Rum</code>, not <code>Superior Caribbean Rum</code>);{" "}
+            <code>fanciful</code> + <code>composition</code> apply to specialty products (e.g.{" "}
+            <code>Spiced Rum</code> + <code>Rum with natural flavors added</code>). Download the template
+            for filled examples.
           </p>
           <input
             type="file"
@@ -372,13 +377,16 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
               onClick={() =>
                 downloadCsv(
                   "application-values-template.csv",
-                  // Every field the verifier compares, with two realistic, fully-filled rows (an imported
-                  // spirit + a malt beverage) so the format is unambiguous. `filename` matches the uploaded
-                  // image (the FRONT for a paired product); `class` is the class/type DESIGNATION only
-                  // (e.g. "Rum", not "Superior Caribbean Rum"); leave a cell blank if it doesn't apply.
-                  "filename,brand,alcohol,class,net,name,address,country\n" +
-                    "jolly-jerrys-front.jpg,Jolly Jerry's Rum,40% Alc/Vol (80 Proof),Rum,750 mL,Sea Trader Imports,\"Miami, FL\",Product of Barbados\n" +
-                    "granite-peak-front.jpg,Granite Peak,6.5% Alc/Vol,India Pale Ale,12 FL OZ,Granite Peak Brewing Co.,\"Portland, OR\",\n",
+                  // Every field the verifier compares, with realistic rows (a standard imported rum, a malt
+                  // beverage, and a SPECIALTY spiced rum showing the fanciful name + statement of composition).
+                  // `filename` matches the uploaded image (the FRONT for a paired product); `class` is the
+                  // class/type DESIGNATION only (e.g. "Rum", not "Superior Caribbean Rum"); `fanciful` +
+                  // `composition` apply to specialties (no standard of identity); leave a cell blank if it
+                  // doesn't apply.
+                  "filename,brand,class,fanciful,composition,alcohol,net,name,address,country\n" +
+                    "jolly-jerrys-front.jpg,Jolly Jerry's,Rum,,,40% Alc/Vol (80 Proof),750 mL,Sea Trader Imports,\"Miami, FL\",Product of Barbados\n" +
+                    "granite-peak-front.jpg,Granite Peak,India Pale Ale,,,6.5% Alc/Vol,12 FL OZ,Granite Peak Brewing Co.,\"Portland, OR\",\n" +
+                    "bayou-spiced-front.jpg,Bayou,,Spiced Rum,Rum with natural flavors added,35% Alc/Vol (70 Proof),750 mL,Bayou Spirits Co.,\"New Orleans, LA\",\n",
                 )
               }
             >

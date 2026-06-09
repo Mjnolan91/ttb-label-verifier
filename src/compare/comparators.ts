@@ -470,6 +470,48 @@ export function compareOrigin(args: { claimed?: string; extracted?: string }): F
 }
 
 /**
+ * Distinctive / fanciful ("sell") name — fuzzy, review-leaning (NEVER a hard fail): a difference
+ * between the application's and the label's fanciful name is a human call, not an auto-reject.
+ */
+export function compareFancifulName(args: { claimed?: string; extracted?: string }): FieldResult {
+  const claimed = args.claimed ?? "";
+  const extracted = args.extracted ?? "";
+  const nc = normalizeText(claimed);
+  const ne = normalizeText(extracted);
+  if (ne.length === 0) {
+    return result("review", claimed || "(none)", extracted || "(none)", "No distinctive/fanciful name was read from the label to compare.");
+  }
+  if (nc === ne) {
+    return result("pass", claimed, extracted, "Fanciful name matches after normalizing.");
+  }
+  if (wordBoundaryContains(ne, nc) || wordBoundaryContains(nc, ne) || similarity(nc, ne) >= NAME_REVIEW_SIMILARITY) {
+    return result("review", claimed, extracted, "Fanciful name is close but not identical. Confirm.");
+  }
+  return result("review", claimed, extracted, "Fanciful name differs from the application. A person should confirm.");
+}
+
+/**
+ * Statement of composition — fuzzy, review-leaning. For a specialty this completes the class/type
+ * designation, so a difference is surfaced for a person rather than auto-rejected.
+ */
+export function compareStatementOfComposition(args: { claimed?: string; extracted?: string }): FieldResult {
+  const claimed = args.claimed ?? "";
+  const extracted = args.extracted ?? "";
+  const nc = normalizeText(claimed);
+  const ne = normalizeText(extracted);
+  if (ne.length === 0) {
+    return result("review", claimed || "(none)", extracted || "(none)", "No statement of composition was read from the label to compare.");
+  }
+  if (nc === ne) {
+    return result("pass", claimed, extracted, "Statement of composition matches after normalizing.");
+  }
+  if (wordBoundaryContains(ne, nc) || wordBoundaryContains(nc, ne) || similarity(nc, ne) >= NAME_REVIEW_SIMILARITY) {
+    return result("review", claimed, extracted, "Statement of composition is close but not identical. Confirm.");
+  }
+  return result("review", claimed, extracted, "Statement of composition differs from the application. A person should confirm.");
+}
+
+/**
  * Government warning — strict. Body must match the canonical statutory wording; the prefix's
  * required ALL-CAPS (and BOLD where detectable) is read from the extracted flags, not re-derived
  * from raw text. Title-case, reworded, or missing = fail. Products under 0.5% ABV are exempt.
