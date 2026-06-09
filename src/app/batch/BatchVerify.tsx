@@ -345,9 +345,15 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
           <span className="mb-1.5 block font-medium text-ink">
             The application{" "}
             <span className="font-normal text-ink-muted">
-              (CSV: filename, brand, alcohol, class, net, name, address, country)
+              (CSV — one row per product: filename, brand, alcohol, class, net, name, address, country)
             </span>
           </span>
+          <p className="mb-2 text-sm text-ink-muted">
+            Each row supplies the application values one product is checked against. <code>filename</code>{" "}
+            must match an uploaded image (the front, for a paired product); <code>class</code> is the
+            class/type designation only (e.g. <code>Rum</code>, not <code>Superior Caribbean Rum</code>).
+            Download the template for a filled example.
+          </p>
           <input
             type="file"
             accept=".csv,text/csv"
@@ -366,8 +372,13 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
               onClick={() =>
                 downloadCsv(
                   "application-values-template.csv",
+                  // Every field the verifier compares, with two realistic, fully-filled rows (an imported
+                  // spirit + a malt beverage) so the format is unambiguous. `filename` matches the uploaded
+                  // image (the FRONT for a paired product); `class` is the class/type DESIGNATION only
+                  // (e.g. "Rum", not "Superior Caribbean Rum"); leave a cell blank if it doesn't apply.
                   "filename,brand,alcohol,class,net,name,address,country\n" +
-                    "acme-front.jpg,Acme Single Barrel,40% Alc./Vol. (80 Proof),Vodka,750 mL,Acme Distillery,\"Peoria, IL\",USA\n",
+                    "jolly-jerrys-front.jpg,Jolly Jerry's Rum,40% Alc/Vol (80 Proof),Rum,750 mL,Sea Trader Imports,\"Miami, FL\",Product of Barbados\n" +
+                    "granite-peak-front.jpg,Granite Peak,6.5% Alc/Vol,India Pale Ale,12 FL OZ,Granite Peak Brewing Co.,\"Portland, OR\",\n",
                 )
               }
             >

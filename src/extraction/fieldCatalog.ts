@@ -77,8 +77,16 @@ export const FIELD_CATALOG: readonly FieldDescriptor[] = [
   {
     key: "classType", rawKey: "classType", confKey: "classType", label: "Class / type", csvColumn: "type", group: "headline",
     description:
-      "The full specific class/type designation (standard of identity) exactly as printed, e.g. " +
-      "\"Kentucky Straight Bourbon Whiskey\", \"India Pale Ale\", \"Cabernet Sauvignon\". Transcribe verbatim.",
+      "The TTB class/type DESIGNATION — the standard of identity that names what the product legally IS, " +
+      "e.g. \"Rum\", \"Vodka\", \"Kentucky Straight Bourbon Whiskey\", \"India Pale Ale\", \"Cabernet Sauvignon\". " +
+      "Capture the designation word(s) plus any qualifier that is PART OF the standard of identity (e.g. " +
+      "\"Straight\", \"Blended\", \"Bottled in Bond\"). EXCLUDE purely promotional or fanciful adjectives that are " +
+      "NOT part of the standard of identity — words like \"Superior\", \"Premium\", \"Finest\", \"Smooth\", " +
+      "\"Handcrafted\", \"Award-Winning\", \"Legendary\". Example: on a label reading \"SUPERIOR CARIBBEAN RUM\" the " +
+      "designation is \"Rum\" (\"Superior\" is marketing puffery; \"Caribbean\" is a geographic descriptor, not the " +
+      "class). NEVER add a word that is not printed (do not write \"Spiced\", \"Reserve\", \"Aged\", etc. unless that " +
+      "exact word appears). If you are unsure whether a word belongs in the designation, KEEP it but LOWER the " +
+      "confidence so a person can confirm. Transcribe the designation words verbatim (preserve printed spelling/case).",
   },
   {
     key: "alcoholContentText", rawKey: "alcoholContent", confKey: "alcoholContent", label: "Alcohol content", csvColumn: "alcohol", group: "headline",

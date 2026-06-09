@@ -275,6 +275,11 @@ describe("compareClassType", () => {
   it("PASS: identical designation", () => {
     expect(compareClassType({ claimed: "Table Wine", extracted: "Table Wine" }).status).toBe("pass");
   });
+  it("PASS: marketing adjectives don't break the verdict (resolves to the same class)", () => {
+    // Even if the AI over-captured "Superior Caribbean Rum", the application's "Rum" still matches —
+    // both resolve to distilled spirits, so a stray adjective can't cause a wrong Approve/Reject.
+    expect(compareClassType({ claimed: "Rum", extracted: "Superior Caribbean Rum" }).status).toBe("pass");
+  });
   it("FAIL: genuinely different classes (spirits vs wine)", () => {
     expect(compareClassType({ claimed: "Vodka", extracted: "Cabernet Sauvignon Wine" }).status).toBe("fail");
   });
