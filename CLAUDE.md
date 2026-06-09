@@ -40,11 +40,17 @@ Requires Node ≥20.9 (`package.json` `engines`); a wrong major version fails co
 AGENTS.md describes the `image → VisionProvider(s) → reconciler → (optional) comparator → UI`
 pipeline and the "why". As built, the load-bearing pieces are:
 - **`src/pipeline.ts`** — `runExtraction()` reads EACH of a product's images (front/back/neck) and
-  MERGES them (`mergeExtracted`) → readability gate; the PRIMARY path. `runVerification()` adds the
-  claimed comparison. `/api/verify` always extracts + runs the TTB **completeness** check
-  (`src/compare/completeness.ts` over `src/domain/labelRequirements.ts`); it also returns a
-  claimed-comparison verdict when `brand`+`alcoholContent` are posted. Batch pairs front/back by
-  filename (`src/batch/pairing.ts`). Change the flow here, not in two places.
+  MERGES them (`mergeExtracted`) → readability gate; the PRIMARY path. Each image is read N times
+  (self-consistency, `selfConsistentExtract`); per-field confidence becomes the AGREEMENT fraction
+  across samples — better calibrated than the model's self-reported confidence. `SELF_CONSISTENCY_SAMPLES`
+  (default 3; `src/extraction/config.ts`) sets N; the mock provider is forced to 1 so the offline
+  suite/eval stay deterministic. When a warning is read, a dedicated `judgeWarningBold` pass over the
+  images sets `warningPrefixIsBold`. `runVerification()` adds the claimed comparison. `/api/verify`
+  always extracts + runs the TTB **completeness** check (`src/compare/completeness.ts` over
+  `src/domain/labelRequirements.ts`); it also returns a claimed-comparison verdict when
+  `brand`+`alcoholContent` are posted. Batch pairs front/back by filename (`src/batch/pairing.ts`) and
+  resolves each product's claimed values from an optional CSV (`src/batch/claimedMatch.ts`). Change the
+  flow here, not in two places.
 - **`src/domain/`** — pre-seeded, CFR-verified, the one hand-written human-trusted module
   (canonical warning, tolerance matrix, label-requirements matrix, proof helper). Treat its constants
   as statutory: extend/integrate, never reword or retune them to make a test pass. The completeness
@@ -62,20 +68,27 @@ pipeline and the "why". As built, the load-bearing pieces are:
   `getActiveProviders()` returns that list, `getVisionProvider()` the single. The real providers use
   strict **structured outputs** (`response_format: json_schema`), bounded retry on 429/5xx
   (`fetchWithRetry`), and a self-limiting request timeout (`withHardTimeout`) — see `http.ts`.
+  `selfConsistency.ts` (+ `config.ts`) wraps the reconciler with the N-sample agreement pass the
+  pipeline drives; `geminiTuning.ts` holds Gemini-specific request tuning.
 - **`src/compare/`** — pure, deterministic comparators + `verifyLabel` (claimed comparison) +
   `completeness.ts` (each TTB-required element present / missing / malformed / unverifiable, per
   beverage type) + `thresholds.ts`. Two DISTINCT thresholds, easy to confuse:
   `MIN_READABLE_CONFIDENCE` (0.5 — is the image readable at all → re-upload path) vs
   `FIELD_REVIEW_CONFIDENCE` (0.7 — trust this field's verdict, else downgrade to `review`).
-  `combinedVerdict` (`reviewVerdict.ts`) is the HEADLINE verdict: it takes the worse of the
+  `combinedVerdict` (`reviewVerdict.ts`) is the auditable HEADLINE verdict: it takes the worse of the
   claimed-vs-label comparison (`verifyLabel`) and the per-type completeness check, so a label missing
   a TTB-required field for its beverage type can't be Approved (a missing/malformed mandatory element
-  → `review`; the warning keeps its hard fail). The UI + eval read this combined verdict.
+  → `review`; the warning keeps its hard fail). The **eval** reads this combined verdict. The
+  interactive UI is driven by `confirmVerdict` (`confirm.ts`) — the confirm-to-approve layer (Feature A
+  Part 2) that REUSES the same CFR comparators, computes a per-element pass/review/fail with a
+  human-confirmation state, and **blocks Approve until every flagged/low-confidence element is
+  confirmed** (the government warning is auto-evaluated, never an editable field).
 - **`src/app/`** — verify-first single screen (`VerifyForm`: always-visible application form +
-  auto-read on upload; results LEAD with the `ResultView` verdict from the pure `verifyLabel`
-  comparator, then `CompletenessView`, then `ExtractedFieldsView`; thumbnails open the accessible
-  `ImageLightbox`; a non-blocking `ForwardLookingNote` lists 2025 proposals) + `/api/verify` route +
-  `/batch`; `src/app/ui/` holds shared primitives. **`eval/`** — the harness and filename-keyed
+  auto-read on upload; results LEAD with the interactive `ConfirmPanel` (the confirm-to-approve verdict
+  from `confirmVerdict`, where a reviewer accepts/edits/marks-missing each element), then
+  `CompletenessView`, then `ExtractedFieldsView`; thumbnails open the accessible `ImageLightbox`; a
+  non-blocking `ForwardLookingNote` lists 2025 proposals) + `/api/verify` route + `/batch`;
+  `src/app/ui/` holds shared primitives. **`eval/`** — the harness and filename-keyed
   fixtures (`eval/fixtures/cases.json`).
 - **`src/extraction/fieldCatalog.ts`** — THE single source of truth for the extracted field set. One
   ordered descriptor list (`key`/`rawKey`/`confKey`/`label`/`csvColumn`/`group`) that the raw→domain
