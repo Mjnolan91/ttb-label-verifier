@@ -88,3 +88,15 @@ export const TONE_ICON: Record<Tone, ComponentType<IconProps> | null> = {
   fail: IconFail,
   neutral: null,
 };
+
+/**
+ * The solid tone color as a CSS variable, for the "lit" verdict bubble: a filled icon disc (white icon
+ * reads on each) and a soft same-color glow. Uses the -700/-600 shades so white-on-color stays legible.
+ */
+export const TONE_SOLID_VAR: Record<Tone, string> = {
+  pass: "var(--color-pass-700)",
+  verify: "var(--color-brand-600)",
+  review: "var(--color-review-700)",
+  fail: "var(--color-fail-700)",
+  neutral: "var(--color-ink-muted)",
+};

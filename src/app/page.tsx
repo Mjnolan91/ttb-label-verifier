@@ -2,6 +2,7 @@ import Link from "next/link";
 import { APP_TITLE } from "./constants";
 import { VerifyForm } from "./VerifyForm";
 import { cardClass, linkClass } from "./ui/fieldStyles";
+import { IconUsFlag } from "./ui/icons";
 // Single source of truth: the canonical warning shown as a reference comes from src/domain.
 import { CANONICAL_GOVERNMENT_WARNING, GOVERNMENT_WARNING_PREFIX } from "@/domain";
 
@@ -16,7 +17,8 @@ export default function Home() {
   return (
     <main id="main-content" tabIndex={-1} className="mx-auto flex min-h-screen max-w-3xl flex-col gap-8 px-4 py-10 sm:py-14 focus:outline-none">
       <header>
-        <p className="text-sm font-semibold uppercase tracking-wide text-brand-700">
+        <p className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-brand-700">
+          <IconUsFlag className="h-3.5 w-auto shrink-0 rounded-[1px] shadow-sm ring-1 ring-black/10" />
           TTB compliance · prototype
         </p>
         <h1 className="mt-1 text-4xl font-bold tracking-tight text-ink">{APP_TITLE}</h1>

@@ -101,6 +101,35 @@ export function IconPhoto(props: IconProps) {
   );
 }
 
+/**
+ * IconUsFlag — a small US flag for the "TTB compliance" eyebrow (TTB is a U.S. federal agency). Drawn
+ * with explicit fills (not currentColor) since a flag is multicolor; decorative (aria-hidden), the
+ * adjacent text carries the meaning.
+ */
+export function IconUsFlag({ className = "" }: { className?: string }) {
+  const h = 20 / 13; // 13 stripes across a 38x20 (1.9:1) field
+  const redStripes = [0, 2, 4, 6, 8, 10, 12];
+  const starCols = [2.4, 5.5, 8.6, 11.7];
+  const starRows = [1.5, 3.9, 6.3];
+  return (
+    <svg
+      viewBox="0 0 38 20"
+      className={className}
+      role="img"
+      aria-hidden="true"
+      focusable="false"
+      preserveAspectRatio="xMidYMid meet"
+    >
+      <rect width="38" height="20" fill="#ffffff" />
+      {redStripes.map((i) => (
+        <rect key={i} y={i * h} width="38" height={h} fill="#b22234" />
+      ))}
+      <rect width="15.2" height={7 * h} fill="#3c3b6e" />
+      {starRows.map((cy) => starCols.map((cx) => <circle key={`${cx}-${cy}`} cx={cx} cy={cy} r="0.62" fill="#ffffff" />))}
+    </svg>
+  );
+}
+
 /** IconSun / IconMoon — the light/dark theme toggle glyphs. */
 export function IconSun(props: IconProps) {
   return (

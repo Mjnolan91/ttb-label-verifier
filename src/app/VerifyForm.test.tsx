@@ -156,6 +156,39 @@ describe("VerifyForm — verify against the application", () => {
     expect((q.getByLabelText(/^Alcohol content/i) as HTMLInputElement).required).toBe(false);
   });
 
+  it("lets a person FLAG a field the AI passed, turning the verdict to Reject", ASYNC, async () => {
+    mockFetch(READ_OK());
+    const { container } = render(<VerifyForm />);
+    const q = within(container);
+    dropLabelImage(container);
+    await q.findByText("Complete the application to verify");
+    fireEvent.click(q.getByRole("button", { name: /Accept all AI suggestions/i }));
+    const verdict = within(await q.findByRole("region", { name: "Verification result" }));
+    expect(verdict.getByText("Approve")).toBeTruthy();
+    const brandCard = q.getAllByText("Brand name")[0].closest("li") as HTMLElement;
+    fireEvent.click(within(brandCard).getByRole("button", { name: /Flag a problem/i }));
+    expect(verdict.getByText("Reject")).toBeTruthy();
+  });
+
+  it("lets a person CONFIRM a fuzzy-read field, resolving Needs review to Approve", ASYNC, async () => {
+    const fuzzy = extractedBourbon({
+      confidence: { brand: 0.55, classType: 0.97, alcoholContent: 0.98, netContents: 0.96, name: 0.95, address: 0.95, warningText: 0.96 },
+    });
+    mockFetch(READ_OK(fuzzy));
+    const { container } = render(<VerifyForm />);
+    const q = within(container);
+    dropLabelImage(container);
+    await q.findByText("Complete the application to verify");
+    fireEvent.click(q.getByRole("button", { name: /Accept all AI suggestions/i }));
+    // brand read at 55% -> gated to review. Scope to the comparison region (the completeness view also
+    // reads "Needs review" from the same low-confidence read, so an unscoped match is ambiguous).
+    const verdict = within(await q.findByRole("region", { name: "Verification result" }));
+    expect(verdict.getByText("Needs review")).toBeTruthy();
+    const brandCard = q.getAllByText("Brand name")[0].closest("li") as HTMLElement;
+    fireEvent.click(within(brandCard).getByRole("button", { name: /Looks correct/i }));
+    expect(verdict.getByText("Approve")).toBeTruthy();
+  });
+
   it("shows two explicit upload slots (front + back), each with its own file input", () => {
     const { container } = render(<VerifyForm />);
     expect(container.querySelectorAll('input[type="file"]')).toHaveLength(2);

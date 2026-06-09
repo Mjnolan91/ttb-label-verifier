@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { BatchVerify } from "./BatchVerify";
 import { linkClass } from "../ui/fieldStyles";
+import { IconUsFlag } from "../ui/icons";
 
 export default function BatchPage() {
   // Same calm "demo mode" hint as the single screen, so a reviewer who lands on /batch in the offline
@@ -9,7 +10,8 @@ export default function BatchPage() {
   return (
     <main id="main-content" tabIndex={-1} className="mx-auto flex min-h-screen max-w-4xl flex-col gap-8 px-4 py-10 sm:py-14 focus:outline-none">
       <header>
-        <p className="text-sm font-semibold uppercase tracking-wide text-brand-700">
+        <p className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-brand-700">
+          <IconUsFlag className="h-3.5 w-auto shrink-0 rounded-[1px] shadow-sm ring-1 ring-black/10" />
           TTB compliance · prototype
         </p>
         <h1 className="mt-1 text-4xl font-bold tracking-tight text-ink">Batch label reading</h1>

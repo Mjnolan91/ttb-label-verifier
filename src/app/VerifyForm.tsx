@@ -21,13 +21,16 @@ import {
   requiredInputKeysFor,
   classChoiceFor,
   CLASS_CHOICES,
+  overallVerdict,
+  worstVerdict,
   type ClassChoice,
   type CombinedVerdict,
+  type VerifyFieldKey,
 } from "@/compare";
 import type { BeverageClass, ClaimedFields, RequirementKey } from "@/domain";
 import { ExtractedFieldsView } from "./ui/ExtractedFieldsView";
 import { CompletenessView } from "./ui/CompletenessView";
-import { ResultView } from "./ui/ResultView";
+import { ResultView, type FieldOverride } from "./ui/ResultView";
 import { PipelineSteps } from "./ui/PipelineSteps";
 import { CLASS_DISPLAY_LABEL } from "./ui/beverageClass";
 import { downscaleForUpload } from "./imageDownscale";
@@ -97,6 +100,17 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
   // The beverage type the required-field set is driven by. null = use the AI's reading; a value = the
   // agent overrode it. The wine ≤14/>14 split is derived from ABV, never a human pick.
   const [classChoice, setClassChoice] = useState<ClassChoice | null>(null);
+  // The reviewer's per-field decisions over the AI verdict: "ok" confirms a flagged field, "issue"
+  // flags one the AI passed. The headline recomputes from these (cleared on every fresh read).
+  const [fieldOverrides, setFieldOverrides] = useState<Partial<Record<VerifyFieldKey, FieldOverride>>>({});
+  function setOverride(key: VerifyFieldKey, value: FieldOverride | undefined) {
+    setFieldOverrides((prev) => {
+      const next = { ...prev };
+      if (value === undefined) delete next[key];
+      else next[key] = value;
+      return next;
+    });
+  }
   // The image currently shown full-size in the lightbox, if any.
   const [zoom, setZoom] = useState<{ src: string; alt: string } | null>(null);
 
@@ -180,6 +194,24 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
   // top once the application is complete. Pure + client-side, so typing recomputes instantly (no re-read).
   const combined: CombinedVerdict | null = extracted ? combinedVerdict(claimed, extracted) : null;
 
+  // The headline AFTER the reviewer's per-field overrides: a confirmed field counts as pass, a flagged
+  // field as fail. The completeness check only GATES the headline when the label is structurally
+  // INCOMPLETE (a missing/malformed mandatory element); a merely low-confidence read is resolved by
+  // confirming the comparison field above, so it doesn't independently keep the verdict at review.
+  const effectiveComparison: CombinedVerdict["overall"] = combined?.verify
+    ? overallVerdict(
+        combined.verify.fields.map((f) => {
+          const o = fieldOverrides[f.key];
+          return o === "ok" ? "pass" : o === "issue" ? "fail" : f.status;
+        }),
+      )
+    : null;
+  const completenessGate = combined && combined.completeness.overall === "incomplete" ? "review" : "approve";
+  const effectiveOverall: CombinedVerdict["overall"] = effectiveComparison
+    ? worstVerdict(effectiveComparison, completenessGate)
+    : (combined?.overall ?? null);
+  const effectiveGatedByCompleteness = Boolean(effectiveComparison) && effectiveOverall !== effectiveComparison;
+
   // Accept the AI's grey suggestion for one field by pressing Tab while it's empty (the agent confirms
   // the read as the application value) — fast, but deliberate, so an unaccepted required field still blocks.
   function acceptOnTab(e: KeyboardEvent<HTMLInputElement>, value: string, suggestion: string | undefined, set: (v: string) => void) {
@@ -200,6 +232,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
     const token = ++readToken.current;
     setState("loading");
     setFormError(null);
+    setFieldOverrides({}); // a fresh read re-evaluates; drop the prior verdict's human overrides
     try {
       const body = new FormData();
       for (const img of imgs) {
@@ -268,7 +301,13 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
       extracted: response.extracted,
       completeness: combined.completeness,
       ...(claimed ? { claimed } : {}),
-      ...(combined.verify ? { result: combined.verify, overall: combined.overall } : {}),
+      ...(combined.verify
+        ? {
+            result: combined.verify,
+            overall: effectiveOverall,
+            ...(Object.keys(fieldOverrides).length ? { humanOverrides: fieldOverrides } : {}),
+          }
+        : {}),
     });
   }
   function onDownloadCsv() {
@@ -279,7 +318,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
         extracted: response.extracted,
         completeness: combined.completeness,
         result: combined.verify,
-        overall: combined.overall ?? undefined,
+        overall: effectiveOverall ?? undefined,
       },
     ]));
   }
@@ -288,7 +327,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
   const announce = !extracted
     ? ""
     : combined?.verify
-      ? `Verdict: ${VERDICT_LABEL[combined.overall ?? "review"]}.`
+      ? `Verdict: ${VERDICT_LABEL[effectiveOverall ?? "review"]}.`
       : `Label read. Complete the required application fields to verify: ${missingLabels.join(", ")}.`;
 
   const firstImage = orderedImages[0];
@@ -519,10 +558,12 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
             <>
               <ResultView
                 result={combined.verify}
-                overall={combined.overall ?? undefined}
-                gatedByCompleteness={combined.gatedByCompleteness}
+                overall={effectiveOverall ?? undefined}
+                gatedByCompleteness={effectiveGatedByCompleteness}
                 headingRef={headlineRef}
                 onViewImage={viewFirstImage}
+                overrides={fieldOverrides}
+                onOverride={setOverride}
               />
               <details className="mt-6 rounded-card border border-border bg-surface-muted p-4">
                 <summary className="min-h-[44px] cursor-pointer py-2 text-sm font-semibold text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2">

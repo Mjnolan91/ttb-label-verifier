@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, render, within } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, within } from "@testing-library/react";
 import { ResultView } from "./ResultView";
 import type { VerifyField, VerifyResult, OverallVerdict } from "@/compare";
 
@@ -103,5 +103,41 @@ describe("ResultView — at-a-glance label-vs-application verdict", () => {
       ).container,
     );
     expect(q.getAllByText("View label photo").length).toBeGreaterThan(0);
+  });
+
+  it("offers a per-field resolution control and records 'Looks correct' (resolve a false flag)", () => {
+    const onOverride = vi.fn();
+    const q = within(render(<ResultView result={makeResult(CORE, "approve")} onOverride={onOverride} />).container);
+    const brandCard = q.getByText("Brand name").closest("li")!;
+    fireEvent.click(within(brandCard).getByRole("button", { name: /Looks correct/i }));
+    expect(onOverride).toHaveBeenCalledWith("brand", "ok");
+  });
+
+  it("lets a person flag a field the AI passed (false negative) as a problem", () => {
+    const onOverride = vi.fn();
+    const q = within(render(<ResultView result={makeResult(CORE, "approve")} onOverride={onOverride} />).container);
+    const brandCard = q.getByText("Brand name").closest("li")!;
+    fireEvent.click(within(brandCard).getByRole("button", { name: /Flag a problem/i }));
+    expect(onOverride).toHaveBeenCalledWith("brand", "issue");
+  });
+
+  it("renders a human-confirmed field as 'Confirmed by you' and surfaces what the AI had said", () => {
+    const reviewing: VerifyField[] = [
+      { key: "brand", label: "Brand name", status: "review", valueStatus: "pass", gatedByConfidence: true, readConfidence: 0.62, claimed: "X", extracted: "X", reason: "fuzzy read" },
+      CORE[1],
+      CORE[2],
+    ];
+    const q = within(
+      render(
+        <ResultView result={makeResult(reviewing, "review")} overall="review" overrides={{ brand: "ok" }} onOverride={() => {}} />,
+      ).container,
+    );
+    expect(q.getByText("Confirmed by you")).toBeTruthy();
+    expect(q.getByText(/The AI said/)).toBeTruthy();
+  });
+
+  it("does NOT render resolution controls when onOverride is omitted (read-only)", () => {
+    const q = within(render(<ResultView result={makeResult(CORE, "approve")} />).container);
+    expect(q.queryByRole("button", { name: /Looks correct/i })).toBeNull();
   });
 });

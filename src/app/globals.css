@@ -96,6 +96,25 @@
   }
 }
 
+/*
+ * Smooth light/dark transition. Scoped to a `.theme-transition` class that ThemeToggle adds to <html>
+ * only for the ~320ms of a toggle, so colors ease between themes WITHOUT animating during normal
+ * interactions or the initial (pre-painted) load. Honors prefers-reduced-motion (no rule there).
+ */
+@media (prefers-reduced-motion: no-preference) {
+  html.theme-transition,
+  html.theme-transition *,
+  html.theme-transition *::before,
+  html.theme-transition *::after {
+    transition:
+      background-color 280ms ease,
+      border-color 280ms ease,
+      color 220ms ease,
+      fill 220ms ease,
+      box-shadow 280ms ease !important;
+  }
+}
+
 @keyframes fadeInUp {
   from {
     opacity: 0;

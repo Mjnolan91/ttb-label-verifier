@@ -1,61 +1,69 @@
 import type { Ref } from "react";
-import type { VerifyResult, VerifyField } from "@/compare";
+import type { VerifyResult, VerifyField, VerifyFieldKey } from "@/compare";
 import { StatusBadge } from "./StatusBadge";
 import {
   toneForStatus,
   TONE_TINT,
   TONE_ICON,
+  TONE_SOLID_VAR,
   VERDICT_LABEL,
   FIELD_LABEL,
   GATED_MATCH_LABEL,
   type Tone,
 } from "./status";
-import { IconPhoto } from "./icons";
+import { IconPhoto, IconPass, IconFail } from "./icons";
 
 /**
  * ResultView — the at-a-glance label-vs-application verdict (the spec's core: "Brand matches? ABV
  * correct? Government warning there?"). Each compared field is a claimed-vs-extracted card; the
- * headline reduces them (gated on per-type completeness) to Approve / Needs review / Reject.
+ * headline reduces them to Approve / Needs review / Reject.
  *
- * The screen now distinguishes FOUR field states, not three. A field whose VALUES matched but whose
- * photo read was below the trust threshold (`gatedByConfidence && valueStatus === "pass"`) gets a calm
- * blue "Match · confirm photo" treatment — categorically different from the orange "Needs review" a
- * genuine discrepancy gets. The underlying verdict is unchanged (still review; a human should glance);
- * only the presentation stops looking like a rejection of a correct match.
+ * Human-in-the-loop: the AI verdict is a STARTING POINT. Every field card carries a "Your review"
+ * control so a person can confirm a field the AI flagged (a false positive) or flag a field the AI
+ * passed (a false negative). The overall bubble recomputes from those decisions and "lights up" green
+ * (Approve), amber (Needs review), or red (Reject) — so resolving the flags visibly turns it green.
  *
- * Status is NEVER conveyed by color alone (WCAG 1.4.1): the banner and each card pair the color with
- * an icon AND a plain text label via the shared tone system. The parent (VerifyForm) moves focus to
- * the heading and announces the verdict in a live region so the reactive path is not silent for AT.
+ * Status is NEVER conveyed by color alone (WCAG 1.4.1): the bubble and each card pair color with an
+ * icon AND a plain text label. The parent (VerifyForm) moves focus to the heading and announces the
+ * verdict in a live region.
  */
 
-/** A plain next-action line under the verdict, so a non-technical agent knows what to DO, not just
- *  the status. Keyed off the same overall verdict — pure presentation, no new logic. */
+/** A human override of one field's verdict: "ok" = confirmed correct, "issue" = a real problem. */
+export type FieldOverride = "ok" | "issue";
+
 const NEXT_STEP: Record<VerifyResult["overall"], string> = {
   approve: "Everything matched the application, so this label can be approved.",
   review:
-    "Some items need a person to confirm. Open the label image and check the highlighted fields below.",
+    "Some items need a person to confirm. Open the label image, then mark each highlighted field below as correct or flag a problem.",
   reject:
     "A required check failed. Review the item(s) marked “No match” below before sending this back to the applicant.",
 };
 
-/** Is this field a value MATCH that is only flagged because the photo read was fuzzy? */
 function isGatedMatch(f: VerifyField): boolean {
   return Boolean(f.gatedByConfidence) && f.valueStatus === "pass";
 }
 
-/** The display tone for a field: the calm "verify" blue for a gated match, else the value status. */
-function fieldTone(f: VerifyField): Tone {
-  if (isGatedMatch(f)) return "verify";
-  return f.status; // pass | review | fail are all valid tones
+/** The AI's display tone for a field (the calm "verify" blue for a gated match, else its value status). */
+function aiTone(f: VerifyField): Tone {
+  return isGatedMatch(f) ? "verify" : f.status;
 }
 
-/** Does any field carry a GENUINE concern (a real mismatch / discrepancy), vs. only fuzzy-read flags? */
+/** The EFFECTIVE tone after a human override (the override wins over the AI). */
+function effectiveTone(f: VerifyField, override?: FieldOverride): Tone {
+  if (override === "ok") return "pass";
+  if (override === "issue") return "fail";
+  return aiTone(f);
+}
+
+function aiLabel(f: VerifyField): string {
+  return aiTone(f) === "verify" ? GATED_MATCH_LABEL : FIELD_LABEL[f.status];
+}
+
+/** Does any field carry a GENUINE AI concern (a real mismatch / discrepancy), vs. only fuzzy-read flags? */
 function hasRealConcern(fields: readonly VerifyField[]): boolean {
   return fields.some((f) => f.status === "fail" || (f.status === "review" && !isGatedMatch(f)));
 }
 
-/** A small pill showing how clearly the AI read this value off the photo (the gate's trigger number,
- *  made visible at the point of confusion). Color mirrors the readability bands (≥0.7 / ≥0.5 / below). */
 function ConfidenceChip({ value }: { value: number | undefined }) {
   if (typeof value !== "number") return null;
   const pct = Math.round(value * 100);
@@ -87,18 +95,85 @@ function ViewPhotoButton({ onClick }: { onClick: () => void }) {
   );
 }
 
+/** The per-field resolution control: confirm the AI was right, or flag a problem it missed. */
+function ReviewControls({
+  field,
+  override,
+  onOverride,
+}: {
+  field: VerifyField;
+  override?: FieldOverride;
+  onOverride: (key: VerifyFieldKey, value: FieldOverride | undefined) => void;
+}) {
+  const toggle = (v: FieldOverride) => onOverride(field.key, override === v ? undefined : v);
+  const base =
+    "inline-flex min-h-[36px] items-center gap-1.5 rounded-field border px-3 py-1.5 text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2";
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-current/15 pt-3">
+      <span className="mr-1 text-xs font-semibold uppercase tracking-wide text-ink-muted">Your review</span>
+      <button
+        type="button"
+        onClick={() => toggle("ok")}
+        aria-pressed={override === "ok"}
+        className={`${base} ${
+          override === "ok"
+            ? "border-pass-700 bg-pass-700 text-white"
+            : "border-border-strong bg-surface text-ink hover:border-pass-600 hover:text-pass-700"
+        }`}
+      >
+        <IconPass className="h-4 w-4" /> Looks correct
+      </button>
+      <button
+        type="button"
+        onClick={() => toggle("issue")}
+        aria-pressed={override === "issue"}
+        className={`${base} ${
+          override === "issue"
+            ? "border-fail-700 bg-fail-700 text-white"
+            : "border-border-strong bg-surface text-ink hover:border-fail-600 hover:text-fail-700"
+        }`}
+      >
+        <IconFail className="h-4 w-4" /> Flag a problem
+      </button>
+      {override && (
+        <span className="text-xs text-ink-muted">
+          The AI said {aiLabel(field)}.{" "}
+          <button
+            type="button"
+            onClick={() => onOverride(field.key, undefined)}
+            className="font-semibold text-brand-700 underline underline-offset-2 focus-visible:outline-none focus-visible:rounded-sm focus-visible:ring-2 focus-visible:ring-brand-700"
+          >
+            Reset to AI
+          </button>
+        </span>
+      )}
+    </div>
+  );
+}
+
 function FieldCard({
   field,
   index,
   onViewImage,
+  override,
+  onOverride,
 }: {
   field: VerifyField;
   index: number;
   onViewImage?: () => void;
+  override?: FieldOverride;
+  onOverride?: (key: VerifyFieldKey, value: FieldOverride | undefined) => void;
 }) {
-  const tone = fieldTone(field);
+  const tone = effectiveTone(field, override);
   const Icon = TONE_ICON[tone];
-  const badgeLabel = tone === "verify" ? GATED_MATCH_LABEL : FIELD_LABEL[field.status];
+  const badge =
+    override === "ok"
+      ? "Confirmed by you"
+      : override === "issue"
+        ? "Problem flagged"
+        : tone === "verify"
+          ? GATED_MATCH_LABEL
+          : FIELD_LABEL[field.status];
   return (
     <li
       className={`rounded-card border-l-4 p-4 shadow-card motion-safe:animate-reveal ${TONE_TINT[tone]}`}
@@ -109,7 +184,7 @@ function FieldCard({
         <h3 className="font-semibold">{field.label}</h3>
         <div className="ml-auto flex items-center gap-2">
           <ConfidenceChip value={field.readConfidence} />
-          <StatusBadge tone={tone} label={badgeLabel} />
+          <StatusBadge tone={tone} label={badge} />
         </div>
       </div>
       <dl className="mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -126,6 +201,7 @@ function FieldCard({
       </dl>
       <p className="mt-3 text-sm">{field.reason}</p>
       {isGatedMatch(field) && onViewImage && <ViewPhotoButton onClick={onViewImage} />}
+      {onOverride && <ReviewControls field={field} override={override} onOverride={onOverride} />}
     </li>
   );
 }
@@ -136,32 +212,40 @@ export function ResultView({
   gatedByCompleteness = false,
   headingRef,
   onViewImage,
+  overrides,
+  onOverride,
 }: {
   result: VerifyResult;
-  /** The headline verdict (the comparison gated on completeness); defaults to the comparison's own. */
+  /** The headline verdict (comparison gated on completeness, recomputed after human overrides). */
   overall?: VerifyResult["overall"];
-  /** True when the 3 checks passed/were lenient but a missing required field made the verdict worse. */
   gatedByCompleteness?: boolean;
   headingRef?: Ref<HTMLHeadingElement>;
-  /** Opens the label image (the actual remedy for a fuzzy-read flag). Wired from VerifyForm. */
   onViewImage?: () => void;
+  /** Per-field human overrides, keyed by field. */
+  overrides?: Partial<Record<VerifyFieldKey, FieldOverride>>;
+  /** Records a human override (or clears it with `undefined`). When omitted, the cards are read-only. */
+  onOverride?: (key: VerifyFieldKey, value: FieldOverride | undefined) => void;
 }) {
   const headline = overall ?? result.overall;
+  const tone: Tone = toneForStatus(headline); // green / amber / red traffic-light
+  const OverallIcon = TONE_ICON[tone];
+  const solid = TONE_SOLID_VAR[tone];
 
-  // Why is the headline "Needs review"? If every flagged field is a value MATCH held only for a fuzzy
-  // photo read (no real discrepancy, not gated by a missing TTB element), the verdict is reassuring,
-  // not an alarm — render it calm (blue) with copy that says so, instead of the generic orange.
+  // The reassuring copy fires only while the review is purely fuzzy-read driven and the human hasn't
+  // flagged anything; the bubble stays amber (traffic-light) but the message says "almost there".
+  const anyFlagged = result.fields.some((f) => overrides?.[f.key] === "issue");
   const gatedMatches = result.fields.filter(isGatedMatch);
   const calmReadReview =
-    headline === "review" && !gatedByCompleteness && !hasRealConcern(result.fields) && gatedMatches.length > 0;
-
-  const tone: Tone = calmReadReview ? "verify" : toneForStatus(headline);
-  const OverallIcon = TONE_ICON[tone];
+    headline === "review" &&
+    !gatedByCompleteness &&
+    !hasRealConcern(result.fields) &&
+    !anyFlagged &&
+    gatedMatches.length > 0;
 
   const nextStep = calmReadReview
     ? `Everything you entered matched the label, with no mismatches found. We read ${
         gatedMatches.length === 1 ? "one value" : `${gatedMatches.length} values`
-      } from a slightly fuzzy photo, so a person should glance at the image to confirm before approving.`
+      } from a slightly fuzzy photo. Confirm the highlighted field${gatedMatches.length === 1 ? "" : "s"} below (or open the label image) to approve.`
     : NEXT_STEP[headline];
 
   return (
@@ -175,9 +259,16 @@ export function ResultView({
       </h2>
 
       <div
-        className={`flex items-start gap-4 rounded-card border-l-8 p-6 shadow-card motion-safe:animate-reveal ${TONE_TINT[tone]}`}
+        className={`flex items-start gap-4 rounded-card border-l-8 p-6 motion-safe:animate-reveal ${TONE_TINT[tone]}`}
+        style={{ boxShadow: `0 14px 38px -16px ${solid}, 0 1px 2px rgb(15 23 42 / 0.05)` }}
       >
-        {OverallIcon && <OverallIcon className="h-9 w-9 shrink-0" />}
+        <span
+          className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full shadow-sm"
+          style={{ backgroundColor: solid }}
+          aria-hidden="true"
+        >
+          {OverallIcon && <OverallIcon className="h-7 w-7 text-white" />}
+        </span>
         <div className="min-w-0">
           <p className="text-xs font-semibold uppercase tracking-wide opacity-80">Overall verdict</p>
           <p className="text-3xl font-bold tracking-tight">{VERDICT_LABEL[headline]}</p>
@@ -185,7 +276,7 @@ export function ResultView({
           {gatedByCompleteness && (
             <p className="mt-1.5 text-sm font-medium leading-relaxed">
               The label-vs-application values matched, but a field TTB requires for this beverage type is
-              missing or couldn&apos;t be read confidently. See the completeness check below.
+              missing or in the wrong format. See the completeness check below.
             </p>
           )}
           {calmReadReview && onViewImage && (
@@ -202,7 +293,14 @@ export function ResultView({
 
       <ul className="flex flex-col gap-3">
         {result.fields.map((field, i) => (
-          <FieldCard key={field.key} field={field} index={i} onViewImage={onViewImage} />
+          <FieldCard
+            key={field.key}
+            field={field}
+            index={i}
+            onViewImage={onViewImage}
+            override={overrides?.[field.key]}
+            onOverride={onOverride}
+          />
         ))}
       </ul>
     </section>

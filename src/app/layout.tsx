@@ -6,9 +6,10 @@ import "./globals.css";
 import { APP_TITLE, APP_DESCRIPTION } from "./constants";
 import { ThemeToggle } from "./ui/ThemeToggle";
 
-// Runs before hydration (next/script beforeInteractive) so the saved (or OS) theme is applied with no
-// flash of the wrong colors. Static, trusted literal — no user input.
-const NO_FLASH_THEME = `(function(){try{var t=localStorage.getItem('theme');if(t==='dark'||(!t&&window.matchMedia('(prefers-color-scheme: dark)').matches)){document.documentElement.classList.add('dark');}}catch(e){}})();`;
+// Runs before hydration (next/script beforeInteractive) so the saved theme is applied with no flash of
+// the wrong colors. Default is LIGHT; dark only applies when the agent explicitly chose it. Static,
+// trusted literal, no user input.
+const NO_FLASH_THEME = `(function(){try{if(localStorage.getItem('theme')==='dark'){document.documentElement.classList.add('dark');}}catch(e){}})();`;
 
 // Self-hosted at build time (no runtime network); display:swap avoids invisible-text on load.
 const inter = Inter({ subsets: ["latin"], display: "swap", variable: "--font-inter" });

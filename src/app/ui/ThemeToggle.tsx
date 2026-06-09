@@ -26,11 +26,15 @@ export function ThemeToggle() {
 
   function toggle() {
     const next = !dark;
-    document.documentElement.classList.toggle("dark", next); // the observer re-renders this control
+    const el = document.documentElement;
+    // Ease the colors between themes for ~320ms, then drop the class so nothing else transitions.
+    el.classList.add("theme-transition");
+    el.classList.toggle("dark", next); // the observer re-renders this control
+    window.setTimeout(() => el.classList.remove("theme-transition"), 320);
     try {
       localStorage.setItem("theme", next ? "dark" : "light");
     } catch {
-      /* private mode / storage disabled — the toggle still works for this session */
+      /* private mode / storage disabled, the toggle still works for this session */
     }
   }
 
