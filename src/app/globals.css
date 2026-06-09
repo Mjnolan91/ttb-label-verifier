@@ -90,9 +90,10 @@
 @layer base {
   body {
     font-family: var(--font-sans);
-    /* A calm, designed page backdrop (very subtle, high-contrast-safe). Tokenized so it follows the theme. */
-    background-image: radial-gradient(60rem 40rem at 50% -10%, var(--color-surface) 0%, var(--color-surface-muted) 60%);
-    background-attachment: fixed;
+    /* Solid backdrop (the bg-surface-muted utility) — a single flat color so the whole page eases
+     * evenly between themes. (A radial-gradient backdrop can't transition, so it used to snap while
+     * the cards faded; a solid color transitions in lockstep with everything else.) */
+    background-color: var(--color-surface-muted);
   }
 }
 
@@ -106,12 +107,14 @@
   html.theme-transition *,
   html.theme-transition *::before,
   html.theme-transition *::after {
+    /* One uniform duration + easing across every themed property, so nothing finishes ahead of the
+     * rest (uneven easing was the gradient backdrop snapping + colors finishing before backgrounds). */
     transition:
-      background-color 280ms ease,
-      border-color 280ms ease,
-      color 220ms ease,
-      fill 220ms ease,
-      box-shadow 280ms ease !important;
+      background-color 300ms ease,
+      border-color 300ms ease,
+      color 300ms ease,
+      fill 300ms ease,
+      box-shadow 300ms ease !important;
   }
 }
 

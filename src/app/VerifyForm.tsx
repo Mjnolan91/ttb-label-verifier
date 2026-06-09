@@ -31,6 +31,7 @@ import type { BeverageClass, ClaimedFields, RequirementKey } from "@/domain";
 import { ExtractedFieldsView } from "./ui/ExtractedFieldsView";
 import { CompletenessView } from "./ui/CompletenessView";
 import { ResultView, type FieldOverride } from "./ui/ResultView";
+import { DecisionPanel } from "./ui/DecisionPanel";
 import { PipelineSteps } from "./ui/PipelineSteps";
 import { CLASS_DISPLAY_LABEL } from "./ui/beverageClass";
 import { downscaleForUpload } from "./imageDownscale";
@@ -70,6 +71,19 @@ const KEY_LABEL: Record<RequirementKey, string> = {
   sulfiteDeclaration: "Sulfite declaration",
   ageStatement: "Age statement",
   appellation: "Appellation of origin",
+};
+
+/** A comparison field (VerifyFieldKey) -> the completeness element (RequirementKey) it stands for, so
+ *  a reviewer's confirm/flag on a card mirrors onto the supporting completeness row. */
+const FIELD_TO_REQUIREMENT: Record<VerifyFieldKey, RequirementKey> = {
+  brand: "brand",
+  classType: "classType",
+  alcohol: "alcoholContent",
+  netContents: "netContents",
+  name: "name",
+  address: "address",
+  countryOfOrigin: "countryOfOrigin",
+  warning: "governmentWarning",
 };
 
 /** The amber input treatment for a LOW-CONFIDENCE AI suggestion — the agent should scrutinise it
@@ -211,6 +225,25 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
     ? worstVerdict(effectiveComparison, completenessGate)
     : (combined?.overall ?? null);
   const effectiveGatedByCompleteness = Boolean(effectiveComparison) && effectiveOverall !== effectiveComparison;
+
+  // The same overrides, keyed for the completeness rows, so the supporting check tracks the human's calls.
+  const completenessOverrides: Partial<Record<RequirementKey, FieldOverride>> = {};
+  for (const key of Object.keys(fieldOverrides) as VerifyFieldKey[]) {
+    const v = fieldOverrides[key];
+    if (v) completenessOverrides[FIELD_TO_REQUIREMENT[key]] = v;
+  }
+
+  // Outstanding items for the decision email: the compared fields not resolved to OK (a flagged, failing
+  // or still-review field). Empty once everything is resolved or approved.
+  const decisionIssues = combined?.verify
+    ? combined.verify.fields
+        .filter((f) => {
+          const o = fieldOverrides[f.key];
+          const eff = o === "ok" ? "pass" : o === "issue" ? "fail" : f.status;
+          return eff !== "pass";
+        })
+        .map((f) => f.label)
+    : [];
 
   // Accept the AI's grey suggestion for one field by pressing Tab while it's empty (the agent confirms
   // the read as the application value) — fast, but deliberate, so an unaccepted required field still blocks.
@@ -371,7 +404,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
         <div className="grid gap-4 sm:grid-cols-2">
           {(["front", "back"] as const).map((key) => {
             const img = slots[key];
-            const label = key === "front" ? "Front label" : "Back label";
+            const label = key === "front" ? "Front / full label" : "Back label";
             return (
               <div key={key}>
                 <span className="mb-1.5 block text-sm font-medium text-ink">
@@ -409,7 +442,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
                   <DropZone
                     id={`${ids.image}-${key}`}
                     multiple={false}
-                    ariaLabel={key === "front" ? "Upload front label (required)" : "Upload back label (optional)"}
+                    ariaLabel={key === "front" ? "Upload front or full label (required)" : "Upload back label (optional)"}
                     onFiles={(files) => files[0] && setSlot(key, files[0])}
                     describedById={ids.imageHelp}
                   />
@@ -522,7 +555,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
       {/* The order-of-operations spine: read the label → AI confidence → compare → verdict. */}
       {pipelineStage && (
         <div className="mt-8 border-t border-border pt-6">
-          <PipelineSteps stage={pipelineStage} />
+          <PipelineSteps stage={pipelineStage} verdict={effectiveOverall ?? undefined} />
         </div>
       )}
 
@@ -569,8 +602,9 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
                 <summary className="min-h-[44px] cursor-pointer py-2 text-sm font-semibold text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2">
                   Supporting check: TTB completeness
                 </summary>
-                <CompletenessView completeness={combined.completeness} />
+                <CompletenessView completeness={combined.completeness} overrides={completenessOverrides} />
               </details>
+              <DecisionPanel verdict={effectiveOverall ?? "review"} brand={claimBrand} issues={decisionIssues} />
             </>
           ) : (
             <section aria-label="Complete the application" className="mt-6 flex flex-col gap-4">

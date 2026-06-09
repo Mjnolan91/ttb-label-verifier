@@ -105,18 +105,24 @@ describe("ResultView — at-a-glance label-vs-application verdict", () => {
     expect(q.getAllByText("View label photo").length).toBeGreaterThan(0);
   });
 
-  it("offers a per-field resolution control and records 'Looks correct' (resolve a false flag)", () => {
+  it("offers 'Looks correct' on a FLAGGED field and records resolving it (false positive)", () => {
     const onOverride = vi.fn();
-    const q = within(render(<ResultView result={makeResult(CORE, "approve")} onOverride={onOverride} />).container);
+    const flagged: VerifyField[] = [
+      { key: "brand", label: "Brand name", status: "review", claimed: "X", extracted: "Y", reason: "close, not identical" },
+      CORE[1],
+      CORE[2],
+    ];
+    const q = within(render(<ResultView result={makeResult(flagged, "review")} overall="review" onOverride={onOverride} />).container);
     const brandCard = q.getByText("Brand name").closest("li")!;
     fireEvent.click(within(brandCard).getByRole("button", { name: /Looks correct/i }));
     expect(onOverride).toHaveBeenCalledWith("brand", "ok");
   });
 
-  it("lets a person flag a field the AI passed (false negative) as a problem", () => {
+  it("a CLEAN match shows only a quiet 'Flag a problem' (no 'Looks correct' clutter), and records it", () => {
     const onOverride = vi.fn();
     const q = within(render(<ResultView result={makeResult(CORE, "approve")} onOverride={onOverride} />).container);
     const brandCard = q.getByText("Brand name").closest("li")!;
+    expect(within(brandCard).queryByRole("button", { name: /Looks correct/i })).toBeNull();
     fireEvent.click(within(brandCard).getByRole("button", { name: /Flag a problem/i }));
     expect(onOverride).toHaveBeenCalledWith("brand", "issue");
   });

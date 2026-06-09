@@ -37,6 +37,9 @@ export interface CompletenessElement {
   detail: string;
   /** The extracted value, when present. */
   value?: string;
+  /** True when this element was FOUND but at low read confidence — the driver of an overall `review`.
+   *  A human confirming the field resolves it (the supporting check recomputes to `complete`). */
+  lowConfidence?: boolean;
 }
 
 export interface CompletenessResult {
@@ -207,7 +210,8 @@ export function checkCompleteness(extracted: ExtractedFields): CompletenessResul
         ...base(spec),
         status: "present",
         value,
-        detail: lowConf ? `Found (low confidence — verify): "${value}"` : `Found: "${value}"`,
+        lowConfidence: lowConf,
+        detail: lowConf ? `Found (low confidence, verify): "${value}"` : `Found: "${value}"`,
       };
     }
     // Absent value. Alcohol content is class-specific (table-wine substitution; malt optional).

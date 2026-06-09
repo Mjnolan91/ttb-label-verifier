@@ -151,6 +151,28 @@ function ReviewControls({
   );
 }
 
+/** For a CLEAN, passing field we don't show the full resolve/flag pair (it would clutter every match);
+ *  just a quiet "Flag a problem" so a false negative the AI missed can still be raised. */
+function SubtleFlag({
+  fieldKey,
+  onOverride,
+}: {
+  fieldKey: VerifyFieldKey;
+  onOverride: (key: VerifyFieldKey, value: FieldOverride | undefined) => void;
+}) {
+  return (
+    <div className="mt-3 border-t border-current/15 pt-2.5">
+      <button
+        type="button"
+        onClick={() => onOverride(fieldKey, "issue")}
+        className="inline-flex min-h-[32px] items-center gap-1.5 text-xs font-semibold text-ink-muted transition hover:text-fail-700 focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700"
+      >
+        <IconFail className="h-3.5 w-3.5" /> Flag a problem
+      </button>
+    </div>
+  );
+}
+
 function FieldCard({
   field,
   index,
@@ -201,7 +223,14 @@ function FieldCard({
       </dl>
       <p className="mt-3 text-sm">{field.reason}</p>
       {isGatedMatch(field) && onViewImage && <ViewPhotoButton onClick={onViewImage} />}
-      {onOverride && <ReviewControls field={field} override={override} onOverride={onOverride} />}
+      {/* Full resolve/flag controls only when there IS a flag (or the human already acted); a clean
+          match shows just a quiet "Flag a problem" so the screen stays calm. */}
+      {onOverride &&
+        (aiTone(field) !== "pass" || override ? (
+          <ReviewControls field={field} override={override} onOverride={onOverride} />
+        ) : (
+          <SubtleFlag fieldKey={field.key} onOverride={onOverride} />
+        ))}
     </li>
   );
 }
