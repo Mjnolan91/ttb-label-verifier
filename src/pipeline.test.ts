@@ -149,16 +149,16 @@ describe("runExtraction — self-consistency + bold-pass", () => {
     expect(out.warningPrefixIsBold).toBe(true);
   });
 
-  it("bold-pass is skipped when no warning is present — flag left as-is", async () => {
+  it("bold verdict is NOT applied when no warning is present (pass runs speculatively in parallel, result discarded)", async () => {
     const noWarn = fields({ brand: "XYZ", warningPrefixIsBold: null, confidence: { brand: 0.95 } });
-    let boldCalled = false;
     const boldProvider: VisionProvider = {
       name: "mock",
       extract: (_img: ImageInput) => Promise.resolve(noWarn),
-      judgeWarningBold: async (_img: ImageInput) => { boldCalled = true; return true; },
+      judgeWarningBold: async (_img: ImageInput) => true,
     };
     const { extracted: out } = await runExtraction([boldProvider], [img("front.jpg")]);
-    expect(boldCalled).toBe(false);
+    // The bold pass now runs concurrently with extraction (for latency), but its verdict is only
+    // applied when a warning was actually read — here there is none, so the flag stays as-is.
     expect(out.warningPrefixIsBold).toBeNull();
   });
 
