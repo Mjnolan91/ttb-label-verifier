@@ -208,14 +208,14 @@
       "id": "abc-rye-clean-real-image",
       "imageFilename": "abc-single-barrel-clean.jpg",
       "claimed": {
-        "brand": "ABC",
+        "brand": "ABC Distillery",
         "classType": "distilled-spirits",
         "beverageClass": "Distilled spirits",
         "alcoholContent": "45% Alc./Vol.",
         "netContents": "750 mL"
       },
       "extracted": {
-        "brand": { "value": "ABC", "confidence": 0.97 },
+        "brand": { "value": "ABC Distillery", "confidence": 0.97 },
         "classType": { "value": "Straight Rye Whisky", "confidence": 0.96 },
         "alcoholContent": { "value": "45% Alc./Vol.", "confidence": 0.97 },
         "netContents": { "value": "750 mL", "confidence": 0.96 },
@@ -233,7 +233,7 @@
         "perField": { "brand": "pass", "alcohol": "pass", "warning": "pass" },
         "overall": "approve"
       },
-      "notes": "The one REAL label image (not an SVG placeholder): ABC Distillery 'Single Barrel' Straight Rye Whisky, front+back artwork at eval/fixtures/images/abc-single-barrel-clean.jpg. Brand 'ABC' matches verbatim. Alcohol is 45% Alc./Vol. with NO proof printed -- a proof-absent label, so the comparator must treat proof as OPTIONAL and skip the proof = 2x ABV cross-check when it is absent (45 == 45 is trivially inside the distilled-spirits +/-0.3 pp tolerance, 27 CFR 5.65(c)). The government warning is the exact canonical text with an all-caps, bold 'GOVERNMENT WARNING:' prefix. Every field passes -> approve. This is the real-image demo case a reviewer can upload at the live URL and see verified end to end in mock mode (the mock keys off this filename)."
+      "notes": "The one REAL label image (not an SVG placeholder): ABC Distillery 'Single Barrel' Straight Rye Whisky, front+back artwork at eval/fixtures/images/abc-single-barrel-clean.jpg. Brand is 'ABC Distillery' (TTB producer-is-the-brand rule: the big 'ABC' masthead is an acronym of the producer 'ABC DISTILLERY', not a separate brand, so the full producer name is the brand). Alcohol is 45% Alc./Vol. with NO proof printed -- a proof-absent label, so the comparator must treat proof as OPTIONAL and skip the proof = 2x ABV cross-check when it is absent (45 == 45 is trivially inside the distilled-spirits +/-0.3 pp tolerance, 27 CFR 5.65(c)). The government warning is the exact canonical text with an all-caps, bold 'GOVERNMENT WARNING:' prefix. Every field passes -> approve. This is the real-image demo case a reviewer can upload at the live URL and see verified end to end in mock mode (the mock keys off this filename)."
     },
     {
       "id": "demo-clean-approve",

@@ -299,6 +299,38 @@ describe("VerifyForm — verify against the application", () => {
     expect(composer.value).toMatch(/Brand misspelled on the label\./);
   });
 
+  it("clears the typed application when the front label is removed (a new product, not stuck on the last image)", ASYNC, async () => {
+    mockFetch(READ_OK());
+    const { container } = render(<VerifyForm />);
+    const q = within(container);
+    dropLabelImage(container);
+    await q.findByText("Complete the application to verify");
+    fireEvent.click(q.getByRole("button", { name: /Accept all AI suggestions/i }));
+    expect((q.getByLabelText(/^Brand/i) as HTMLInputElement).value).toBe("Old Tom Distillery");
+    // Removing the front (the realistic "replace" = Remove + re-add) drops the old application.
+    fireEvent.click(q.getByRole("button", { name: /^Remove$/i }));
+    expect((q.getByLabelText(/^Brand/i) as HTMLInputElement).value).toBe("");
+  });
+
+  it("lets a reviewer clear a low-confidence field and Tab past it without the suggestion being forced back", ASYNC, async () => {
+    const fuzzy = extractedBourbon({
+      confidence: { brand: 0.55, classType: 0.97, alcoholContent: 0.98, netContents: 0.96, name: 0.95, address: 0.95, warningText: 0.96 },
+    });
+    mockFetch(READ_OK(fuzzy));
+    const { container } = render(<VerifyForm />);
+    const q = within(container);
+    dropLabelImage(container);
+    await q.findByText("Complete the application to verify");
+    const brand = q.getByLabelText(/^Brand/i) as HTMLInputElement;
+    // Untouched: Tab still accepts the suggestion (the accelerator works).
+    fireEvent.keyDown(brand, { key: "Tab" });
+    expect(brand.value).toBe("Old Tom Distillery");
+    // Clear it, then Tab again -> it stays empty (a touched field isn't re-injected against the reviewer).
+    fireEvent.change(brand, { target: { value: "" } });
+    fireEvent.keyDown(brand, { key: "Tab" });
+    expect(brand.value).toBe("");
+  });
+
   it("shows two explicit upload slots (front + back), each with its own file input", () => {
     const { container } = render(<VerifyForm />);
     expect(container.querySelectorAll('input[type="file"]')).toHaveLength(2);

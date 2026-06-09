@@ -72,10 +72,16 @@ export const FIELD_CATALOG: readonly FieldDescriptor[] = [
       "with it. Do NOT fold any of these into the brand: (a) the class/type designation (e.g. \"Rum\", " +
       "\"Straight Rye Whisky\" -> that is classType); (b) a distinctive or fanciful / \"sell\" name or descriptive " +
       "phrase (e.g. \"Spiced Rum\", \"Single Barrel\", \"Small Batch\", \"Reserve\") -> those are NOT the brand " +
-      "name; (c) marketing puffery (\"Superior\", \"Premium\", \"Smooth\"). When the masthead pairs a brand with a " +
-      "separate, longer producer name (brand \"ABC\" + producer \"ABC Distillery\"), put the brand in `brand` and " +
-      "the producer in `name`. Transcribe verbatim; do not normalize. If unsure where a word belongs, lower the " +
-      "confidence so a person can confirm.",
+      "name; (c) marketing puffery (\"Superior\", \"Premium\", \"Smooth\"). A masthead that is the producer " +
+      "company name OR AN ACRONYM / INITIALS / SHORTENING of it (e.g. a large \"ABC\" above the line " +
+      "\"DISTILLED AND BOTTLED BY: ABC DISTILLERY\") is NOT a separate brand — the product has no distinct " +
+      "brand, so put the FULL producer company name in BOTH `brand` AND `name` (brand \"ABC Distillery\", name " +
+      "\"ABC Distillery\"). Only treat the masthead as the brand when it is a genuinely INDEPENDENT name that " +
+      "is NOT the producer and NOT an abbreviation of it (e.g. masthead \"Stone's Throw\" with producer \"Acme " +
+      "Spirits Co.\" -> brand \"Stone's Throw\", name \"Acme Spirits Co.\"). Test: would the masthead read as " +
+      "the company name, or is it the company's initials / short form? If the latter, brand = the full producer " +
+      "name. Transcribe verbatim; do not normalize. If unsure where a word belongs, lower the confidence so a " +
+      "person can confirm.",
   },
   {
     key: "classType", rawKey: "classType", confKey: "classType", label: "Class / type", csvColumn: "type", group: "headline",

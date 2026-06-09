@@ -23,7 +23,8 @@ describe("MockVisionProvider — known fixtures (filename-keyed)", () => {
 
   it("replays the real-image fixture with proof ABSENT (proof is optional)", async () => {
     const r = await mock.extract({ filename: "abc-single-barrel-clean.jpg" });
-    expect(r.brand).toBe("ABC");
+    expect(r.brand).toBe("ABC Distillery"); // TTB producer-is-the-brand: the "ABC" masthead is its acronym
+    expect(r.name).toBe("ABC Distillery");
     expect(r.alcoholContentText).toBe("45% Alc./Vol."); // no "(N Proof)" printed
     expect(r.warningPrefixIsAllCaps).toBe(true);
     expect(r.warningPrefixIsBold).toBe(true);

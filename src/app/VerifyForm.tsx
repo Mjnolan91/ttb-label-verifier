@@ -115,6 +115,30 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
   function setNote(key: VerifyFieldKey, text: string) {
     setFieldNotes((prev) => setFieldNote(prev, key, text));
   }
+  // The application inputs persist across a re-read of the SAME label (no retyping). But when the FRONT
+  // label is removed/replaced the product itself is changing, so the old typed application + beverage-type
+  // override must be dropped — otherwise the new image is verified against the previous product's values
+  // ("stuck on the last image"). Also drop which suggestions were dismissed (see editedInputs).
+  function resetApplication() {
+    setClaimBrand("");
+    setClaimAlcohol("");
+    setClaimClass("");
+    setClaimNet("");
+    setClaimName("");
+    setClaimAddress("");
+    setClaimCountry("");
+    setClaimFanciful("");
+    setClaimSoc("");
+    setClassChoice(null);
+    setEditedInputs(new Set());
+  }
+  // Inputs the agent has explicitly edited/cleared. A touched suggestion must NOT be re-injected by
+  // Tab-to-accept, so a low-confidence field a reviewer wants to leave blank stays blank (once touched it
+  // stays "edited" for this read; a fresh read clears the whole set).
+  const [editedInputs, setEditedInputs] = useState<Set<string>>(new Set());
+  function markEdited(id: string) {
+    setEditedInputs((prev) => (prev.has(id) ? prev : new Set(prev).add(id)));
+  }
   // The image currently shown full-size in the lightbox, if any.
   const [zoom, setZoom] = useState<{ src: string; alt: string } | null>(null);
 
@@ -218,8 +242,10 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
 
   // Accept the AI's grey suggestion for one field by pressing Tab while it's empty (the agent confirms
   // the read as the application value) — fast, but deliberate, so an unaccepted required field still blocks.
-  function acceptOnTab(e: KeyboardEvent<HTMLInputElement>, value: string, suggestion: string | undefined, set: (v: string) => void) {
-    if (e.key === "Tab" && !e.shiftKey && value.trim() === "" && suggestion && suggestion.trim()) {
+  function acceptOnTab(e: KeyboardEvent<HTMLInputElement>, id: string, value: string, suggestion: string | undefined, set: (v: string) => void) {
+    // Only auto-accept an UNTOUCHED suggested field. Once the reviewer has edited/cleared it, Tab must
+    // not force the (possibly wrong, low-confidence) suggestion back in — they can leave it blank or fix it.
+    if (e.key === "Tab" && !e.shiftKey && value.trim() === "" && !editedInputs.has(id) && suggestion && suggestion.trim()) {
       set(suggestion.trim());
     }
   }
@@ -285,11 +311,14 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
       }
       const next = { ...prev, [key]: undefined };
       const imgs = orderedImagesOf(next);
+      // Clearing the FRONT (the product anchor) or removing the last image starts a NEW product — drop the
+      // typed application + beverage-type override so the next label isn't verified against the old one.
+      // (The realistic "replace" is Remove + re-add, since a filled slot shows Remove, not a drop zone.)
+      if (key === "front" || imgs.length === 0) resetApplication();
       if (imgs.length === 0) {
         readToken.current++; // cancel any in-flight read
         setState("idle");
         setResponse(null);
-        setClassChoice(null); // a fresh session: drop any beverage-type override
       } else {
         void read(imgs);
       }
@@ -507,14 +536,17 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
                   id={f.id}
                   type="text"
                   value={f.value}
-                  onChange={(e) => f.set(e.target.value)}
-                  onKeyDown={(e) => acceptOnTab(e, f.value, f.suggestion, f.set)}
-                  placeholder={hasSuggestion ? f.suggestion : undefined}
+                  onChange={(e) => {
+                    f.set(e.target.value);
+                    markEdited(f.id);
+                  }}
+                  onKeyDown={(e) => acceptOnTab(e, f.id, f.value, f.suggestion, f.set)}
+                  placeholder={hasSuggestion && !editedInputs.has(f.id) ? f.suggestion : undefined}
                   required={required}
                   aria-required={required}
                   className={lowConf ? LOW_CONF_INPUT : inputClass}
                 />
-                {f.value.trim() === "" && hasSuggestion && (
+                {f.value.trim() === "" && hasSuggestion && !editedInputs.has(f.id) && (
                   <span className="mt-1 block text-xs text-ink-muted">
                     Suggested from the label. Press Tab to accept.
                   </span>
