@@ -47,6 +47,27 @@ describe("checkCompleteness — internal validity (no application value needed)"
   });
 });
 
+describe("checkCompleteness — net contents standards of fill (27 CFR 5.203/4.72/7.70)", () => {
+  it("accepts an authorized spirits fill (750 mL) as present", () => {
+    expect(statusOf(checkCompleteness(ds({ netContents: "750 mL" })), "netContents")).toBe("present");
+  });
+  it("flags a non-authorized spirits fill (800 mL) as malformed -> incomplete", () => {
+    const r = checkCompleteness(ds({ netContents: "800 mL" }));
+    expect(statusOf(r, "netContents")).toBe("malformed");
+    expect(r.overall).toBe("incomplete");
+  });
+  it("flags a spirits/wine net contents stated without metric (US units only)", () => {
+    expect(statusOf(checkCompleteness(ds({ netContents: "25.4 FL OZ" })), "netContents")).toBe("malformed");
+  });
+  it("malt beverages: US-customary is fine (no standard of fill); metric-only is flagged", () => {
+    const malt = (nc: string) =>
+      checkCompleteness(ds({ classType: "India Pale Ale", alcoholContentText: "5% Alc./Vol.", netContents: nc }));
+    expect(statusOf(malt("12 FL OZ"), "netContents")).toBe("present");
+    expect(statusOf(malt("19.2 FL OZ"), "netContents")).toBe("present"); // odd size is lawful for malt
+    expect(statusOf(malt("355 mL"), "netContents")).toBe("malformed");
+  });
+});
+
 describe("checkCompleteness", () => {
   it("a fully-compliant distilled-spirits label is complete (absent conditionals don't downgrade)", () => {
     const r = checkCompleteness(ds());
@@ -133,6 +154,7 @@ describe("checkCompleteness", () => {
       ds({
         classType: "India Pale Ale",
         alcoholContentText: undefined,
+        netContents: "12 FL OZ", // malt beverages state net contents in US-customary units (27 CFR 7.70)
         confidence: { ...ds().confidence, alcoholContent: undefined },
       }),
     );
@@ -174,6 +196,7 @@ describe("checkCompleteness", () => {
       ds({
         classType: "Non-Alcoholic Malt Beverage",
         alcoholContentText: "0.3% Alc./Vol.",
+        netContents: "12 FL OZ", // malt beverages state net contents in US-customary units (27 CFR 7.70)
         warningText: undefined,
         warningPrefixIsAllCaps: false,
         warningPrefixIsBold: null,

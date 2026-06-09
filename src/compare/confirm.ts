@@ -14,7 +14,7 @@ import type { FieldStatus } from "./types";
 import { overallVerdict } from "./verify";
 import type { OverallVerdict } from "./verify";
 import { fieldFor, evaluateWarningElement, evaluateAbsentAlcohol } from "./completeness";
-import { compareBrand, compareAlcohol, checkAlcoholInternalConsistency } from "./comparators";
+import { compareBrand, compareAlcohol, checkAlcoholInternalConsistency, validateNetContents } from "./comparators";
 import { resolveBeverageClass, parseAlcoholText } from "./alcohol";
 import { FIELD_REVIEW_CONFIDENCE } from "./thresholds";
 import { normalizeText } from "./text";
@@ -155,6 +155,11 @@ export function confirmVerdict(
       spec.key === "alcoholContent" && present
         ? checkAlcoholInternalConsistency(extracted.alcoholContentText, extracted.classType ?? extracted.class, beverageClass)
         : null;
+    // Net contents must be a valid quantity in the right unit system + an authorized standard of fill;
+    // like the alcohol check, this is a label defect confirmation can't cure -> review (not pass).
+    const netContentsProblem =
+      spec.key === "netContents" && present ? validateNetContents(aiValue, beverageClass) : null;
+    const presentProblem = alcoholProblem ?? netContentsProblem;
 
     if (c.state === "edited") {
       const edited = (c.editedValue ?? "").trim();
@@ -175,8 +180,8 @@ export function confirmVerdict(
     }
 
     if (c.state === "accepted" && present) {
-      if (alcoholProblem) {
-        return { ...base, value: aiValue, flagged: true, needsConfirmation: false, status: "review", reason: alcoholProblem };
+      if (presentProblem) {
+        return { ...base, value: aiValue, flagged: true, needsConfirmation: false, status: "review", reason: presentProblem };
       }
       return { ...base, value: aiValue, flagged: lowConf, needsConfirmation: false, status: "pass",
         reason: "Confirmed: matches the application." };
@@ -197,8 +202,8 @@ export function confirmVerdict(
         return { ...base, value: aiValue, flagged: true, needsConfirmation: true, status: "review",
           reason: "The AI wasn't fully sure it read this correctly — confirm it or type the right value." };
       }
-      if (alcoholProblem) {
-        return { ...base, value: aiValue, flagged: true, needsConfirmation: true, status: "review", reason: alcoholProblem };
+      if (presentProblem) {
+        return { ...base, value: aiValue, flagged: true, needsConfirmation: true, status: "review", reason: presentProblem };
       }
       return { ...base, value: aiValue, flagged: false, needsConfirmation: false, status: "pass",
         reason: "Read confidently from the label." };

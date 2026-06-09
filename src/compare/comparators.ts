@@ -12,6 +12,8 @@ import {
   isWarningRequired,
   selectToleranceFor,
   abvToProof,
+  parseNetContents,
+  isAuthorizedFill,
   type BeverageClass,
 } from "@/domain";
 import type { FieldResult } from "./types";
@@ -263,6 +265,42 @@ export function checkAlcoholInternalConsistency(
     return `"Low/reduced alcohol" malt beverages must be under 2.5% ABV (27 CFR 7.65(d)).`;
   }
   return null;
+}
+
+/**
+ * Net contents — class-specific. Validates the stated quantity (not just presence):
+ *   - the unit SYSTEM is mandated per class — metric for distilled spirits (27 CFR 5.71) and wine
+ *     (27 CFR 4.73); US-customary for malt beverages (27 CFR 7.70);
+ *   - the SIZE must be an authorized standard of fill for distilled spirits (27 CFR 5.203) and wine
+ *     (27 CFR 4.72); malt beverages have NO standard of fill (any size is lawful).
+ * Returns a human-readable reason when the stated net contents is non-compliant on its face, else
+ * null. A non-listed metric SIZE is surfaced (review) rather than asserted impossible — TTB adds sizes.
+ */
+export function validateNetContents(value: string | undefined, cls: BeverageClass): string | null {
+  const nc = parseNetContents(value);
+  if (!nc.parsed) {
+    return "Net contents is not a recognizable quantity with a unit (e.g. \"750 mL\" or \"12 FL OZ\").";
+  }
+  if (cls === "maltBeverage") {
+    // No standard of fill for malt; only the US-customary statement is required (27 CFR 7.70).
+    if (!nc.hasUsCustomary) {
+      return "Malt beverages must state net contents in US-customary units, e.g. fluid ounces (27 CFR 7.70).";
+    }
+    return null;
+  }
+  if (cls === "distilledSpirits" || cls === "wineUnder14" || cls === "wineOver14" || cls === "cider") {
+    const kind = cls === "distilledSpirits" ? "spirits" : "wine";
+    const metricCite = kind === "spirits" ? "27 CFR 5.71" : "27 CFR 4.73";
+    const fillCite = kind === "spirits" ? "27 CFR 5.203" : "27 CFR 4.72";
+    if (nc.ml === undefined) {
+      return `${kind === "spirits" ? "Distilled spirits" : "Wine"} must state net contents in metric (mL or L) (${metricCite}).`;
+    }
+    if (!isAuthorizedFill(nc.ml, kind)) {
+      return `${nc.ml} mL is not an authorized standard of fill for ${kind === "spirits" ? "distilled spirits" : "wine"} (${fillCite}) — confirm the container size.`;
+    }
+    return null;
+  }
+  return null; // unknown class — don't assert a rule we can't determine
 }
 
 /**

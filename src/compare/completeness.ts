@@ -11,7 +11,7 @@ import type { BeverageClass, ExtractedFields, RequirementKey, RequirementSpec } 
 import { mandatoryElementsFor, isWarningRequired, CANONICAL_GOVERNMENT_WARNING } from "@/domain";
 import { parseAlcoholText, resolveBeverageClass } from "./alcohol";
 import { normalizeWarning } from "./text";
-import { checkAlcoholInternalConsistency } from "./comparators";
+import { checkAlcoholInternalConsistency, validateNetContents } from "./comparators";
 import { FIELD_REVIEW_CONFIDENCE } from "./thresholds";
 
 /** The ABV parsed from the as-written alcohol statement, or undefined if absent/unparseable.
@@ -187,6 +187,12 @@ export function checkCompleteness(extracted: ExtractedFields): CompletenessResul
       // even with no application value to compare against — otherwise an impossible label reads "complete".
       if (spec.key === "alcoholContent") {
         const problem = checkAlcoholInternalConsistency(extracted.alcoholContentText, classText, beverageClass);
+        if (problem) return { ...base(spec), status: "malformed", value, detail: problem };
+      }
+      // Net contents must be a valid quantity in the class-mandated unit system AND (spirits/wine) an
+      // authorized standard of fill — presence alone is not compliance (27 CFR 5.203/5.71, 4.72/4.73, 7.70).
+      if (spec.key === "netContents") {
+        const problem = validateNetContents(value, beverageClass);
         if (problem) return { ...base(spec), status: "malformed", value, detail: problem };
       }
       const lowConf = confidence === undefined || confidence < FIELD_REVIEW_CONFIDENCE;
