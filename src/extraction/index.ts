@@ -42,6 +42,7 @@ export {
 } from "./reconcile";
 export { aggregateSamples, selfConsistentExtract } from "./selfConsistency";
 export { resolveSelfConsistencySamples } from "./config";
+export { aggregateBoldVotes, combineBoldSignals } from "./boldJudgment";
 
 import type { VisionProvider } from "./VisionProvider";
 import { MockVisionProvider } from "./MockVisionProvider";

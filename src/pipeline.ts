@@ -6,7 +6,7 @@
  * evaluation measures the exact production pipeline.
  */
 import type { ClaimedFields, ExtractedFields } from "@/domain";
-import { selfConsistentExtract, resolveSelfConsistencySamples, mergeExtracted, isAbortOrTimeout, type ImageInput, type VisionProvider } from "@/extraction";
+import { selfConsistentExtract, resolveSelfConsistencySamples, mergeExtracted, isAbortOrTimeout, aggregateBoldVotes, combineBoldSignals, type ImageInput, type VisionProvider } from "@/extraction";
 import { verifyLabel, isExtractionReadable, type VerifyResult } from "@/compare";
 
 export interface ExtractionOutcome {
@@ -38,12 +38,19 @@ export async function runExtraction(
   // starting it just stacks a whole model round-trip onto the latency budget. Start both at once and
   // apply the bold verdict afterward, only when a warning was actually read. (Trade-off: on a label
   // with no warning the speculative bold call is wasted — but a warning is mandatory on TTB labels
-  // ≥0.5% ABV, so this nets a large latency win for the common case.)
+  // ≥0.5% ABV, so this nets a large latency win for the common case.) The bold pass is SAMPLED N times
+  // per image (self-consistency) and majority-voted, since a false "not bold" hard-fails the warning.
   const bolder = providers.find((p) => typeof p.judgeWarningBold === "function");
   const [settled, boldVerdicts] = await Promise.all([
     Promise.allSettled(images.map((img) => selfConsistentExtract(providers, img, timeoutMs, samples))),
     bolder
-      ? Promise.all(images.map((img) => bolder.judgeWarningBold!(img).catch(() => null)))
+      ? Promise.all(
+          images.map((img) =>
+            Promise.all(
+              Array.from({ length: samples }, () => bolder.judgeWarningBold!(img).catch(() => null)),
+            ).then(aggregateBoldVotes),
+          ),
+        )
       : Promise.resolve<(boolean | null)[]>([]),
   ]);
 
@@ -61,11 +68,14 @@ export async function runExtraction(
 
   const extracted = reads.reduce((acc, cur) => mergeExtracted(acc, cur));
 
-  // Apply the dedicated bold judgment ONLY when a warning was actually read. The warning may be on
-  // the back label, so take the first non-null verdict across the images.
-  if (extracted.warningText && extracted.warningText.trim() !== "") {
-    const verdict = boldVerdicts.find((v) => v !== null) ?? null;
-    if (verdict !== null) extracted.warningPrefixIsBold = verdict;
+  // Apply the dedicated bold judgment ONLY when a warning was read AND a judge actually ran. The warning
+  // may be on the back label, so take the first non-null verdict across images. COMBINE it with the
+  // extraction model's own bold flag rather than clobbering: "not bold" (the hard-fail signal) holds only
+  // when both agree, so one weak visual judgment can't reject a compliant label. (No judge -> leave the
+  // extraction flag untouched, keeping the offline mock + eval deterministic.)
+  if (bolder && extracted.warningText && extracted.warningText.trim() !== "") {
+    const judge = boldVerdicts.find((v) => v !== null) ?? null;
+    extracted.warningPrefixIsBold = combineBoldSignals(extracted.warningPrefixIsBold, judge);
   }
 
   return { readable: isExtractionReadable(extracted), extracted };

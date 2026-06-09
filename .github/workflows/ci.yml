@@ -1,0 +1,27 @@
+name: CI
+
+# The load-bearing feedback loop, run on every push/PR to main. Everything runs OFFLINE on the mock
+# provider — no API keys, no network — so the gate is deterministic. `npm run eval` is a hard gate: it
+# exits non-zero if approve-precision drops below the floor (0.98), failing the build (a false approval
+# is the one error class we refuse to ship).
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  gate:
+    name: typecheck · lint · test · eval · build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20" # matches package.json engines (>=20.9.0)
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run eval
+      - run: npm run build

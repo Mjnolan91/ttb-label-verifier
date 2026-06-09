@@ -178,4 +178,39 @@ describe("runExtraction — self-consistency + bold-pass", () => {
     const { extracted: out } = await runExtraction([plainProvider], [img("front.jpg")]);
     expect(out.warningPrefixIsBold).toBeNull();
   });
+
+  it("hard-fails 'not bold' only when BOTH the extraction flag and the judge agree", async () => {
+    const extracted = fields({
+      brand: "XYZ",
+      warningText: CANONICAL_GOVERNMENT_WARNING,
+      warningPrefixIsAllCaps: true,
+      warningPrefixIsBold: false,
+      confidence: { brand: 0.95, warningText: 0.95 },
+    });
+    const provider: VisionProvider = {
+      name: "mock",
+      extract: (_img: ImageInput) => Promise.resolve(extracted),
+      judgeWarningBold: async (_img: ImageInput) => false,
+    };
+    const { extracted: out } = await runExtraction([provider], [img("front.jpg")]);
+    expect(out.warningPrefixIsBold).toBe(false);
+  });
+
+  it("softens a lone 'not bold' to null (no false reject) when the judge cannot confirm it", async () => {
+    const extracted = fields({
+      brand: "XYZ",
+      warningText: CANONICAL_GOVERNMENT_WARNING,
+      warningPrefixIsAllCaps: true,
+      warningPrefixIsBold: false,
+      confidence: { brand: 0.95, warningText: 0.95 },
+    });
+    const provider: VisionProvider = {
+      name: "mock",
+      extract: (_img: ImageInput) => Promise.resolve(extracted),
+      judgeWarningBold: async (_img: ImageInput) => null,
+    };
+    const { extracted: out } = await runExtraction([provider], [img("front.jpg")]);
+    // Extraction alone said "not bold" but the dedicated judge can't confirm -> surfaced, not hard-failed.
+    expect(out.warningPrefixIsBold).toBeNull();
+  });
 });
