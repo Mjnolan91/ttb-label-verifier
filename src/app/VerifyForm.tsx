@@ -370,7 +370,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
 
       {/* Step 1 — upload into explicit Front / Back slots */}
       <div className="mt-6">
-        <h3 className="mb-1.5 block font-medium text-ink">1. Label images</h3>
+        <h3 className="mb-1.5 block font-medium text-ink">Step 1 · Label images</h3>
         <p id={ids.imageHelp} className="sr-only">
           Upload the front label (required) and optionally the back label. Click an image to enlarge it.
         </p>
@@ -431,7 +431,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
           Every field TTB requires for the beverage type (marked *) must be filled before a verdict. */}
       <div className="mt-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <h3 className="font-medium text-ink">2. The application</h3>
+          <h3 className="font-medium text-ink">Step 2 · The application</h3>
           {extracted && hasUnacceptedSuggestions && (
             <button
               type="button"
@@ -581,6 +581,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
                 <CompletenessView completeness={combined.completeness} overrides={completenessOverrides} />
               </details>
               <DecisionPanel
+                step="Step 4"
                 verdict={effectiveOverall ?? "review"}
                 brand={claimBrand}
                 approveNotes={approveNotes}

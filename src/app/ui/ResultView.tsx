@@ -116,6 +116,7 @@ function ReviewControls({
   onNote?: (key: VerifyFieldKey, text: string) => void;
 }) {
   const [confirming, setConfirming] = useState(false);
+  const [addingNote, setAddingNote] = useState(false);
   const toggle = (v: FieldOverride) => {
     setConfirming(false);
     onOverride(field.key, override === v ? undefined : v);
@@ -193,9 +194,22 @@ function ReviewControls({
           </div>
         </div>
       )}
-      {/* Once a decision is made, let the reviewer leave a note (their words on why it's flagged or what
-          they confirmed). Saving commits it into the applicant email. */}
-      {override && onNote && <NoteEditor field={field} override={override} note={note} onNote={onNote} />}
+      {/* The note (their words on why it's flagged / what they confirmed) feeds the applicant email. To
+          keep cards calm it opens by default only when FLAGGING a problem (where an explanation matters)
+          or when a note already exists; a confirmed field offers a quiet "Add a note". */}
+      {override &&
+        onNote &&
+        (override === "issue" || (note ?? "").trim() !== "" || addingNote ? (
+          <NoteEditor field={field} override={override} note={note} onNote={onNote} />
+        ) : (
+          <button
+            type="button"
+            onClick={() => setAddingNote(true)}
+            className="mt-3 inline-flex min-h-[32px] items-center gap-1 text-xs font-semibold text-brand-700 underline underline-offset-2 transition hover:text-brand-800 focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700"
+          >
+            + Add a note
+          </button>
+        ))}
     </div>
   );
 }
@@ -466,6 +480,14 @@ export function ResultView({
             <p className="mt-1.5 text-sm font-medium leading-relaxed">
               The label-vs-application values matched, but a field TTB requires for this beverage type is
               missing or in the wrong format. See the completeness check below.
+            </p>
+          )}
+          {/* Bridge to the terminal step: the cards above are interactive, the decision panel is below. */}
+          {onOverride && (
+            <p className="mt-1.5 text-sm leading-relaxed opacity-90">
+              {headline === "approve"
+                ? "Looks good. Record your decision below."
+                : "Resolve the highlighted fields below, then record your decision."}
             </p>
           )}
           {calmReadReview && onViewImage && (

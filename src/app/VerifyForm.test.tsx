@@ -280,6 +280,25 @@ describe("VerifyForm — verify against the application", () => {
     expect(q.getByText("Approve")).toBeTruthy();
   });
 
+  it("offers to refresh the email when a field note changes after the decision was drafted", ASYNC, async () => {
+    mockFetch(READ_OK());
+    const { container } = render(<VerifyForm />);
+    const q = within(container);
+    dropLabelImage(container);
+    await q.findByText("Complete the application to verify");
+    fireEvent.click(q.getByRole("button", { name: /Accept all AI suggestions/i }));
+    const brandCard = q.getAllByText("Brand name")[0].closest("li") as HTMLElement;
+    fireEvent.click(within(brandCard).getByRole("button", { name: /Flag a problem/i }));
+    fireEvent.click(q.getByRole("button", { name: /Reject \/ send back/i })); // drafts the email
+    // Change + save a field note AFTER drafting -> the panel surfaces a refresh affordance.
+    const noteField = within(brandCard).getByPlaceholderText(/Explain the problem/i);
+    fireEvent.change(noteField, { target: { value: "Brand misspelled on the label." } });
+    fireEvent.click(within(brandCard).getByRole("button", { name: /Save note/i }));
+    fireEvent.click(q.getByRole("button", { name: /Update the email from your field notes/i }));
+    const composer = q.getByLabelText(/Reviewer notes/i) as HTMLTextAreaElement;
+    expect(composer.value).toMatch(/Brand misspelled on the label\./);
+  });
+
   it("shows two explicit upload slots (front + back), each with its own file input", () => {
     const { container } = render(<VerifyForm />);
     expect(container.querySelectorAll('input[type="file"]')).toHaveLength(2);

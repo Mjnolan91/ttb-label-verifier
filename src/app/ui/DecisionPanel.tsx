@@ -54,6 +54,7 @@ export function DecisionPanel({
   onRecord,
   initialDecision = null,
   initialNote,
+  step,
 }: {
   verdict: OverallVerdict;
   brand: string;
@@ -67,6 +68,8 @@ export function DecisionPanel({
   initialDecision?: Decision | null;
   /** The note captured with a previously recorded decision. */
   initialNote?: string;
+  /** Optional step eyebrow (e.g. "Step 4") shown above the heading on the numbered single-screen flow. */
+  step?: string;
 }) {
   const seedFor = (d: Decision) => (d === "approve" ? approveNotes : rejectNotes);
   const [decision, setDecision] = useState<Decision | null>(initialDecision);
@@ -78,13 +81,27 @@ export function DecisionPanel({
     initialDecision ? (initialNote ?? seedFor(initialDecision)) : "",
   );
   const [sent, setSent] = useState(false);
+  // The seed (field-note-derived notes) currently reflected in the editor, so we can tell when the
+  // reviewer's field notes changed AFTER the email was composed and offer to pull the update in.
+  const [appliedSeed, setAppliedSeed] = useState<string | null>(
+    initialDecision ? (initialNote ?? seedFor(initialDecision)) : null,
+  );
+  const fieldNotesChanged = decision !== null && appliedSeed !== null && seedFor(decision) !== appliedSeed;
 
   function choose(d: Decision) {
     const seeded = seedFor(d);
     setDecision(d);
     setSubject(emailFor(d, brand, seeded).subject);
     setNotes(seeded);
+    setAppliedSeed(seeded);
     setSent(false);
+  }
+
+  function pullFieldNotes() {
+    if (!decision) return;
+    const seeded = seedFor(decision);
+    setNotes(seeded);
+    setAppliedSeed(seeded);
   }
 
   function send() {
@@ -132,6 +149,7 @@ export function DecisionPanel({
       aria-label="Record your decision"
       className="mt-6 rounded-card border border-border bg-surface p-5 shadow-card sm:p-6"
     >
+      {step && <p className="text-sm font-semibold uppercase tracking-wide text-ink-muted">{step}</p>}
       <h2 className="text-lg font-semibold text-ink">Record your decision</h2>
       <p className="mt-1 text-sm text-ink-muted">
         Commit the review and notify the applicant. Demo only: no email actually leaves this prototype.
@@ -172,6 +190,18 @@ export function DecisionPanel({
                 className={`mt-1 min-h-[6rem] w-full resize-y rounded-field border-2 border-border-strong bg-surface px-3 py-2.5 font-sans text-sm leading-relaxed text-ink shadow-sm transition focus-visible:border-brand-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2`}
               />
             </label>
+            {fieldNotesChanged && (
+              <div className="flex flex-wrap items-center gap-2 rounded-field border-l-4 border-review-500 bg-review-50 px-3 py-2 text-sm text-review-900">
+                <span>Your field notes changed since this email was drafted.</span>
+                <button
+                  type="button"
+                  onClick={pullFieldNotes}
+                  className="font-semibold text-brand-700 underline underline-offset-2 focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700"
+                >
+                  Update the email from your field notes
+                </button>
+              </div>
+            )}
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Email preview</p>
               <pre className="mt-1 max-h-72 overflow-auto whitespace-pre-wrap rounded-field border border-border bg-surface px-3 py-2.5 font-sans text-sm leading-relaxed text-ink">
