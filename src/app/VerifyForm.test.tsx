@@ -8,7 +8,7 @@
  * Fetch + object-URL are mocked; the verdict itself is computed by the real pure confirmVerdict.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, waitFor, within } from "@testing-library/react";
 import { VerifyForm } from "./VerifyForm";
 import type { VerifyApiResponse } from "./api/verify/contract";
 import { CANONICAL_GOVERNMENT_WARNING, type ExtractedFields } from "@/domain";
@@ -118,6 +118,37 @@ describe("VerifyForm — confirm-to-approve", () => {
     expect(container.querySelectorAll('input[type="file"]')).toHaveLength(2);
     expect(within(container).getAllByText(/Front label/i).length).toBeGreaterThan(0);
     expect(within(container).getAllByText(/Back label/i).length).toBeGreaterThan(0);
+  });
+
+  it("changing the beverage type recomputes the required-field set", ASYNC, async () => {
+    mockFetch({ provider: "mock", readable: true, extracted: extractedBourbon(), result: null });
+    const { container } = render(<VerifyForm />);
+    const q = within(container);
+    dropLabelImage(container);
+    await q.findByText("Confirm the required fields");
+    // Scope to the confirm panel only (the full reading below also lists every field).
+    const panel = within(q.getByRole("region", { name: "Confirm the label against the application" }));
+    // Bourbon -> distilled spirits: Age statement is in the required set, Appellation is not.
+    expect(panel.queryAllByText("Age statement").length).toBeGreaterThan(0);
+    expect(panel.queryAllByText("Appellation of origin").length).toBe(0);
+    // Override to Wine (45% ABV -> wine > 14%): Appellation joins the set, Age statement leaves it.
+    fireEvent.change(q.getByLabelText("Beverage type"), { target: { value: "wine" } });
+    expect((await panel.findAllByText("Appellation of origin")).length).toBeGreaterThan(0);
+    expect(panel.queryAllByText("Age statement").length).toBe(0);
+  });
+
+  it("a fresh read resets the beverage-type override to the AI's reading (AC-6)", ASYNC, async () => {
+    mockFetch({ provider: "mock", readable: true, extracted: extractedBourbon(), result: null });
+    const { container } = render(<VerifyForm />);
+    const q = within(container);
+    dropLabelImage(container);
+    await q.findByText("Confirm the required fields");
+    // Override to Wine and confirm it took.
+    fireEvent.change(q.getByLabelText("Beverage type"), { target: { value: "wine" } });
+    await waitFor(() => expect((q.getByLabelText("Beverage type") as HTMLSelectElement).value).toBe("wine"));
+    // A fresh read (new image) must reset the override back to the AI-read class.
+    dropLabelImage(container);
+    await waitFor(() => expect((q.getByLabelText("Beverage type") as HTMLSelectElement).value).toBe("distilledSpirits"));
   });
 
   it("shows the re-upload prompt for an unreadable image (never a fabricated verdict)", ASYNC, async () => {

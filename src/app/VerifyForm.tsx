@@ -11,11 +11,12 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { VerifyApiResponse, VerifyApiError } from "./api/verify/contract";
 import type { LabelPosition } from "@/extraction";
-import { confirmVerdict, type ConfirmVerdict, type FieldConfirmation } from "@/compare";
+import { confirmVerdict, resolveExtractedClass, type ConfirmVerdict, type FieldConfirmation, type ClassChoice } from "@/compare";
 import type { RequirementKey } from "@/domain";
 import { ExtractedFieldsView } from "./ui/ExtractedFieldsView";
 import { CompletenessView } from "./ui/CompletenessView";
 import { ConfirmPanel } from "./ui/ConfirmPanel";
+import { coarseClassOf } from "./ui/beverageClass";
 import { downscaleForUpload } from "./imageDownscale";
 import { DropZone } from "./ui/DropZone";
 import { ErrorAlert } from "./ui/ErrorAlert";
@@ -48,6 +49,8 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
   const [formError, setFormError] = useState<string | null>(null);
   const [response, setResponse] = useState<VerifyApiResponse | null>(null);
   const [confirmations, setConfirmations] = useState<Partial<Record<RequirementKey, FieldConfirmation>>>({});
+  // The reviewer's beverage-type override, if any. undefined => use the AI-resolved class.
+  const [classOverride, setClassOverride] = useState<ClassChoice | undefined>(undefined);
   // The image currently shown full-size in the lightbox, if any.
   const [zoom, setZoom] = useState<{ src: string; alt: string } | null>(null);
 
@@ -78,13 +81,19 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
   // Derive the confirm verdict from the reading + the human confirmations (no effect, no extra
   // state). Exists the moment a readable extraction is present; each confirmation action updates it.
   const verdict: ConfirmVerdict | null = useMemo(
-    () => (state === "done" && response?.readable ? confirmVerdict(response.extracted, confirmations) : null),
-    [state, response, confirmations],
+    () => (state === "done" && response?.readable ? confirmVerdict(response.extracted, confirmations, classOverride) : null),
+    [state, response, confirmations, classOverride],
   );
 
   const accept = (key: RequirementKey) => setConfirmations((p) => ({ ...p, [key]: { state: "accepted" } }));
   const edit = (key: RequirementKey, value: string) => setConfirmations((p) => ({ ...p, [key]: { state: "edited", editedValue: value } }));
   const markMissing = (key: RequirementKey) => setConfirmations((p) => ({ ...p, [key]: { state: "missing" } }));
+  // Picking the AI's own class clears the override (so the "Changed by you" cue only shows a genuine
+  // change, per AC-5), and resolves identically either way.
+  const changeClass = (choice: ClassChoice) => {
+    const aiCoarse = response?.readable ? coarseClassOf(resolveExtractedClass(response.extracted)) : undefined;
+    setClassOverride(choice === aiCoarse ? undefined : choice);
+  };
 
   // Read the current image set (front/back/...) together. Triggered from the handlers, not an
   // effect, so the AI reads automatically the moment images change — with no manual "go" button.
@@ -108,6 +117,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
         return;
       }
       setConfirmations({});
+      setClassOverride(undefined); // a fresh read re-defaults to the AI's class
       setResponse(json as VerifyApiResponse);
       setState("done");
     } catch {
@@ -292,6 +302,8 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
               onAccept={accept}
               onEdit={edit}
               onMarkMissing={markMissing}
+              onClassChange={changeClass}
+              classOverridden={classOverride !== undefined}
               headingRef={verdictHeadingRef}
             />
           )}

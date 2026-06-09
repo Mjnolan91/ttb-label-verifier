@@ -1,9 +1,9 @@
-import type { Ref } from "react";
-import type { ConfirmVerdict } from "@/compare";
+import { useId, type Ref } from "react";
+import type { ConfirmVerdict, ClassChoice } from "@/compare";
 import type { RequirementKey } from "@/domain";
 import { ConfirmFieldRow } from "./ConfirmFieldRow";
 import { TONE_TINT, TONE_ICON, VERDICT_LABEL, toneForStatus } from "./status";
-import { CLASS_DISPLAY_LABEL } from "./beverageClass";
+import { CLASS_CHOICES, CLASS_CHOICE_LABEL, coarseClassOf } from "./beverageClass";
 
 const NEXT_STEP: Record<ConfirmVerdict["overall"], string> = {
   approve: "Every required field is confirmed and matches — this label can be approved.",
@@ -22,14 +22,19 @@ export function ConfirmPanel({
   onAccept,
   onEdit,
   onMarkMissing,
+  onClassChange,
+  classOverridden = false,
   headingRef,
 }: {
   verdict: ConfirmVerdict;
   onAccept: (key: RequirementKey) => void;
   onEdit: (key: RequirementKey, value: string) => void;
   onMarkMissing: (key: RequirementKey) => void;
+  onClassChange: (choice: ClassChoice) => void;
+  classOverridden?: boolean;
   headingRef?: Ref<HTMLHeadingElement>;
 }) {
+  const selectId = useId();
   const flagged = verdict.fields.filter((f) => f.needsConfirmation);
   const settled = verdict.fields.filter((f) => !f.needsConfirmation);
   const tone = verdict.awaitingConfirmation ? "review" : toneForStatus(verdict.overall);
@@ -50,9 +55,25 @@ export function ConfirmPanel({
       >
         {OverallIcon && <OverallIcon className="h-9 w-9 shrink-0" />}
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide opacity-80">
-            {CLASS_DISPLAY_LABEL[verdict.beverageClass]}
-          </p>
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <label htmlFor={selectId} className="text-xs font-semibold uppercase tracking-wide opacity-80">
+              Beverage type
+            </label>
+            <select
+              id={selectId}
+              aria-label="Beverage type"
+              value={coarseClassOf(verdict.beverageClass)}
+              onChange={(e) => onClassChange(e.target.value as ClassChoice)}
+              className="min-h-[44px] rounded-field border-2 border-border-strong bg-white px-2 py-1 text-sm font-medium text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2"
+            >
+              {CLASS_CHOICES.map((c) => (
+                <option key={c} value={c}>{CLASS_CHOICE_LABEL[c]}</option>
+              ))}
+            </select>
+            <span className="text-xs opacity-70">
+              {classOverridden ? "Changed by you" : "AI read this — change if wrong"}
+            </span>
+          </div>
           <p className="text-2xl font-bold">
             {verdict.awaitingConfirmation
               ? `${flagged.length} field${flagged.length === 1 ? "" : "s"} need your check`

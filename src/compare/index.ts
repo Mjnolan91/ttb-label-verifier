@@ -27,6 +27,8 @@ export {
 } from "./alcohol";
 export {
   confirmVerdict,
+  resolveExtractedClass,
+  type ClassChoice,
   type ConfirmState,
   type FieldConfirmation,
   type ConfirmFieldResult,
