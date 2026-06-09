@@ -17,10 +17,11 @@ import { FIELD_CATALOG } from "./fieldCatalog";
 import { defaultFetch, fetchWithRetry, withHardTimeout, type FetchLike } from "./http";
 import { geminiTuning } from "./geminiTuning";
 
-// Default is the pro model — better for subtle visual reads (bold, all-caps, fine print).
-// Override with GEMINI_MODEL (e.g. gemini-3.5-flash for cheaper/faster runs).
+// Default is a GA Flash model — stable, multimodal, fast, and broadly available (a preview "pro" id
+// is fragile: it can rotate and has stricter param/quota rules). Override with GEMINI_MODEL (e.g.
+// gemini-3.1-pro-preview for the most capable reads, or gemini-2.5-flash as a conservative fallback).
 // Whatever you choose must support image input + structured output (responseSchema).
-const DEFAULT_MODEL = "gemini-3.1-pro-preview";
+const DEFAULT_MODEL = "gemini-3.5-flash";
 
 // A generous token ceiling gives headroom for a -pro model and verbose labels.
 const MAX_OUTPUT_TOKENS = 4096;
@@ -34,8 +35,8 @@ export interface GeminiConfig {
 
 /**
  * Read + validate Gemini config from env. Throws an actionable error if no key is set (accepts
- * GEMINI_API_KEY or GOOGLE_API_KEY); the model defaults to the Gemini 3 pro model
- * (override with GEMINI_MODEL, e.g. gemini-3.5-flash for cheaper/faster runs).
+ * GEMINI_API_KEY or GOOGLE_API_KEY); the model defaults to a GA Flash model
+ * (override with GEMINI_MODEL, e.g. gemini-3.1-pro-preview for the most capable reads).
  */
 export function readGeminiConfig(
   env: Record<string, string | undefined> = process.env,
@@ -158,10 +159,7 @@ export class GeminiVisionProvider implements VisionProvider {
                 ? [{ text: `This image is the ${image.position} label of the product.` }]
                 : []),
               { text: USER_PROMPT },
-              {
-                inlineData: { mimeType: image.contentType ?? "image/jpeg", data: base64 },
-                ...(tuning.mediaResolution ? { mediaResolution: tuning.mediaResolution } : {}),
-              },
+              { inlineData: { mimeType: image.contentType ?? "image/jpeg", data: base64 } },
             ],
           },
         ],
@@ -216,8 +214,7 @@ export class GeminiVisionProvider implements VisionProvider {
         body: JSON.stringify({
           contents: [{ role: "user", parts: [
             { text: GeminiVisionProvider.BOLD_PROMPT },
-            { inlineData: { mimeType: image.contentType ?? "image/jpeg", data: base64 },
-              ...(tuning.mediaResolution ? { mediaResolution: tuning.mediaResolution } : {}) },
+            { inlineData: { mimeType: image.contentType ?? "image/jpeg", data: base64 } },
           ] }],
           generationConfig: {
             temperature: tuning.temperature,
