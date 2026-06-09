@@ -106,8 +106,9 @@ export function evaluateWarningElement(spec: RequirementSpec, e: ExtractedFields
       detail: "The warning text does not match the canonical statutory wording verbatim (27 CFR 16.21).",
     };
   }
-  // ALL-CAPS is a reliable transcription judgment, so a title/mixed-case prefix is a hard fail.
-  if (!e.warningPrefixIsAllCaps) {
+  // A CONFIDENT title/mixed-case prefix is a hard fail; "cannot tell" (null) is surfaced for a human
+  // (mirrors the bold flag) rather than failed on absence of evidence.
+  if (e.warningPrefixIsAllCaps === false) {
     return {
       ...base(spec),
       status: "malformed",
@@ -127,11 +128,16 @@ export function evaluateWarningElement(spec: RequirementSpec, e: ExtractedFields
       detail: 'The "GOVERNMENT WARNING:" prefix must be in BOLD type (27 CFR 16.22(a)(2)).',
     };
   }
+  const capsNote =
+    e.warningPrefixIsAllCaps === null
+      ? " The ALL-CAPS prefix could not be verified from the image — confirm it (27 CFR 16.22(a)(2))."
+      : "";
   const boldNote =
     e.warningPrefixIsBold === null
       ? " Bold type could not be verified from the image — confirm the prefix is bold (27 CFR 16.22(a)(2))."
       : "";
-  return { ...base(spec), status: "present", value: w, detail: `Present with an ALL-CAPS prefix.${boldNote}` };
+  const prefixDesc = e.warningPrefixIsAllCaps === true ? "an ALL-CAPS prefix" : "the required warning text";
+  return { ...base(spec), status: "present", value: w, detail: `Present with ${prefixDesc}.${capsNote}${boldNote}` };
 }
 
 function base(spec: RequirementSpec): Pick<CompletenessElement, "key" | "label" | "necessity"> {

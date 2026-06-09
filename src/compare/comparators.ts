@@ -321,13 +321,13 @@ export function validateNetContents(value: string | undefined, cls: BeverageClas
  */
 export function compareWarning(args: {
   warningText?: string;
-  warningPrefixIsAllCaps?: boolean;
+  warningPrefixIsAllCaps?: boolean | null;
   warningPrefixIsBold?: boolean | null;
   abv?: number;
 }): FieldResult {
   const canonical = CANONICAL_GOVERNMENT_WARNING;
   const text = args.warningText ?? "";
-  const allCaps = args.warningPrefixIsAllCaps ?? false;
+  const allCaps = args.warningPrefixIsAllCaps ?? null;
   const bold = args.warningPrefixIsBold ?? null;
 
   // Exemption: products under 0.5% ABV are not required to carry the warning (27 CFR 16.10).
@@ -350,7 +350,7 @@ export function compareWarning(args: {
       "Warning text does not match the canonical statutory wording (27 CFR 16.21).",
     );
   }
-  if (!allCaps) {
+  if (allCaps === false) {
     return result(
       "fail",
       canonical,

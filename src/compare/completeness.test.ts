@@ -45,6 +45,12 @@ describe("checkCompleteness — internal validity (no application value needed)"
     expect(statusOf(r, "alcoholContent")).toBe("malformed");
     expect(r.overall).toBe("incomplete");
   });
+
+  it("an 'all-caps cannot be verified' (null) prefix is surfaced (present), not hard-failed", () => {
+    expect(statusOf(checkCompleteness(ds({ warningPrefixIsAllCaps: null })), "governmentWarning")).toBe("present");
+    // a CONFIDENT non-all-caps prefix is still malformed
+    expect(statusOf(checkCompleteness(ds({ warningPrefixIsAllCaps: false })), "governmentWarning")).toBe("malformed");
+  });
 });
 
 describe("checkCompleteness — net contents standards of fill (27 CFR 5.203/4.72/7.70)", () => {

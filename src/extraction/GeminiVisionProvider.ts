@@ -71,7 +71,10 @@ const RESPONSE_SCHEMA = {
     ...Object.fromEntries(FIELD_CATALOG.map((d) => [d.rawKey, confidencedValue(d.description)])),
     warningPrefixIsAllCaps: {
       type: "BOOLEAN",
-      description: "true ONLY if the \"GOVERNMENT WARNING:\" prefix is ALL CAPITAL LETTERS; false if title/mixed case.",
+      nullable: true,
+      description:
+        "true if the \"GOVERNMENT WARNING:\" prefix is clearly ALL CAPITAL LETTERS; false ONLY if it is clearly " +
+        "title/mixed case (a real violation); null if you cannot tell. When unsure, return null — never guess.",
     },
     warningPrefixIsBold: {
       type: "BOOLEAN",

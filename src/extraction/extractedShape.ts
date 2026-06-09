@@ -32,7 +32,7 @@ export interface RawExtractedFields {
   sulfiteDeclaration?: RawConfidencedValue;
   ageStatement?: RawConfidencedValue;
   commodityStatement?: RawConfidencedValue;
-  warningPrefixIsAllCaps: boolean;
+  warningPrefixIsAllCaps: boolean | null;
   warningPrefixIsBold: boolean | null;
 }
 

@@ -131,6 +131,15 @@ describe("confirmVerdict — the government warning is auto-evaluated, never fre
     expect(v.overall).toBe("reject");
   });
 
+  it("an undetectable-all-caps (null) prefix is a flagged review the human can accept", () => {
+    const before = confirmVerdict(spirits({ warningPrefixIsAllCaps: null }), {});
+    const w = before.fields.find((f) => f.key === "governmentWarning")!;
+    expect(w.status).toBe("review");
+    expect(w.needsConfirmation).toBe(true);
+    const after = confirmVerdict(spirits({ warningPrefixIsAllCaps: null }), { governmentWarning: { state: "accepted" } });
+    expect(after.fields.find((f) => f.key === "governmentWarning")!.status).toBe("pass");
+  });
+
   it("an undetectable-bold warning is a flagged review the human can accept to pass", () => {
     const e = spirits({ warningPrefixIsBold: null });
     const before = confirmVerdict(e, {});

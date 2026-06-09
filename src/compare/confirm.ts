@@ -131,10 +131,12 @@ export function confirmVerdict(
       if (el.status === "unverifiable") {
         return { ...base, flagged: false, needsConfirmation: false, status: "pass", reason: el.detail };
       }
-      if (extracted.warningPrefixIsBold === null && c.state !== "accepted") {
+      // "Cannot tell" on EITHER the bold or the all-caps prefix flag is surfaced for confirmation.
+      const uncertain = extracted.warningPrefixIsBold === null || extracted.warningPrefixIsAllCaps === null;
+      if (uncertain && c.state !== "accepted") {
         return { ...base, flagged: true, needsConfirmation: true, status: "review", reason: el.detail };
       }
-      return { ...base, flagged: extracted.warningPrefixIsBold === null, needsConfirmation: false, status: "pass", reason: el.detail };
+      return { ...base, flagged: uncertain, needsConfirmation: false, status: "pass", reason: el.detail };
     }
 
     // ---- Every other element. ----
