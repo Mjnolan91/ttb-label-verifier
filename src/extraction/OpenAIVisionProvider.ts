@@ -46,6 +46,17 @@ export function readOpenAIConfig(
 
 export class OpenAIVisionProvider implements VisionProvider {
   readonly name = "openai" as const;
+
+  /**
+   * The judge's DEFAULT model — the strongest generally-available vision model, NOT the extraction
+   * default. The warning is the one check that can hard-fail a label, so it gets the best eyes
+   * available out of the box (override with WARNING_JUDGE_MODEL; bulk extraction stays on the fast
+   * model — the measured split in .env.example). Mirrors GeminiVisionProvider.DEFAULT_JUDGE_MODEL:
+   * before this, switching the demo from gemini to openai silently DOWNGRADED the judge to the
+   * extraction model. judgeWarningBold falls back to the extraction model if the call fails.
+   */
+  static readonly DEFAULT_JUDGE_MODEL = "gpt-5.5";
+
   private readonly config: OpenAIConfig;
   private readonly fetchImpl: FetchLike;
 
@@ -85,14 +96,16 @@ export class OpenAIVisionProvider implements VisionProvider {
     const dataUrl = `data:${image.contentType ?? "image/jpeg"};base64,${Buffer.from(image.data).toString("base64")}`;
     // api.openai.com REQUIRES the model in the body (Azure names a deployment in the URL instead) —
     // without it the judge 400s and silently degrades to "cannot determine" on every call. The judge
-    // can also run on a stronger model than extraction via WARNING_JUDGE_MODEL.
+    // DEFAULTS to the strongest model (pin/override with WARNING_JUDGE_MODEL) and falls back to the
+    // extraction model when the judge call itself fails.
     return judgeWarningBoldViaChat({
       fetchImpl: this.fetchImpl,
       url: OPENAI_URL,
       headers: { authorization: `Bearer ${this.config.apiKey}` },
       dataUrl,
       signal,
-      model: this.config.judgeModel ?? this.config.model,
+      model: this.config.judgeModel ?? OpenAIVisionProvider.DEFAULT_JUDGE_MODEL,
+      fallbackModel: this.config.model,
     });
   }
 }

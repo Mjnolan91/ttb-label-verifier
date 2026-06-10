@@ -194,15 +194,51 @@ describe("OpenAIVisionProvider.judgeWarningBold — bold judgment via chat (HTTP
     }) as unknown as typeof fetch;
     const img = { filename: "x.jpg", data: new Uint8Array([1]), contentType: "image/jpeg" };
 
+    // With no WARNING_JUDGE_MODEL the judge DEFAULTS to the strongest model, not the extraction
+    // model — the gemini->openai provider switch must not silently downgrade the hard-fail check.
     await new OpenAIVisionProvider({ config: { apiKey: "k", model: "gpt-4.1" }, fetchImpl: capture }).judgeWarningBold!(img);
-    expect(bodies[0].model).toBe("gpt-4.1");
+    expect(bodies[0].model).toBe(OpenAIVisionProvider.DEFAULT_JUDGE_MODEL);
 
-    // WARNING_JUDGE_MODEL: the hard-fail check may run on a stronger model than extraction.
+    // WARNING_JUDGE_MODEL pins/overrides it.
     await new OpenAIVisionProvider({
       config: { apiKey: "k", model: "gpt-4.1", judgeModel: "gpt-5.2" },
       fetchImpl: capture,
     }).judgeWarningBold!(img);
     expect(bodies[1].model).toBe("gpt-5.2");
+  });
+
+  it("falls back to the extraction model when the strong judge call FAILS (never 'no judgment')", async () => {
+    const bodies: { model?: string }[] = [];
+    const failStrongThenAnswer = (async (_url: string, init: { body: string }) => {
+      const body = JSON.parse(init.body) as { model?: string };
+      bodies.push(body);
+      if (body.model === OpenAIVisionProvider.DEFAULT_JUDGE_MODEL) {
+        return { ok: false, status: 404, json: async () => ({ error: { message: "model not found" } }) };
+      }
+      return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: '{"bold":"BOLDER"}' } }] }) };
+    }) as unknown as typeof fetch;
+    const img = { filename: "x.jpg", data: new Uint8Array([1]), contentType: "image/jpeg" };
+    const verdict = await new OpenAIVisionProvider({
+      config: { apiKey: "k", model: "gpt-4.1" },
+      fetchImpl: failStrongThenAnswer,
+    }).judgeWarningBold!(img);
+    expect(verdict).toBe(true); // the fallback model's considered answer, not null
+    expect(bodies.map((b) => b.model)).toEqual([OpenAIVisionProvider.DEFAULT_JUDGE_MODEL, "gpt-4.1"]);
+  });
+
+  it("does NOT fall back on a considered CANNOT_DETERMINE from the strong judge", async () => {
+    const calls: string[] = [];
+    const considered = (async (_url: string, init: { body: string }) => {
+      calls.push((JSON.parse(init.body) as { model?: string }).model ?? "");
+      return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: '{"bold":"CANNOT_DETERMINE"}' } }] }) };
+    }) as unknown as typeof fetch;
+    const img = { filename: "x.jpg", data: new Uint8Array([1]), contentType: "image/jpeg" };
+    const verdict = await new OpenAIVisionProvider({
+      config: { apiKey: "k", model: "gpt-4.1" },
+      fetchImpl: considered,
+    }).judgeWarningBold!(img);
+    expect(verdict).toBeNull();
+    expect(calls).toEqual([OpenAIVisionProvider.DEFAULT_JUDGE_MODEL]); // one call, no re-ask
   });
 });
 

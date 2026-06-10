@@ -14,6 +14,7 @@ import {
   type FetchLike,
 } from "./index";
 import { parseModelJson, USER_PROMPT, EXTRACTION_RESPONSE_FORMAT } from "./LlmVisionProvider";
+import { FIELD_CATALOG } from "./fieldCatalog";
 import { FIELD_REVIEW_CONFIDENCE, MIN_READABLE_CONFIDENCE } from "@/compare";
 
 /** A FetchLike that returns one canned Azure chat-completions payload (no network). */
@@ -256,6 +257,28 @@ describe("parseModelJson — robust parsing (offline)", () => {
     );
     expect(r.warningText).toBe("");
     expect(r.confidence.warningText).toBeCloseTo(0.95, 5);
+  });
+
+  it("round-trips EVERY catalog field — no rawKey is silently dropped (regression)", () => {
+    // A hand-written field list here once dropped fancifulName/statementOfComposition and the two
+    // supplementary 16.22 warning flags ON REAL PROVIDERS ONLY (the mock bypasses parseModelJson, so
+    // the offline suite never saw it). This pins the parser to the catalog: a new field added to
+    // FIELD_CATALOG automatically gets parsed, and removing one from the parser fails here.
+    const payload: Record<string, unknown> = Object.fromEntries(
+      FIELD_CATALOG.map((d, i) => [d.rawKey, { value: `v${i}`, confidence: 0.9 }]),
+    );
+    payload.warningPrefixIsAllCaps = true;
+    payload.warningPrefixIsBold = true;
+    payload.warningRemainderIsBold = false;
+    payload.warningIsReadilyLegible = true;
+    const r = parseModelJson(JSON.stringify(payload));
+    const rByKey = r as unknown as Record<string, unknown>;
+    for (const [i, d] of FIELD_CATALOG.entries()) {
+      expect(rByKey[d.key], `value for ${d.key}`).toBe(`v${i}`);
+      expect(r.confidence[d.confKey], `confidence for ${d.confKey}`).toBeCloseTo(0.9, 5);
+    }
+    expect(r.warningRemainderIsBold).toBe(false);
+    expect(r.warningIsReadilyLegible).toBe(true);
   });
 });
 

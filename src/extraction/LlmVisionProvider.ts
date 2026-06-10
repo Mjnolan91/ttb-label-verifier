@@ -238,26 +238,23 @@ export function parseModelJson(content: string): ExtractedFields {
     throw new Error("The model returned an unexpected payload.");
   }
   const p = parsed as Record<string, unknown>;
+  // The confidenced-value fields are DERIVED from FIELD_CATALOG — the same loop mapRawExtracted
+  // uses — so the parser can never silently drop a catalog field again. (A hand-written list here
+  // once omitted fancifulName/statementOfComposition and two 16.22 warning signals: the schema asked
+  // the model for them, the parser discarded them, and only REAL providers were affected — the mock
+  // bypasses this path, so no offline test could see it.)
+  const confidenced: Partial<Record<string, RawConfidencedValue>> = {};
+  for (const d of FIELD_CATALOG) {
+    const cell = coerceConfidenced(p[d.rawKey]);
+    if (cell) confidenced[d.rawKey] = cell;
+  }
+  const flag = (v: unknown): boolean | null => (v === true ? true : v === false ? false : null);
   const raw: RawExtractedFields = {
-    brand: coerceConfidenced(p.brand),
-    class: coerceConfidenced(p.class),
-    classType: coerceConfidenced(p.classType),
-    alcoholContent: coerceConfidenced(p.alcoholContent),
-    netContents: coerceConfidenced(p.netContents),
-    warningText: coerceConfidenced(p.warningText),
-    name: coerceConfidenced(p.name),
-    address: coerceConfidenced(p.address),
-    countryOfOrigin: coerceConfidenced(p.countryOfOrigin),
-    appellation: coerceConfidenced(p.appellation),
-    vintage: coerceConfidenced(p.vintage),
-    varietal: coerceConfidenced(p.varietal),
-    sulfiteDeclaration: coerceConfidenced(p.sulfiteDeclaration),
-    ageStatement: coerceConfidenced(p.ageStatement),
-    commodityStatement: coerceConfidenced(p.commodityStatement),
-    warningPrefixIsAllCaps:
-      p.warningPrefixIsAllCaps === true ? true : p.warningPrefixIsAllCaps === false ? false : null,
-    warningPrefixIsBold:
-      p.warningPrefixIsBold === true ? true : p.warningPrefixIsBold === false ? false : null,
+    ...(confidenced as Partial<RawExtractedFields>),
+    warningPrefixIsAllCaps: flag(p.warningPrefixIsAllCaps),
+    warningPrefixIsBold: flag(p.warningPrefixIsBold),
+    warningRemainderIsBold: flag(p.warningRemainderIsBold),
+    warningIsReadilyLegible: flag(p.warningIsReadilyLegible),
   };
   return mapRawExtracted(raw);
 }
@@ -330,13 +327,13 @@ const BOLD_RESPONSE_FORMAT = {
     required: ["bold"], additionalProperties: false } },
 } as const;
 
-/** Shared OpenAI-dialect bold judgment. Returns true/false/null; never throws.
- *  `model` is REQUIRED for api.openai.com (the body names the model there) and omitted for Azure
- *  (the deployment lives in the URL). */
-export async function judgeWarningBoldViaChat(opts: {
+/** One bold-judgment call against one model. `ok` distinguishes a CONSIDERED answer (including a
+ *  legitimate CANNOT_DETERMINE -> null) from a failed request, so the caller can fall back only when
+ *  the call itself failed — mirrors GeminiVisionProvider.judgeOnce. Never throws. */
+async function judgeBoldOnce(opts: {
   fetchImpl: FetchLike; url: string; headers: Record<string, string>; dataUrl: string; signal?: AbortSignal;
   model?: string;
-}): Promise<boolean | null> {
+}): Promise<{ ok: boolean; verdict: boolean | null }> {
   try {
     const res = await fetchWithRetry(opts.fetchImpl, opts.url, {
       method: "POST",
@@ -352,15 +349,31 @@ export async function judgeWarningBoldViaChat(opts: {
         response_format: BOLD_RESPONSE_FORMAT,
       }),
     });
-    if (!res.ok) return null;
+    if (!res.ok) return { ok: false, verdict: null };
     const json = (await res.json()) as { choices?: { message?: { content?: unknown } }[] };
     const content = json.choices?.[0]?.message?.content;
-    if (typeof content !== "string") return null;
+    if (typeof content !== "string") return { ok: false, verdict: null };
     const verdict = (JSON.parse(content) as { bold?: string }).bold;
-    return verdict === "BOLDER" ? true : verdict === "SAME" ? false : null;
+    return { ok: true, verdict: verdict === "BOLDER" ? true : verdict === "SAME" ? false : null };
   } catch {
-    return null;
+    return { ok: false, verdict: null };
   }
+}
+
+/** Shared OpenAI-dialect bold judgment. Returns true/false/null; never throws.
+ *  `model` is REQUIRED for api.openai.com (the body names the model there) and omitted for Azure
+ *  (the deployment lives in the URL). When `fallbackModel` is given and the judge REQUEST fails
+ *  (dead model id, 4xx/5xx, malformed reply — not a considered CANNOT_DETERMINE), the judgment is
+ *  re-asked on it, so a strong-but-unavailable judge degrades to the extraction model's judgment,
+ *  never to "no judgment at all" (mirrors the Gemini judge's fallback). */
+export async function judgeWarningBoldViaChat(opts: {
+  fetchImpl: FetchLike; url: string; headers: Record<string, string>; dataUrl: string; signal?: AbortSignal;
+  model?: string; fallbackModel?: string;
+}): Promise<boolean | null> {
+  const first = await judgeBoldOnce(opts);
+  if (first.ok || !opts.fallbackModel || opts.fallbackModel === opts.model) return first.verdict;
+  const fallback = await judgeBoldOnce({ ...opts, model: opts.fallbackModel });
+  return fallback.verdict;
 }
 
 /**
