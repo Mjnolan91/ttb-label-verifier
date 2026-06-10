@@ -30,6 +30,16 @@ describe("MockVisionProvider — known fixtures (filename-keyed)", () => {
     expect(r.warningPrefixIsBold).toBe(true);
   });
 
+  it("tolerates a browser download-rename like 'demo-old-tom-clean (1).png'", async () => {
+    // The README/in-app sample links serve fixture files; a second download (or an existing copy in
+    // Downloads) gets browser-renamed with a " (n)" suffix. The mock must still recognize it, or the
+    // app rejects the exact file it just offered the user.
+    const renamed = await mock.extract({ filename: "demo-old-tom-clean (1).png" });
+    const original = await mock.extract({ filename: "demo-old-tom-clean.png" });
+    expect(renamed).toEqual(original);
+    expect(renamed.brand).toBe("OLD TOM DISTILLERY");
+  });
+
   it("does not read image bytes — only the filename matters", async () => {
     const withBytes = await mock.extract({
       filename: "old-tom-bourbon-clean.svg",

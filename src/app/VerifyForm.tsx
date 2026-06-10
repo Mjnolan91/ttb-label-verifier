@@ -21,6 +21,7 @@ import {
   requiredInputKeysFor,
   classChoiceFor,
   CLASS_CHOICES,
+  FIELD_REVIEW_CONFIDENCE,
   type ClassChoice,
   type CombinedVerdict,
   type VerifyFieldKey,
@@ -37,7 +38,7 @@ import { downscaleForUpload } from "./imageDownscale";
 import { DropZone } from "./ui/DropZone";
 import { ErrorAlert } from "./ui/ErrorAlert";
 import { ResultSkeleton } from "./ui/ResultSkeleton";
-import { inputClass, secondaryButtonClass } from "./ui/fieldStyles";
+import { inputClass, linkClass, secondaryButtonClass } from "./ui/fieldStyles";
 import { downloadJson, downloadCsv } from "./ui/download";
 import { analysisToCsv } from "@/batch/csv";
 import { ImageLightbox } from "./ui/ImageLightbox";
@@ -80,7 +81,6 @@ const LOW_CONF_INPUT =
   "placeholder:text-review-700 shadow-sm transition focus-visible:outline-none focus-visible:border-brand-600 " +
   "focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2";
 
-const FIELD_REVIEW_CONFIDENCE = 0.7;
 const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
 
 export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
@@ -319,6 +319,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
         readToken.current++; // cancel any in-flight read
         setState("idle");
         setResponse(null);
+        setFormError(null); // no images -> nothing to retry; a leftover error banner would be unactionable
       } else {
         void read(imgs);
       }
@@ -453,6 +454,27 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
             );
           })}
         </div>
+        {/* Self-sufficient demo: a cold visitor has no label image on hand. The three bundled sample
+            labels are served from /public/samples with their filenames intact, so the offline mock
+            recognizes them AND a live provider reads their real pixels. Plain download links keep the
+            upload flow honest (no special in-app path). */}
+        {!slots.front && (
+          <p className="mt-3 text-sm text-ink-muted">
+            No label handy? Download a sample to upload:{" "}
+            <a href="/samples/demo-old-tom-clean.png" download className={linkClass}>
+              clean bourbon
+            </a>
+            {", "}
+            <a href="/samples/demo-warning-title-case.png" download className={linkClass}>
+              title-case warning
+            </a>
+            {", or "}
+            <a href="/samples/demo-brand-typo.png" download className={linkClass}>
+              brand typo
+            </a>
+            .
+          </p>
+        )}
       </div>
 
       {/* Step 2 — the application: the reference the label is verified against. The AI's reading is
@@ -571,6 +593,18 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
       {formError && (
         <div className="mt-5">
           <ErrorAlert id={ids.err}>{formError}</ErrorAlert>
+          {/* Recovery in place: re-run the read on the SAME images. Without this, the only way out of
+              a transient provider error was Remove + re-upload, which resets the typed application. */}
+          {state === "error" && orderedImages.length > 0 && (
+            <button
+              type="button"
+              onClick={() => void read(orderedImages)}
+              aria-describedby={ids.err}
+              className={`mt-3 ${secondaryButtonClass}`}
+            >
+              Try again
+            </button>
+          )}
         </div>
       )}
 

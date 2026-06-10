@@ -120,11 +120,13 @@ pipeline and the "why". As built, the load-bearing pieces are:
   To read ANY uploaded image, set `VISION_PROVIDER` to a real provider — `openai`/`gemini` (simplest;
   one API key, no Azure resource) or `llm`/`ocr`/`ensemble` (Azure in-tenant). The hosted Vercel demo
   runs a real provider (Gemini, via env vars); Azure is the documented in-tenant production target;
-  the deployed URL runs a real provider. (There is no bundled in-app sample picker — that earlier
-  `public/samples/` feature was never built and has been removed.) The three README "Try it" demo
-  PNGs (`eval/fixtures/images/demo-*.png`) ARE fixtures, so the mock reads them locally — rename one
-  and you must update its `imageFilename` in `eval/fixtures/cases.json` or the README walkthrough
-  silently breaks.
+  the deployed URL runs a real provider. The verify screen offers the three demo labels as plain
+  download links ("No label handy?") served from `public/samples/` — byte-copies of
+  `eval/fixtures/images/demo-*.png` kept in lockstep by `scripts/generate-demo-labels.cjs` (writes
+  BOTH directories) and guarded by `src/app/samples.test.ts` (byte-equality). They ARE fixtures
+  (filename-keyed), so the mock reads them locally, and it tolerates a browser download-rename like
+  `demo-old-tom-clean (1).png`. Rename one and you must update `eval/fixtures/cases.json` + the
+  README walkthrough together.
 - **Uploads are downscaled in the browser first.** `src/app/imageDownscale.ts` shrinks phone photos
   to ~2000px longest edge (JPEG) to fit the latency/token budget. It NEVER throws (falls back to the
   original) and PRESERVES the filename — so the filename-keyed mock still resolves. Don't rename the

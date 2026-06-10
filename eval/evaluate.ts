@@ -17,6 +17,7 @@ import { MockVisionProvider } from "@/extraction";
 import { runVerification } from "@/pipeline";
 import type { ClaimedFields } from "@/domain";
 import { combinedVerdict } from "@/compare";
+import { percentile } from "./percentile";
 import casesJson from "./fixtures/cases.json";
 
 /**
@@ -145,11 +146,6 @@ function precisionRecall(correct: number, predicted: number, expected: number): 
   };
 }
 
-function percentile(sortedAsc: number[], p: number): number {
-  if (sortedAsc.length === 0) return 0;
-  const idx = Math.min(sortedAsc.length - 1, Math.ceil((p / 100) * sortedAsc.length) - 1);
-  return sortedAsc[Math.max(0, idx)];
-}
 
 /**
  * Ten equal-width reliability bins over [0,1]; bin i covers (i/10, (i+1)/10] EXCEPT the lowest bin,

@@ -179,6 +179,27 @@ describe("runExtraction — self-consistency + bold-pass", () => {
     expect(out.warningPrefixIsBold).toBeNull();
   });
 
+  it("a hung judgeWarningBold cannot stall the read past the per-call timeout (cannot-assert)", async () => {
+    const extracted = fields({
+      brand: "XYZ",
+      warningText: CANONICAL_GOVERNMENT_WARNING,
+      warningPrefixIsAllCaps: true,
+      warningPrefixIsBold: true,
+      confidence: { brand: 0.95, warningText: 0.95 },
+    });
+    const hung: VisionProvider = {
+      name: "mock",
+      extract: (_img: ImageInput) => Promise.resolve(extracted),
+      judgeWarningBold: (_img: ImageInput) => new Promise<boolean | null>(() => {}), // never settles
+    };
+    const started = Date.now();
+    const { extracted: out } = await runExtraction([hung], [img("front.jpg")], 120);
+    // Bounded by the per-call timeout (not the provider's ~30s hard cap), and the unsettled judge
+    // contributes null ("cannot assert"), so the extraction model's own bold flag stands.
+    expect(Date.now() - started).toBeLessThan(2000);
+    expect(out.warningPrefixIsBold).toBe(true);
+  });
+
   it("hard-fails 'not bold' only when BOTH the extraction flag and the judge agree", async () => {
     const extracted = fields({
       brand: "XYZ",

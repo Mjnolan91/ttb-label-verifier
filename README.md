@@ -17,8 +17,9 @@ JSON/CSV, and handles batch uploads.
 ## Try it in two minutes
 
 1. Open the [live demo](https://ttb-label-verifier-matthew-nolan-s-projects.vercel.app).
-2. Download a sample label below (on GitHub, open the link and use the "Download raw file"
-   button), or photograph any bottle you have.
+2. Grab a sample label: the demo's upload screen offers all three as one-click downloads ("No
+   label handy?"), or use the links in the table below (on GitHub, open the link and use the
+   "Download raw file" button). Any bottle photo of your own works too.
 3. Upload it as the front label. The AI reads it and pre-fills "The application" inputs with grey
    suggestions; press Tab to accept one, or click **Accept all AI suggestions**. (In real use the
    agent would type what the COLA (Certificate of Label Approval) application claims. Accepting
@@ -153,6 +154,11 @@ limitation.
 - **Deliberate scope cuts.** No COLA integration, no auth, no PII storage, no image
   deskewing/glare correction (bad photos get a re-upload prompt, per the brief's guidance), and no
   physical type-size checks (millimeter minimums can't be measured from extracted text).
+- **No rate limiting on the demo endpoint.** `/api/verify` is unauthenticated and, with a real
+  provider configured, fans out to multiple model calls per request, so a hammering client could
+  exhaust the demo key's quota. Uploads are size- and type-capped, but per-client throttling is
+  left to the platform or an API gateway in a real deployment; documented here rather than
+  hand-rolling middleware into a prototype.
 - **One build-time network fetch.** `next/font/google` downloads the Inter font during
   `npm run build` only. Dev, tests, and the running app are fully offline; a strictly air-gapped
   build would swap in `next/font/local`.

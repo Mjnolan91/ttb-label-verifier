@@ -1,5 +1,5 @@
 import { useState, type Ref } from "react";
-import type { VerifyResult, VerifyField, VerifyFieldKey } from "@/compare";
+import { FIELD_REVIEW_CONFIDENCE, MIN_READABLE_CONFIDENCE, type VerifyResult, type VerifyField, type VerifyFieldKey } from "@/compare";
 import { StatusBadge } from "./StatusBadge";
 import {
   toneForStatus,
@@ -95,10 +95,13 @@ function hasRealConcern(fields: readonly VerifyField[]): boolean {
 function ConfidenceChip({ value }: { value: number | undefined }) {
   if (typeof value !== "number") return null;
   const pct = Math.round(value * 100);
+  // Green above FIELD_REVIEW_CONFIDENCE, the engine's per-field trust gate. The amber/red split
+  // reuses MIN_READABLE_CONFIDENCE, which the engine only applies image-level (readability); per
+  // field it is purely a display boundary, borrowed so the palette tracks named constants.
   const cls =
-    value >= 0.7
+    value >= FIELD_REVIEW_CONFIDENCE
       ? "bg-pass-50 text-pass-900 border-pass-600"
-      : value >= 0.5
+      : value >= MIN_READABLE_CONFIDENCE
         ? "bg-review-50 text-review-900 border-review-500"
         : "bg-fail-50 text-fail-900 border-fail-600";
   return (

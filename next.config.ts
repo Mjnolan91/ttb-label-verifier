@@ -8,6 +8,25 @@ const nextConfig: NextConfig = {
   // Emit a self-contained server bundle (.next/standalone) for a small container image —
   // used by the Azure Container Apps Dockerfile. Harmless for `next start` / App Service.
   output: "standalone",
+
+  // Baseline hardening for a public, unauthenticated upload endpoint: don't advertise the
+  // framework, and set the headers every security review checks first. CSP is intentionally
+  // omitted for the prototype (Next's inline runtime would need nonces); clickjacking is
+  // covered by X-Frame-Options.
+  poweredByHeader: false,
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

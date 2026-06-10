@@ -338,6 +338,55 @@ describe("VerifyForm — verify against the application", () => {
     expect(within(container).getAllByText(/Back label/i).length).toBeGreaterThan(0);
   });
 
+  it("offers sample label downloads while the front slot is empty, hidden once an image is in", ASYNC, async () => {
+    mockFetch(READ_OK());
+    const { container } = render(<VerifyForm />);
+    const q = within(container);
+    const clean = q.getByRole("link", { name: /clean bourbon/i }) as HTMLAnchorElement;
+    expect(clean.getAttribute("href")).toBe("/samples/demo-old-tom-clean.png");
+    expect(clean.hasAttribute("download")).toBe(true);
+    expect(
+      (q.getByRole("link", { name: /title-case warning/i }) as HTMLAnchorElement).getAttribute("href"),
+    ).toBe("/samples/demo-warning-title-case.png");
+    expect(
+      (q.getByRole("link", { name: /brand typo/i }) as HTMLAnchorElement).getAttribute("href"),
+    ).toBe("/samples/demo-brand-typo.png");
+    dropLabelImage(container);
+    await q.findByText("Complete the application to verify");
+    expect(q.queryByRole("link", { name: /clean bourbon/i })).toBeNull();
+  });
+
+  it("a failed read shows Try again, which retries WITHOUT wiping typed application values", ASYNC, async () => {
+    let calls = 0;
+    globalThis.fetch = vi.fn(async () => {
+      calls++;
+      if (calls === 1) throw new Error("network down");
+      return { ok: true, json: async () => READ_OK() };
+    }) as unknown as typeof fetch;
+    const { container } = render(<VerifyForm />);
+    const q = within(container);
+    dropLabelImage(container);
+    expect(await q.findByText(/Could not reach the label reader/)).toBeTruthy();
+    // The agent already typed an application value; recovery must not cost them their work.
+    fireEvent.change(q.getByLabelText(/^Brand/i), { target: { value: "Old Tom Distillery" } });
+    fireEvent.click(q.getByRole("button", { name: /try again/i }));
+    expect(await q.findByText("Complete the application to verify")).toBeTruthy();
+    expect((q.getByLabelText(/^Brand/i) as HTMLInputElement).value).toBe("Old Tom Distillery");
+    expect(calls).toBe(2);
+  });
+
+  it("removing the failed image clears the error banner (no unactionable leftover alert)", ASYNC, async () => {
+    globalThis.fetch = vi.fn(async () => {
+      throw new Error("network down");
+    }) as unknown as typeof fetch;
+    const { container } = render(<VerifyForm />);
+    const q = within(container);
+    dropLabelImage(container);
+    expect(await q.findByText(/Could not reach the label reader/)).toBeTruthy();
+    fireEvent.click(q.getByRole("button", { name: /^Remove$/ }));
+    expect(q.queryByText(/Could not reach the label reader/)).toBeNull();
+  });
+
   it("shows the re-upload prompt for an unreadable image (never a fabricated verdict)", ASYNC, async () => {
     mockFetch({
       provider: "mock", readable: false, extracted: extractedBourbon(), result: null,

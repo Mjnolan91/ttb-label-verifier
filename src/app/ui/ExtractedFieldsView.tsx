@@ -1,5 +1,6 @@
 import type { Ref } from "react";
 import type { ExtractedFields } from "@/domain";
+import { FIELD_REVIEW_CONFIDENCE, MIN_READABLE_CONFIDENCE } from "@/compare";
 import { HEADLINE_FIELDS, DETAIL_FIELDS, type FieldDescriptor } from "@/extraction/fieldCatalog";
 
 /**
@@ -19,7 +20,10 @@ function valueOf(e: ExtractedFields, key: FieldDescriptor["key"]): string | unde
 
 function confidenceColor(v: number | undefined): string {
   if (typeof v !== "number") return "text-ink-muted";
-  return v >= 0.7 ? "text-pass-700" : v >= 0.5 ? "text-review-700" : "text-fail-700";
+  // Green above FIELD_REVIEW_CONFIDENCE, the engine's per-field trust gate. The amber/red split
+  // reuses MIN_READABLE_CONFIDENCE, which the engine only applies image-level (readability); per
+  // field it is purely a display boundary, borrowed so the palette tracks named constants.
+  return v >= FIELD_REVIEW_CONFIDENCE ? "text-pass-700" : v >= MIN_READABLE_CONFIDENCE ? "text-review-700" : "text-fail-700";
 }
 
 function ConfidenceTag({ value }: { value: number | undefined }) {

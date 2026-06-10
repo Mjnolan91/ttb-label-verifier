@@ -118,20 +118,23 @@ export function DecisionPanel({
   // A plain render helper (NOT a component) so it doesn't reset state each render.
   const decisionButton = (d: Decision) => {
     const active = decision === d;
+    // bg-surface lives ONLY on the inactive branches: it has equal specificity to the solid tones,
+    // so if both classes are present the compiled stylesheet's emission order (not class order) picks
+    // the winner — which rendered the selected button white-on-white.
     const tone =
       d === "approve"
         ? active
           ? "border-pass-700 bg-pass-700 text-white"
-          : "border-pass-600 text-pass-700 hover:bg-pass-50"
+          : "border-pass-600 bg-surface text-pass-700 hover:bg-pass-50"
         : active
           ? "border-fail-700 bg-fail-700 text-white"
-          : "border-fail-600 text-fail-700 hover:bg-fail-50";
+          : "border-fail-600 bg-surface text-fail-700 hover:bg-fail-50";
     return (
       <button
         type="button"
         onClick={() => choose(d)}
         aria-pressed={active}
-        className={`inline-flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-field border-2 bg-surface px-4 text-base font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2 ${tone}`}
+        className={`inline-flex min-h-[48px] flex-1 items-center justify-center gap-2 rounded-field border-2 px-4 text-base font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2 ${tone}`}
       >
         {d === "approve" ? <IconPass className="h-5 w-5" /> : <IconFail className="h-5 w-5" />}
         {d === "approve" ? "Approve COLA" : "Reject / send back"}
@@ -180,7 +183,7 @@ export function DecisionPanel({
             <label className="block text-sm font-medium text-ink">
               Reviewer notes
               <span className="ml-1 font-normal text-ink-muted">
-                ({decision === "approve" ? "what you confirmed" : "what to correct"} — drawn from the review; edit as needed)
+                ({decision === "approve" ? "what you confirmed" : "what to correct"}; edit as needed)
               </span>
               <textarea
                 value={notes}

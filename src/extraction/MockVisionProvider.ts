@@ -32,6 +32,15 @@ const EXTRACTED_BY_FILENAME: ReadonlyMap<string, RawExtractedFields> = new Map(
 );
 
 /**
+ * Browsers rename a repeat download to "name (1).png". The sample labels are handed out as download
+ * links, so that suffix is a realistic way a user re-uploads a fixture; strip it before declaring a
+ * filename unknown (everything else about the unknown path stays deterministic).
+ */
+function stripDownloadCopySuffix(filename: string): string {
+  return filename.replace(/ \(\d+\)(\.[A-Za-z0-9]+)$/, "$1");
+}
+
+/**
  * The deterministic result for an UNKNOWN/unreadable filename: no field values (never fabricated),
  * every confidence 0 (below any threshold), prefix all-caps false and bold-ness undetectable.
  */
@@ -48,7 +57,9 @@ export class MockVisionProvider implements VisionProvider {
 
   // Not `async` (no I/O to await) but returns a Promise to satisfy the interface.
   extract(image: ImageInput, _signal?: AbortSignal, _options?: ExtractOptions): Promise<ExtractedFields> {
-    const raw = EXTRACTED_BY_FILENAME.get(image.filename);
+    const raw =
+      EXTRACTED_BY_FILENAME.get(image.filename) ??
+      EXTRACTED_BY_FILENAME.get(stripDownloadCopySuffix(image.filename));
     return Promise.resolve(raw ? mapRawExtracted(raw) : unreadableResult());
   }
 }

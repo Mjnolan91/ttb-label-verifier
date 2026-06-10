@@ -6,7 +6,7 @@
  * evaluation measures the exact production pipeline.
  */
 import type { ClaimedFields, ExtractedFields } from "@/domain";
-import { selfConsistentExtract, resolveSelfConsistencySamples, mergeExtracted, isAbortOrTimeout, aggregateBoldVotes, combineBoldSignals, type ImageInput, type VisionProvider } from "@/extraction";
+import { selfConsistentExtract, resolveSelfConsistencySamples, resolveTimeoutMs, mergeExtracted, isAbortOrTimeout, aggregateBoldVotes, combineBoldSignals, type ImageInput, type VisionProvider } from "@/extraction";
 import { verifyLabel, isExtractionReadable, type VerifyResult } from "@/compare";
 
 export interface ExtractionOutcome {
@@ -41,14 +41,34 @@ export async function runExtraction(
   // ≥0.5% ABV, so this nets a large latency win for the common case.) The bold pass is SAMPLED N times
   // per image (self-consistency) and majority-voted, since a false "not bold" hard-fails the warning.
   const bolder = providers.find((p) => typeof p.judgeWarningBold === "function");
+  // ONE per-call budget for everything in this read (otherwise extraction and the judge fall back to
+  // different defaults when the caller omits timeoutMs).
+  const perCallTimeoutMs = timeoutMs ?? resolveTimeoutMs(providers);
+  // The judge rides the same budget as extraction: on timeout the in-flight call is ABORTED (the
+  // providers plumb the signal into their fetch) and the verdict degrades to null ("cannot assert"),
+  // the same safe state as a judge that couldn't tell — a lone "not bold" never hard-fails anyway
+  // (combineBoldSignals). The race stays as a backstop for providers that ignore the signal.
+  const judgeOnce = (img: ImageInput): Promise<boolean | null> => {
+    const ctrl = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    return Promise.race([
+      bolder!.judgeWarningBold!(img, ctrl.signal)
+        .catch(() => null)
+        .finally(() => clearTimeout(timer)),
+      new Promise<null>((resolve) => {
+        timer = setTimeout(() => {
+          ctrl.abort();
+          resolve(null);
+        }, perCallTimeoutMs);
+      }),
+    ]);
+  };
   const [settled, boldVerdicts] = await Promise.all([
-    Promise.allSettled(images.map((img) => selfConsistentExtract(providers, img, timeoutMs, samples))),
+    Promise.allSettled(images.map((img) => selfConsistentExtract(providers, img, perCallTimeoutMs, samples))),
     bolder
       ? Promise.all(
           images.map((img) =>
-            Promise.all(
-              Array.from({ length: samples }, () => bolder.judgeWarningBold!(img).catch(() => null)),
-            ).then(aggregateBoldVotes),
+            Promise.all(Array.from({ length: samples }, () => judgeOnce(img))).then(aggregateBoldVotes),
           ),
         )
       : Promise.resolve<(boolean | null)[]>([]),
