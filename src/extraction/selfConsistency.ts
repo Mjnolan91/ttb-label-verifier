@@ -144,6 +144,8 @@ export function aggregateSamples(samples: ExtractedFields[]): ExtractedFields {
   out.confidence = confidence;
   out.warningPrefixIsAllCaps = voteBool(samples.map((s) => s.warningPrefixIsAllCaps));
   out.warningPrefixIsBold = voteBool(samples.map((s) => s.warningPrefixIsBold));
+  out.warningRemainderIsBold = voteBool(samples.map((s) => s.warningRemainderIsBold));
+  out.warningIsReadilyLegible = voteBool(samples.map((s) => s.warningIsReadilyLegible));
   return out;
 }
 

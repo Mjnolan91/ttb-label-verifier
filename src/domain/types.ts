@@ -176,6 +176,22 @@ export interface ExtractedFields {
    */
   warningPrefixIsBold: boolean | null;
   /**
+   * Whether the warning statement's REMAINDER (everything after the "GOVERNMENT WARNING:" prefix)
+   * is rendered in BOLD type. 27 CFR 16.22(a)(2): "The remainder of the warning statement may not
+   * appear in bold type" — so TRUE is a violation. Tri-state and OPTIONAL (older fixtures and
+   * extractors may not report it). Unlike the prefix flags, this is a SUPPLEMENTARY signal: only a
+   * confident true fails; null/undefined is silent (not routed to review on absence of evidence).
+   */
+  warningRemainderIsBold?: boolean | null;
+  /**
+   * Whether the warning statement is READILY LEGIBLE under ordinary conditions, per 27 CFR
+   * 16.22(a)(1) — a typography judgment (ornate script faces, distorted or low-contrast type).
+   * Italic or serif type that reads easily IS legible; style alone is never a violation. FALSE
+   * routes to REVIEW (a human confirms; legibility is a judgment call, never auto-failed).
+   * Tri-state and optional like warningRemainderIsBold.
+   */
+  warningIsReadilyLegible?: boolean | null;
+  /**
    * Responsible-party NAME as printed, e.g. "ABC Distillery" (from "DISTILLED & BOTTLED BY: ABC
    * DISTILLERY"). The bottling/producing verb belongs with the commodity statement, not the name.
    */

@@ -585,8 +585,12 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
                   className={lowConf ? LOW_CONF_INPUT : inputClass}
                 />
                 {showHint && (
-                  <span id={hintId} className="mt-1 block text-xs text-ink-muted">
-                    Suggested from the label. Press Tab to accept.
+                  /* The FULL suggestion is repeated here (wrapping): a long value truncates inside
+                     the single-line input's placeholder, and the agent must be able to read what
+                     they are about to accept. */
+                  <span id={hintId} className="mt-1 block break-words text-xs text-ink-muted">
+                    Suggested: <span className="font-medium text-ink">{f.suggestion}</span>. Press Tab
+                    to accept.
                   </span>
                 )}
               </div>

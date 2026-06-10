@@ -87,8 +87,32 @@ const RESPONSE_SCHEMA = {
         "clearly the SAME weight as the body (a real violation); null if you cannot tell. When unsure, return " +
         "null — never guess true OR false (a wrong false rejects a compliant label).",
     },
+    warningRemainderIsBold: {
+      type: "BOOLEAN",
+      nullable: true,
+      description:
+        "true ONLY if the warning statement BODY — the text AFTER the \"GOVERNMENT WARNING:\" prefix — is " +
+        "clearly rendered in BOLD type (a real violation: the remainder may not appear in bold, 27 CFR " +
+        "16.22(a)(2)); false if the body is clearly regular weight; null if you cannot tell. When unsure, " +
+        "return null — never guess.",
+    },
+    warningIsReadilyLegible: {
+      type: "BOOLEAN",
+      nullable: true,
+      description:
+        "false ONLY if the warning statement is clearly HARD TO READ under ordinary conditions (ornate " +
+        "script face, distorted or tiny type, poor contrast with the background); true if it reads easily; " +
+        "null if you cannot tell. Italic or serif type that reads easily IS legible — never penalize style " +
+        "alone.",
+    },
   },
-  required: [...CONFIDENCED_FIELDS, "warningPrefixIsAllCaps", "warningPrefixIsBold"],
+  required: [
+    ...CONFIDENCED_FIELDS,
+    "warningPrefixIsAllCaps",
+    "warningPrefixIsBold",
+    "warningRemainderIsBold",
+    "warningIsReadilyLegible",
+  ],
 } as const;
 
 /** Best-effort actionable detail for a non-OK Gemini response. Never throws. */

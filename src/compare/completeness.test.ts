@@ -148,6 +148,20 @@ describe("checkCompleteness", () => {
     expect(r.overall).toBe("complete");
   });
 
+  it("flags a BOLD warning BODY as malformed (the remainder may not be bold, 16.22(a)(2)) -> incomplete", () => {
+    const r = checkCompleteness(ds({ warningRemainderIsBold: true }));
+    expect(statusOf(r, "governmentWarning")).toBe("malformed");
+    expect(r.overall).toBe("incomplete");
+  });
+
+  it("a confidently hard-to-read warning stays present with a confirm-note (legibility never hard-fails)", () => {
+    const r = checkCompleteness(ds({ warningIsReadilyLegible: false }));
+    expect(statusOf(r, "governmentWarning")).toBe("present");
+    const el = r.elements.find((e) => e.key === "governmentWarning");
+    expect(el?.detail).toContain("legible");
+    expect(r.overall).toBe("complete"); // the comparator routes it to review; completeness only notes it
+  });
+
   it("does not fail a sulfite-free wine: sulfite is conditional (>=10 ppm SO2, 27 CFR 4.32(e))", () => {
     const wine = ds({
       classType: "Cabernet Sauvignon Red Wine", // class derived from this text + ABV

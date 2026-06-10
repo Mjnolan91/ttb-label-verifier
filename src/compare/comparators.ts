@@ -520,12 +520,20 @@ export function compareWarning(args: {
   warningText?: string;
   warningPrefixIsAllCaps?: boolean | null;
   warningPrefixIsBold?: boolean | null;
+  warningRemainderIsBold?: boolean | null;
+  warningIsReadilyLegible?: boolean | null;
   abv?: number;
 }): FieldResult {
   const canonical = CANONICAL_GOVERNMENT_WARNING;
   const text = args.warningText ?? "";
   const allCaps = args.warningPrefixIsAllCaps ?? null;
   const bold = args.warningPrefixIsBold ?? null;
+  // Supplementary 16.22 signals. Deliberately ASYMMETRIC to the prefix flags above: only a
+  // confident violation acts; null is silent (the prefix format is the load-bearing check that
+  // demands positive verification, and routing every label to review whenever a secondary signal
+  // is unreadable would drown the reviewer).
+  const remainderBold = args.warningRemainderIsBold ?? null;
+  const legible = args.warningIsReadilyLegible ?? null;
 
   // Exemption: products under 0.5% ABV are not required to carry the warning (27 CFR 16.10).
   if (args.abv !== undefined && !isWarningRequired(args.abv)) {
@@ -563,6 +571,15 @@ export function compareWarning(args: {
       'The "GOVERNMENT WARNING:" prefix must be bold (27 CFR 16.22(a)(2)).',
     );
   }
+  if (remainderBold === true) {
+    return result(
+      "fail",
+      canonical,
+      text,
+      'Only the "GOVERNMENT WARNING:" prefix may be bold. The remainder of the warning statement ' +
+        "may not appear in bold type (27 CFR 16.22(a)(2)).",
+    );
+  }
   // The statutory text capitalizes "Surgeon General" (the TTB checklists call the S and G out
   // explicitly), but the wording comparison above case-folds — so check the RAW text's casing here.
   // An all-caps rendering ("SURGEON GENERAL") still satisfies the rule. Review, not fail: this case
@@ -575,6 +592,19 @@ export function compareWarning(args: {
       canonical,
       text,
       '"Surgeon General" must be capitalized (the S and G) in the warning text. Confirm against the label.',
+    );
+  }
+  // Legibility (27 CFR 16.22(a)(1), "readily legible under ordinary conditions") is a typography
+  // JUDGMENT, not a deterministic comparison — so a confident "hard to read" routes to a human and
+  // is never auto-failed. Italic/serif style alone is NOT a violation (the regulation never
+  // mentions italics); only genuinely-hard-to-read treatment lands here.
+  if (legible === false) {
+    return result(
+      "review",
+      canonical,
+      text,
+      "The warning statement must be readily legible under ordinary conditions (27 CFR 16.22(a)(1)). " +
+        "The type treatment looks hard to read. Confirm on the label.",
     );
   }
   // VERIFIED means verified. The text matches and nothing is confidently wrong, but if a prefix

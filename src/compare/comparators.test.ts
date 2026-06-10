@@ -91,6 +91,24 @@ describe("compareWarning", () => {
   it("FAIL: prefix detectably not bold", () => {
     expect(compareWarning({ ...ok, warningPrefixIsBold: false }).status).toBe("fail");
   });
+  it("FAIL: the statement REMAINDER detectably bold — 16.22(a)(2) forbids a bold body", () => {
+    // An extra-bold prefix over a bold body satisfies "prefix bolder than body" yet still violates
+    // the second sentence of 16.22(a)(2): the remainder may not appear in bold type.
+    const r = compareWarning({ ...ok, warningRemainderIsBold: true });
+    expect(r.status).toBe("fail");
+    expect(r.reason).toContain("remainder");
+  });
+  it("REVIEW: warning judged hard to read — legibility (16.22(a)(1)) routes to a human, never auto-fails", () => {
+    const r = compareWarning({ ...ok, warningIsReadilyLegible: false });
+    expect(r.status).toBe("review");
+    expect(r.reason).toContain("legible");
+  });
+  it("PASS: the supplementary signals stay SILENT on null/undefined (asymmetric to the prefix flags)", () => {
+    // Italic style alone is not a violation, and an unreadable supplementary signal must not flood
+    // review: only the prefix format demands positive verification.
+    expect(compareWarning({ ...ok, warningRemainderIsBold: null, warningIsReadilyLegible: null }).status).toBe("pass");
+    expect(compareWarning(ok).status).toBe("pass"); // undefined (older fixtures) behaves the same
+  });
   it("FAIL: reworded warning", () => {
     const r = compareWarning({
       warningText: "GOVERNMENT WARNING: Drinking is bad for you.",

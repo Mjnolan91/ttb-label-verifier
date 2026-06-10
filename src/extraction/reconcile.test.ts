@@ -119,6 +119,19 @@ describe("mergeExtracted — field rules", () => {
     expect(mergeExtracted(fields({ ...warn, warningPrefixIsBold: false }), llm).warningPrefixIsBold).toBe(false);
   });
 
+  it("the supplementary 16.22 flags travel WITH the warning text in a front/back merge", () => {
+    const front = fields({ brand: "Old Tom", confidence: { brand: 0.9 } }); // no warning read
+    const back = {
+      ...fields({ confidence: { warningText: 0.9 } }),
+      warningText: "GOVERNMENT WARNING: ...",
+      warningRemainderIsBold: true,
+      warningIsReadilyLegible: false,
+    };
+    const merged = mergeExtracted(front, back);
+    expect(merged.warningRemainderIsBold).toBe(true);
+    expect(merged.warningIsReadilyLegible).toBe(false);
+  });
+
   it("takes the warning flags from the warning-bearing image (front no-warning / back warning split)", () => {
     // The front carries NO warning (and a model legitimately reports allCaps:false / bold:false for the
     // absent prefix); the back carries the real warning with undetectable bold. The merge must use the

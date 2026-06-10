@@ -81,6 +81,10 @@ export function ExtractedFieldsView({
       : extracted.warningPrefixIsBold === false
         ? "no"
         : "undetectable";
+  // The supplementary 16.22 signals (body-not-bold, legibility): name the good/violating readings,
+  // fall back to "undetectable" on null/undefined.
+  const tri = (v: boolean | null | undefined, whenTrue: string, whenFalse: string): string =>
+    v === true ? whenTrue : v === false ? whenFalse : "undetectable";
   return (
     <section aria-label="Extracted from the label" className="mt-6 flex flex-col gap-4">
       <h2
@@ -112,6 +116,8 @@ export function ExtractedFieldsView({
         <div className="mt-3 flex flex-wrap gap-2 border-t border-border pt-3">
           <Flag label="Warning prefix ALL CAPS" value={extracted.warningPrefixIsAllCaps ? "yes" : "no"} />
           <Flag label="Warning prefix bold" value={boldText} />
+          <Flag label="Warning body bold" value={tri(extracted.warningRemainderIsBold, "yes (violation)", "no")} />
+          <Flag label="Warning readily legible" value={tri(extracted.warningIsReadilyLegible, "yes", "confirm")} />
         </div>
       </div>
 

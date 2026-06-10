@@ -133,6 +133,19 @@ export function evaluateWarningElement(spec: RequirementSpec, e: ExtractedFields
       detail: 'The "GOVERNMENT WARNING:" prefix must be in BOLD type (27 CFR 16.22(a)(2)).',
     };
   }
+  // 16.22(a)(2) second sentence: the REMAINDER of the statement may not appear in bold type. A
+  // confident violation is malformed (mirrors compareWarning); null is silent (supplementary signal,
+  // unlike the prefix flags above which get confirm-notes when unverifiable).
+  if (e.warningRemainderIsBold === true) {
+    return {
+      ...base(spec),
+      status: "malformed",
+      value: w,
+      detail:
+        'Only the "GOVERNMENT WARNING:" prefix may be bold. The remainder of the warning statement ' +
+        "may not appear in bold type (27 CFR 16.22(a)(2)).",
+    };
+  }
   const capsNote =
     e.warningPrefixIsAllCaps === null
       ? " The ALL-CAPS prefix could not be verified from the image — confirm it (27 CFR 16.22(a)(2))."
@@ -141,8 +154,19 @@ export function evaluateWarningElement(spec: RequirementSpec, e: ExtractedFields
     e.warningPrefixIsBold === null
       ? " Bold type could not be verified from the image — confirm the prefix is bold (27 CFR 16.22(a)(2))."
       : "";
+  // Legibility (16.22(a)(1)) is a typography judgment: a confident "hard to read" is surfaced as a
+  // confirm-note (the comparator routes it to review); it never hard-fails completeness.
+  const legibilityNote =
+    e.warningIsReadilyLegible === false
+      ? " The statement may not be readily legible under ordinary conditions — confirm on the label (27 CFR 16.22(a)(1))."
+      : "";
   const prefixDesc = e.warningPrefixIsAllCaps === true ? "an ALL-CAPS prefix" : "the required warning text";
-  return { ...base(spec), status: "present", value: w, detail: `Present with ${prefixDesc}.${capsNote}${boldNote}` };
+  return {
+    ...base(spec),
+    status: "present",
+    value: w,
+    detail: `Present with ${prefixDesc}.${capsNote}${boldNote}${legibilityNote}`,
+  };
 }
 
 function base(spec: RequirementSpec): Pick<CompletenessElement, "key" | "label" | "necessity"> {

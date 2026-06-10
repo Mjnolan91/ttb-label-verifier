@@ -195,6 +195,8 @@ export function verifyLabel(
     warningText: extracted.warningText,
     warningPrefixIsAllCaps: extracted.warningPrefixIsAllCaps,
     warningPrefixIsBold: extracted.warningPrefixIsBold,
+    warningRemainderIsBold: extracted.warningRemainderIsBold,
+    warningIsReadilyLegible: extracted.warningIsReadilyLegible,
     // Only pass an exempting ABV when BOTH agree it's sub-0.5%; otherwise evaluate the warning normally.
     abv: warningExempt ? claimedAbv : undefined,
   });

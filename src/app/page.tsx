@@ -17,7 +17,9 @@ export default function Home() {
   return (
     <main id="main-content" tabIndex={-1} className="mx-auto flex min-h-screen max-w-3xl flex-col gap-8 px-4 py-10 sm:py-14 focus:outline-none">
       <header>
-        <p className="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide text-brand-700">
+        {/* The eyebrow shares the top edge with the fixed header controls (help + theme), so it
+            alone gets right padding until the xl outside margin clears them naturally. */}
+        <p className="flex items-center gap-2 pr-28 text-sm font-semibold uppercase tracking-wide text-brand-700 sm:pr-48 xl:pr-0">
           <IconUsFlag className="h-3.5 w-auto shrink-0 rounded-[1px] shadow-sm ring-1 ring-black/10" />
           TTB compliance · prototype
         </p>

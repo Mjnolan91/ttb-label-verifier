@@ -103,7 +103,13 @@ label-carries-every-required-element check (`src/compare/completeness.ts`). `com
 - **Government warning — strict.** Compare the body to the canonical statutory text below.
   Confirm the "GOVERNMENT WARNING:" prefix is present and in capital letters (and bold
   where detectable; only that prefix is bold, the remainder is not). Title-case
-  ("Government Warning"), reworded, or missing = fail. VERIFIED means verified: when the
+  ("Government Warning"), reworded, or missing = fail. The remainder rule is checked
+  EXPLICITLY too: a confidently bold statement body = fail (16.22(a)(2) second sentence,
+  "the remainder of the warning statement may not appear in bold type"). Legibility
+  (16.22(a)(1), "readily legible under ordinary conditions") is a typography judgment: a
+  confidently hard-to-read treatment routes to REVIEW, never an auto-fail — and note that
+  ITALICS ARE NOT PROHIBITED by Part 16 (verified against the eCFR text 2026-06-10);
+  style alone is never flagged, legibility is the test. VERIFIED means verified: when the
   caps/bold prefix format cannot be read from the image (tri-state null), the verdict is
   review with a "could not be verified, confirm on the label" reason — never a silent pass
   that claims a correctly formatted prefix. The dedicated bold judge runs on a STRONGER model than the bulk reads

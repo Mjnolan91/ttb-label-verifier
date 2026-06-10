@@ -36,6 +36,9 @@ export interface RawExtractedFields {
   statementOfComposition?: RawConfidencedValue;
   warningPrefixIsAllCaps: boolean | null;
   warningPrefixIsBold: boolean | null;
+  /** Supplementary 16.22 signals (optional: older fixtures don't carry them). */
+  warningRemainderIsBold?: boolean | null;
+  warningIsReadilyLegible?: boolean | null;
 }
 
 /**
@@ -51,6 +54,8 @@ export function mapRawExtracted(raw: RawExtractedFields): ExtractedFields {
   const out: ExtractedFields = {
     warningPrefixIsAllCaps: raw.warningPrefixIsAllCaps,
     warningPrefixIsBold: raw.warningPrefixIsBold,
+    warningRemainderIsBold: raw.warningRemainderIsBold ?? null,
+    warningIsReadilyLegible: raw.warningIsReadilyLegible ?? null,
     confidence,
   };
   const rawByKey = raw as unknown as Record<string, RawConfidencedValue | undefined>;

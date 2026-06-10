@@ -189,14 +189,18 @@ export function mergeExtracted(a: ExtractedFields, b: ExtractedFields): Extracte
   // back-label warning (the most common front/back split).
   const otherSrc = warnSrc === a ? b : a;
   const otherHasWarning = otherSrc.warningText != null && otherSrc.warningText.trim() !== "";
+  // A warning-bearing flag falls back to the OTHER image's reading only when that image also
+  // carries a warning (same rationale as the bold flag above); undefined folds into null.
+  const warnFlag = (pick: (e: ExtractedFields) => boolean | null | undefined): boolean | null => {
+    const primary = pick(warnSrc) ?? null;
+    if (primary !== null) return primary;
+    return otherHasWarning ? (pick(otherSrc) ?? null) : null;
+  };
   const out: ExtractedFields = {
     warningPrefixIsAllCaps: warnSrc.warningPrefixIsAllCaps,
-    warningPrefixIsBold:
-      warnSrc.warningPrefixIsBold !== null
-        ? warnSrc.warningPrefixIsBold
-        : otherHasWarning
-          ? otherSrc.warningPrefixIsBold
-          : null,
+    warningPrefixIsBold: warnFlag((e) => e.warningPrefixIsBold),
+    warningRemainderIsBold: warnFlag((e) => e.warningRemainderIsBold),
+    warningIsReadilyLegible: warnFlag((e) => e.warningIsReadilyLegible),
     confidence,
   };
 
