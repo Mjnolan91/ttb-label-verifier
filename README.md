@@ -159,7 +159,11 @@ downscaled in the browser to keep request sizes inside the budget.
   Congress amends the text, the fix is editing that one constant.
 - **Deliberate scope cuts.** No COLA integration, no auth, no PII storage, no image
   deskewing/glare correction (bad photos get a re-upload prompt, per the brief's guidance), and no
-  physical type-size checks (millimeter minimums can't be measured from extracted text).
+  physical type-size checks (millimeter minimums can't be measured from extracted text). The same
+  boundary covers the TTB checklists' placement rules (same field of vision, "separate and apart",
+  no intervening text): extraction merges a label's text and discards layout. Rules that need TTB's
+  records rather than the label itself (formula approvals, permit and brewer's-notice matching,
+  multi-plant coding systems) are also out: the tool sees only the image and the application values.
 - **No rate limiting on the demo endpoint.** `/api/verify` is unauthenticated and, with a real
   provider configured, fans out to multiple model calls per request, so a hammering client could
   exhaust the demo key's quota. Uploads are size- and type-capped, but per-client throttling is

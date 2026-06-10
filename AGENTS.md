@@ -27,6 +27,10 @@ consistency, not by reading images more accurately than a person.
 - No COLA integration. This is a standalone proof-of-concept.
 - No authentication, accounts, or persistence of PII. Nothing sensitive is stored.
 - No image deskewing / glare correction. Handle bad images by asking for a re-upload.
+- No layout/placement rules from the TTB checklists (same field of vision, "separate and apart",
+  no-intervening-text): extraction merges a label's text and discards position — the same boundary
+  as the physical type-size cut. No registry-backed rules either (formula approvals,
+  permit/brewer's-notice matching, multi-plant coding): they need TTB records, not the label.
 - Not a platform. Prefer the simplest implementation that meets the requirements.
 
 ## Hard constraints

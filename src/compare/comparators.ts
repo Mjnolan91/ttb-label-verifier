@@ -563,6 +563,20 @@ export function compareWarning(args: {
       'The "GOVERNMENT WARNING:" prefix must be bold (27 CFR 16.22(a)(2)).',
     );
   }
+  // The statutory text capitalizes "Surgeon General" (the TTB checklists call the S and G out
+  // explicitly), but the wording comparison above case-folds — so check the RAW text's casing here.
+  // An all-caps rendering ("SURGEON GENERAL") still satisfies the rule. Review, not fail: this case
+  // comes from raw OCR text where a mid-sentence case misread is plausible, so a human confirms and
+  // the label is never auto-approved on it.
+  const sg = text.match(/\b(s)urgeon\s+(g)eneral\b/i);
+  if (sg && (sg[1] !== "S" || sg[2] !== "G")) {
+    return result(
+      "review",
+      canonical,
+      text,
+      '"Surgeon General" must be capitalized (the S and G) in the warning text. Confirm against the label.',
+    );
+  }
   return result(
     "pass",
     canonical,

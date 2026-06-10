@@ -33,6 +33,18 @@ describe("parseAlcoholText", () => {
     expect(parseAlcoholText(undefined)).toEqual({});
   });
 
+  it("NEVER reads alcohol-by-weight as ABV (4.0% ABW is ~5.0% ABV — a silent misread skews the verdict)", () => {
+    // ABW-only statements must come back with NO abv, routing the field to review downstream.
+    expect(parseAlcoholText("4.0% alcohol by weight").abv).toBeUndefined();
+    expect(parseAlcoholText("4.0% ALC/WT").abv).toBeUndefined();
+    expect(parseAlcoholText("4.0% Alc. by Wt.").abv).toBeUndefined();
+    expect(parseAlcoholText("4.0% ABW").abv).toBeUndefined();
+  });
+  it("when BOTH by-weight and by-volume are stated, anchors to the by-volume number", () => {
+    expect(parseAlcoholText("3.2% ALC/WT (4.0% ALC/VOL)").abv).toBe(4.0);
+    expect(parseAlcoholText("4.0% Alc. by Vol. 3.2% Alc. by Wt.").abv).toBe(4.0);
+  });
+
   it("anchors to the alcohol cue, ignoring a non-alcohol percentage that appears first", () => {
     // The false-approval class: a tequila label prints "100% Agave" before the real ABV. A
     // first-percentage parse would read 100 and (claimed 100 vs labeled 100) approve a wrong value.

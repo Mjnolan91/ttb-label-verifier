@@ -99,6 +99,27 @@ describe("compareWarning", () => {
     expect(r.status).toBe("pass");
     expect(r.reason).toContain("0.5%");
   });
+
+  it("REVIEW: lowercase 'surgeon general' — the S and G must be capitalized (TTB checklist; 27 CFR 16.21)", () => {
+    // Wording matches verbatim case-insensitively, but the case-fold would otherwise hide this format
+    // defect entirely. Review (not fail): mid-sentence case is read from raw OCR text, where a case
+    // misread is plausible — a human confirms, the label is never auto-approved.
+    const r = compareWarning({
+      warningText: CANONICAL_GOVERNMENT_WARNING.replace("Surgeon General", "surgeon general"),
+      warningPrefixIsAllCaps: true,
+      warningPrefixIsBold: true,
+    });
+    expect(r.status).toBe("review");
+    expect(r.reason).toContain("Surgeon General");
+  });
+  it("PASS: a fully-capitalized warning satisfies the Surgeon General capitalization rule", () => {
+    const r = compareWarning({
+      warningText: CANONICAL_GOVERNMENT_WARNING.replace("Surgeon General", "SURGEON GENERAL"),
+      warningPrefixIsAllCaps: true,
+      warningPrefixIsBold: true,
+    });
+    expect(r.status).toBe("pass");
+  });
 });
 
 describe("compareAlcohol — fixture-grounded", () => {

@@ -31,11 +31,18 @@ export interface ParsedAlcohol {
 export function parseAlcoholText(text: string | undefined): ParsedAlcohol {
   if (!text) return {};
   const num = (s: string): number => Number(s.replace(",", "."));
-  const abvMatch =
-    text.match(/(-?\d+(?:[.,]\d+)?)\s*%\s*(?:alc|abv|alcohol)/i) ??
-    text.match(/(?:alc(?:ohol)?|abv)[^\d%]{0,8}(-?\d+(?:[.,]\d+)?)\s*%/i) ??
-    text.match(/(-?\d+(?:[.,]\d+)?)\s*(?:abv|alc)/i) ??
-    text.match(/(-?\d+(?:[.,]\d+)?)\s*%/);
+  // Alcohol BY WEIGHT is a different unit (ABW x ~1.25 = ABV; a "4.0% alc/wt" beer is ~5.0% ABV), so
+  // an ABW number must NEVER be read as the ABV — a silent unit mixup would skew the tolerance
+  // verdict in either direction. ABW-only statement -> no abv (the field routes to review); when the
+  // label states BOTH (the TTB-acceptable dual form), anchor strictly to the by-volume portion.
+  const hasWeightCue = /\b(?:by\s+weight|abw)\b|alc[a-z.]*\s*[\s./-]*(?:by\s+)?wt\b/i.test(text);
+  const abvMatch = hasWeightCue
+    ? (text.match(/(-?\d+(?:[.,]\d+)?)\s*%\s*(?:alc(?:ohol)?[^%]{0,12}?vol|abv\b)/i) ??
+      text.match(/(?:abv\b|alc(?:ohol)?[^%\d]{0,10}?vol[a-z.]*)[^\d%]{0,8}(-?\d+(?:[.,]\d+)?)\s*%/i))
+    : (text.match(/(-?\d+(?:[.,]\d+)?)\s*%\s*(?:alc|abv|alcohol)/i) ??
+      text.match(/(?:alc(?:ohol)?|abv)[^\d%]{0,8}(-?\d+(?:[.,]\d+)?)\s*%/i) ??
+      text.match(/(-?\d+(?:[.,]\d+)?)\s*(?:abv|alc)/i) ??
+      text.match(/(-?\d+(?:[.,]\d+)?)\s*%/));
   const proofMatch = text.match(/(-?\d+(?:[.,]\d+)?)\s*proof/i);
   // Discard physically-impossible values so a malformed number can't be treated as a real reading: an
   // ABV must be in [0, 100] (0 is allowed — non-alcoholic products legitimately read "0.0% Alc./Vol.",
