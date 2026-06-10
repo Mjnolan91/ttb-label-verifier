@@ -30,17 +30,23 @@ export function resolveSelfConsistencyTemperature(
 }
 
 /**
- * Extra self-consistency samples drawn ONCE when a field lands in the borderline band (present but
- * below the 0.7 review gate) after the base reads — adaptive sampling, so a single noisy read out
- * of 3 cannot doom a good field to review (2/3 -> 4/5 when the extra reads agree), while genuine
- * splits still land below the gate. 0 disables; clamped to [0, 3] (one bounded extra batch, never
- * a loop). Read from SELF_CONSISTENCY_ESCALATION.
+ * Extra self-consistency samples drawn ONCE when a VERDICT-RELEVANT field lands in the borderline
+ * band (present but below the 0.7 review gate) after the base reads — adaptive sampling, so a
+ * single noisy read out of 3 cannot doom a good field to review (2/3 -> 4/5 when the extra reads
+ * agree), while genuine splits still land below the gate. Clamped to [0, 3] (one bounded extra
+ * batch, never a loop). Read from SELF_CONSISTENCY_ESCALATION.
+ *
+ * DEFAULT 0 (opt-in), by measurement: with escalation on, contested reads pay an extra parallel
+ * batch and the live demo's p50 rose from ~4.1s toward the ~5s budget ceiling (2026-06-10 runs),
+ * compounding under free-tier rate quotas. The CLUSTERED vote already absorbs cosmetic variance at
+ * zero cost; set =2 on an in-tenant deployment with provisioned quota when accuracy on contested
+ * reads is worth the tail latency.
  */
 export function resolveSelfConsistencyEscalation(
   env: Record<string, string | undefined> = process.env,
 ): number {
-  const n = Number(env.SELF_CONSISTENCY_ESCALATION ?? "2");
-  return Number.isFinite(n) && n >= 0 ? Math.min(3, Math.floor(n)) : 2;
+  const n = Number(env.SELF_CONSISTENCY_ESCALATION ?? "0");
+  return Number.isFinite(n) && n >= 0 ? Math.min(3, Math.floor(n)) : 0;
 }
 
 /**

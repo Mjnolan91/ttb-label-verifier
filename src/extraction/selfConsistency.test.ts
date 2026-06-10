@@ -187,20 +187,21 @@ describe("selfConsistentExtract", () => {
     }
   }
 
-  it("aggregates N successful samples to agreement-based confidence (escalation disabled)", async () => {
-    await withEscalation("0", async () => {
+  it("aggregates N successful samples to agreement-based confidence (default: no escalation)", async () => {
+    await withEscalation(undefined, async () => {
       const brands = ["Old Tom", "Old Tom", "0ld T0m"];
       let i = 0;
       const provider: VisionProvider = { name: "gemini", extract: async () => read(brands[i++], 0.9) };
       const out = await selfConsistentExtract([provider], img, undefined, 3);
+      expect(i).toBe(3); // escalation is opt-in (default 0): the borderline split draws no extra reads
       expect(out.brand).toBe("Old Tom");
       expect(out.confidence.brand).toBeCloseTo(0.667, 2);
     });
   });
 
-  it("ESCALATES once on a borderline field: a single noisy sample recovers to 4/5 = 0.8", async () => {
-    await withEscalation(undefined, async () => {
-      // default escalation (2): base reads split 2/1 (0.67, borderline) -> 2 extra reads agree -> 0.8
+  it("ESCALATES once on a borderline field when enabled: a single noisy sample recovers to 4/5 = 0.8", async () => {
+    await withEscalation("2", async () => {
+      // base reads split 2/1 (0.67, borderline) -> 2 extra reads agree -> 0.8
       const brands = ["Old Tom", "Old Tom", "0ld T0m", "Old Tom", "Old Tom"];
       let i = 0;
       const provider: VisionProvider = { name: "gemini", extract: async () => read(brands[i++], 0.9) };
@@ -212,7 +213,7 @@ describe("selfConsistentExtract", () => {
   });
 
   it("a GENUINE split stays below the gate even after escalation (more evidence, same honest answer)", async () => {
-    await withEscalation(undefined, async () => {
+    await withEscalation("2", async () => {
       const brands = ["Old Tom", "Old Tom", "New Barrel Co", "New Barrel Co", "New Barrel Co"];
       let i = 0;
       const provider: VisionProvider = { name: "gemini", extract: async () => read(brands[i++], 0.9) };
@@ -223,7 +224,7 @@ describe("selfConsistentExtract", () => {
   });
 
   it("does NOT escalate when the base samples already agree (no extra cost on clean reads)", async () => {
-    await withEscalation(undefined, async () => {
+    await withEscalation("2", async () => {
       let i = 0;
       const provider: VisionProvider = { name: "gemini", extract: async () => { i++; return read("Old Tom", 0.9); } };
       const out = await selfConsistentExtract([provider], img, undefined, 3);
@@ -235,7 +236,7 @@ describe("selfConsistentExtract", () => {
   it("a LONG-TAIL field flickering (hallucinated fanciful name in 1 of 3 reads) does NOT escalate", async () => {
     // Optional detail fields flicker on real labels; paying an extra batch for them doubled live
     // p50 latency. Only the verdict-relevant fields justify the cost.
-    await withEscalation(undefined, async () => {
+    await withEscalation("2", async () => {
       let i = 0;
       const provider: VisionProvider = {
         name: "gemini",
