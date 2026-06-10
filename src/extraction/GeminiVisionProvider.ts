@@ -211,14 +211,38 @@ export class GeminiVisionProvider implements VisionProvider {
     "as the body. If there is no government warning, or the resolution or styling leaves you unsure, " +
     "answer CANNOT_DETERMINE.";
 
+  /**
+   * The judge's DEFAULT model — the strongest vision model available, NOT the extraction default.
+   * The warning is the one check that can hard-fail a label, so it gets the best eyes available out
+   * of the box (override with WARNING_JUDGE_MODEL; the bulk extraction reads stay on the fast model).
+   * It is a preview id, so judgeWarningBold falls back to the extraction model if the call FAILS —
+   * a rotated/dead id must degrade to the base model's judgment, never to "no judgment at all".
+   */
+  static readonly DEFAULT_JUDGE_MODEL = "gemini-3.1-pro-preview";
+
   async judgeWarningBold(image: ImageInput, signal?: AbortSignal): Promise<boolean | null> {
     if (!image.data || image.data.length === 0) return null;
     const base64 = Buffer.from(image.data).toString("base64");
-    // The judge can run on a stronger model than extraction (WARNING_JUDGE_MODEL) — the warning is
-    // the one check that can hard-fail a label, so it gets the best eyes available.
-    const judgeModel = this.config.judgeModel ?? this.config.model;
-    const url = `${API_BASE}/models/${judgeModel}:generateContent`;
-    const tuning = geminiTuning(judgeModel, "bold");
+    const judgeModel = this.config.judgeModel ?? GeminiVisionProvider.DEFAULT_JUDGE_MODEL;
+    const first = await this.judgeOnce(judgeModel, base64, image.contentType, signal);
+    if (first.ok || judgeModel === this.config.model) return first.verdict;
+    // The judge REQUEST failed (dead preview id, 4xx/5xx, malformed reply) — not a considered
+    // "cannot determine". Re-ask on the extraction model rather than dropping the judgment.
+    const fallback = await this.judgeOnce(this.config.model, base64, image.contentType, signal);
+    return fallback.verdict;
+  }
+
+  /** One bold-judgment call against one model. `ok` distinguishes a considered answer (incl. a
+   *  legitimate CANNOT_DETERMINE -> null) from a failed request, so the caller can fall back only
+   *  when the call itself failed. Never throws. */
+  private async judgeOnce(
+    model: string,
+    base64: string,
+    contentType: string | undefined,
+    signal?: AbortSignal,
+  ): Promise<{ ok: boolean; verdict: boolean | null }> {
+    const url = `${API_BASE}/models/${model}:generateContent`;
+    const tuning = geminiTuning(model, "bold");
     try {
       const res = await fetchWithRetry(this.fetchImpl, url, {
         method: "POST",
@@ -227,7 +251,7 @@ export class GeminiVisionProvider implements VisionProvider {
         body: JSON.stringify({
           contents: [{ role: "user", parts: [
             { text: GeminiVisionProvider.BOLD_PROMPT },
-            { inlineData: { mimeType: image.contentType ?? "image/jpeg", data: base64 } },
+            { inlineData: { mimeType: contentType ?? "image/jpeg", data: base64 } },
           ] }],
           generationConfig: {
             temperature: tuning.temperature,
@@ -238,14 +262,14 @@ export class GeminiVisionProvider implements VisionProvider {
           },
         }),
       });
-      if (!res.ok) return null;
+      if (!res.ok) return { ok: false, verdict: null };
       const json = (await res.json()) as GeminiResponse;
       const text = firstText(json.candidates?.[0]);
-      if (!text) return null;
+      if (!text) return { ok: false, verdict: null };
       const verdict = (JSON.parse(text) as { bold?: string }).bold;
-      return verdict === "BOLDER" ? true : verdict === "SAME" ? false : null;
+      return { ok: true, verdict: verdict === "BOLDER" ? true : verdict === "SAME" ? false : null };
     } catch {
-      return null;
+      return { ok: false, verdict: null };
     }
   }
 }

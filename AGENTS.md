@@ -106,9 +106,14 @@ label-carries-every-required-element check (`src/compare/completeness.ts`). `com
   ("Government Warning"), reworded, or missing = fail. VERIFIED means verified: when the
   caps/bold prefix format cannot be read from the image (tri-state null), the verdict is
   review with a "could not be verified, confirm on the label" reason — never a silent pass
-  that claims a correctly formatted prefix. The dedicated bold judge can run on a stronger
-  model than the bulk reads via `WARNING_JUDGE_MODEL` (the warning is the one check that
-  can hard-fail a label, so it gets the best eyes available).
+  that claims a correctly formatted prefix. The dedicated bold judge runs on a STRONGER model than the bulk reads
+  (the warning is the one check that can hard-fail a label, so it gets the best eyes
+  available): on the gemini provider it defaults to the strongest model with automatic
+  fallback to the extraction model when that call fails; `WARNING_JUDGE_MODEL` pins or
+  upgrades it on any provider. Measured (2026-06-10, 9 live reads per config): Flash
+  extraction + Pro judge = 9/9 verdicts, p95 4.5s (the concurrent judge hides behind the
+  extraction wall-clock); Pro extraction = p95 8.1s with quota failures — extraction
+  stays on Flash BY MEASUREMENT, not preference.
 
 ## Alcohol-content tolerance matrix (classType -> tolerance)
 The full beverage matrix below is the rule set the alcohol check selects from. `classType`

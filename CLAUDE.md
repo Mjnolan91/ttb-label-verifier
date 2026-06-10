@@ -46,9 +46,12 @@ pipeline and the "why". As built, the load-bearing pieces are:
   across samples — better calibrated than the model's self-reported confidence. `SELF_CONSISTENCY_SAMPLES`
   (default 3; `src/extraction/config.ts`) sets N; the mock provider is forced to 1 so the offline
   suite/eval stay deterministic. When a warning is read, a dedicated `judgeWarningBold` pass over the
-  images sets `warningPrefixIsBold` (`WARNING_JUDGE_MODEL` runs that judge on a stronger
-  model/deployment; an UNVERIFIABLE caps/bold prefix routes the warning to review in
-  `compareWarning` — "verified" is never claimed on missing evidence). `runVerification()` adds the claimed comparison. `/api/verify`
+  images sets `warningPrefixIsBold` (on gemini the judge DEFAULTS to the strongest model,
+  `GeminiVisionProvider.DEFAULT_JUDGE_MODEL`, falling back to the extraction model when that
+  call fails; `WARNING_JUDGE_MODEL` pins/upgrades it per provider; an UNVERIFIABLE caps/bold
+  prefix routes the warning to review in `compareWarning` — "verified" is never claimed on
+  missing evidence). Extraction stays on Flash by measurement (Pro extraction blew the ~5s
+  budget and its 25 req/min quota; see README "Measured, not claimed"). `runVerification()` adds the claimed comparison. `/api/verify`
   always extracts + runs the TTB **completeness** check (`src/compare/completeness.ts` over
   `src/domain/labelRequirements.ts`); it also returns a claimed-comparison verdict when
   `brand`+`alcoholContent` are posted. Batch pairs front/back by filename (`src/batch/pairing.ts`) and

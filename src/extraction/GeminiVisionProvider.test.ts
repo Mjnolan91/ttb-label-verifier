@@ -193,6 +193,45 @@ describe("GeminiVisionProvider — bold pass + tuning", () => {
     expect(urls[0]).not.toContain("gemini-3.5-flash");
   });
 
+  it("with no override the judge DEFAULTS to the strongest model, not the extraction model", async () => {
+    const urls: string[] = [];
+    const capture = (async (url: string) => {
+      urls.push(url);
+      return { ok: true, status: 200, json: async () => ({ candidates: [{ content: { parts: [{ text: '{"bold":"BOLDER"}' }] } }] }) };
+    }) as unknown as typeof fetch;
+    const p = new GeminiVisionProvider({ config: { apiKey: "k", model: "gemini-3.5-flash" }, fetchImpl: capture });
+    expect(await p.judgeWarningBold!(img)).toBe(true);
+    expect(urls).toHaveLength(1);
+    expect(urls[0]).toContain(GeminiVisionProvider.DEFAULT_JUDGE_MODEL);
+  });
+
+  it("falls back to the extraction model when the strong-judge CALL fails (rotated preview id)", async () => {
+    // A dead judge id must degrade to the base model's judgment, never to "no judgment at all".
+    const urls: string[] = [];
+    const capture = (async (url: string) => {
+      urls.push(url);
+      if (url.includes(GeminiVisionProvider.DEFAULT_JUDGE_MODEL)) {
+        return { ok: false, status: 404, json: async () => ({}) };
+      }
+      return { ok: true, status: 200, json: async () => ({ candidates: [{ content: { parts: [{ text: '{"bold":"SAME"}' }] } }] }) };
+    }) as unknown as typeof fetch;
+    const p = new GeminiVisionProvider({ config: { apiKey: "k", model: "gemini-3.5-flash" }, fetchImpl: capture });
+    expect(await p.judgeWarningBold!(img)).toBe(false);
+    expect(urls).toHaveLength(2);
+    expect(urls[1]).toContain("gemini-3.5-flash");
+  });
+
+  it("does NOT fall back on a considered CANNOT_DETERMINE — a weaker model must not overrule it", async () => {
+    const urls: string[] = [];
+    const capture = (async (url: string) => {
+      urls.push(url);
+      return { ok: true, status: 200, json: async () => ({ candidates: [{ content: { parts: [{ text: '{"bold":"CANNOT_DETERMINE"}' }] } }] }) };
+    }) as unknown as typeof fetch;
+    const p = new GeminiVisionProvider({ config: { apiKey: "k", model: "gemini-3.5-flash" }, fetchImpl: capture });
+    expect(await p.judgeWarningBold!(img)).toBeNull();
+    expect(urls).toHaveLength(1);
+  });
+
   it("the read request carries gen3 thinkingLevel 'low' and sends NO per-part mediaResolution (v1beta-unsupported)", async () => {
     type CapturedPart = { text?: string; inlineData?: unknown; mediaResolution?: unknown };
     type CapturedBody = {

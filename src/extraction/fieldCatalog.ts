@@ -180,8 +180,12 @@ export const FIELD_CATALOG: readonly FieldDescriptor[] = [
     description:
       "The distinctive or fanciful (\"sell\") name — a descriptive name/phrase shown IN ADDITION to the " +
       "brand to further identify the product, e.g. \"Spiced Rum\". It is NOT the brand name and NOT, by " +
-      "itself, the class/type designation. Capture it ONLY when the label clearly presents such a sell name; " +
-      "ordinary marketing puffery (\"Superior\", \"Premium\") is NOT a fanciful name. \"\" if none.",
+      "itself, the class/type designation. It must be its OWN piece of printed text: NEVER copy, shorten, " +
+      "or recombine words from the brand name, producer name, or class/type into this field (if a phrase " +
+      "appears only inside the brand masthead, there is no fanciful name). Most labels have NONE — absence " +
+      "is the normal case, so return \"\" rather than promoting other text. Capture it ONLY when the label " +
+      "clearly presents such a separate sell name; ordinary marketing puffery (\"Superior\", \"Premium\") " +
+      "is NOT a fanciful name. \"\" if none.",
   },
   {
     key: "statementOfComposition", rawKey: "statementOfComposition", confKey: "statementOfComposition", label: "Statement of composition", csvColumn: "statement_of_composition", group: "detail",

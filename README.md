@@ -136,6 +136,15 @@ documented in [`.env.example`](.env.example): `SELF_CONSISTENCY_SAMPLES` (3 read
 default; 2 trades some confidence calibration for speed) and the model choice. Uploads are
 downscaled in the browser to keep request sizes inside the budget.
 
+The model SPLIT was measured the same way (local dev server, real Gemini API, 9 sequential reads
+per config, 2026-06-10). Flash extraction with the Pro warning judge: **9/9 verdicts correct, p50
+3.3s, p95 4.5s** — inside the budget, because the judge runs concurrently with extraction and its
+~2s hides behind the extraction wall-clock. Running extraction itself on the Pro model: p50 6.0s,
+p95 8.1s, and 4 of 9 requests failed outright on the preview model's 25-requests/minute quota
+(extraction needs ~4 Pro calls per verify; the judge needs at most 3 and degrades gracefully to
+Flash on a 429). That is why extraction stays on Flash and the strongest model is spent only on
+the one judgment that can hard-fail a label.
+
 ## Assumptions and trade-offs
 
 - **Mock provider by default, real extraction opt-in.** Everything runs hermetically with no
@@ -210,10 +219,13 @@ If a selected provider's variables are missing, the request fails loudly with an
 It never silently falls back to the mock and pretends to read the image.
 
 Two optional knobs tune accuracy against cost: `SELF_CONSISTENCY_SAMPLES` (how many times each
-image is read; agreement becomes the confidence) and `WARNING_JUDGE_MODEL` (run the dedicated
-government-warning format judge on a stronger model than the bulk reads, e.g.
-`WARNING_JUDGE_MODEL=gemini-3.1-pro-preview` while extraction stays on Flash; for Azure it names a
-deployment).
+image is read; agreement becomes the confidence) and `WARNING_JUDGE_MODEL` (which model runs the
+dedicated government-warning format judge). On the Gemini provider the judge already **defaults to
+the strongest available model** (`gemini-3.1-pro-preview`) and automatically falls back to the
+extraction model if that call fails (a rotated preview id or its 25-requests/minute quota must
+degrade to the Flash judgment, never to no judgment); set `WARNING_JUDGE_MODEL` to pin something
+else. On OpenAI/Azure the judge defaults to the extraction model/deployment and the variable
+upgrades it.
 
 ## Internationalization (a design note, deliberately not shipped)
 
