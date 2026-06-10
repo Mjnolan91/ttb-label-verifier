@@ -21,9 +21,12 @@ export interface ParsedAlcohol {
  * a first-percentage parse would read 100% as the ABV and (claimed 100% vs labeled 100%) falsely
  * APPROVE a wildly wrong alcohol statement. Resolution order:
  *   1. "<n>% <cue>"     — "40% Alc./Vol.", "13.5% ABV"  (the canonical US form)
- *   2. "<cue> … <n>%"   — "ABV: 5.5%", "Alcohol 5.5% by volume"  (cue before the number)
+ *   2. "<cue> … <n>%"   — "ABV: 5.5%", "ALCOHOL BY VOLUME 4.5%"  (cue up to ~20 chars before the number)
  *   3. "<n> <cue>"      — "40 ABV"  (percent sign omitted)
- *   4. the first bare "<n>%"  — last resort, only when no alcohol cue is present at all
+ *   4. the first bare "<n>%"  — last resort, ENFORCED to fire only when no alcohol cue is present
+ *      at all. When a cue exists but none of the anchors catch a number, the result is NO abv
+ *      (routes to review) — a stray "0% SUGAR" must never be promoted to the ABV, because an ABV
+ *      of 0 would falsely exempt a missing government warning (27 CFR 16.10).
  * Both decimal separators are accepted ("13.5%" and the European "13,5%") so a comma decimal is not
  * truncated. A leading minus is captured (then rejected by the range guard below) so "-5%" can't be
  * silently read as 5.
@@ -40,9 +43,9 @@ export function parseAlcoholText(text: string | undefined): ParsedAlcohol {
     ? (text.match(/(-?\d+(?:[.,]\d+)?)\s*%\s*(?:alc(?:ohol)?[^%]{0,12}?vol|abv\b)/i) ??
       text.match(/(?:abv\b|alc(?:ohol)?[^%\d]{0,10}?vol[a-z.]*)[^\d%]{0,8}(-?\d+(?:[.,]\d+)?)\s*%/i))
     : (text.match(/(-?\d+(?:[.,]\d+)?)\s*%\s*(?:alc|abv|alcohol)/i) ??
-      text.match(/(?:alc(?:ohol)?|abv)[^\d%]{0,8}(-?\d+(?:[.,]\d+)?)\s*%/i) ??
+      text.match(/(?:alc(?:ohol)?|abv)[^\d%]{0,20}(-?\d+(?:[.,]\d+)?)\s*%/i) ??
       text.match(/(-?\d+(?:[.,]\d+)?)\s*(?:abv|alc)/i) ??
-      text.match(/(-?\d+(?:[.,]\d+)?)\s*%/));
+      (/abv|alc/i.test(text) ? null : text.match(/(-?\d+(?:[.,]\d+)?)\s*%/)));
   const proofMatch = text.match(/(-?\d+(?:[.,]\d+)?)\s*proof/i);
   // Discard physically-impossible values so a malformed number can't be treated as a real reading: an
   // ABV must be in [0, 100] (0 is allowed — non-alcoholic products legitimately read "0.0% Alc./Vol.",
@@ -86,15 +89,21 @@ export function resolveBeverageClass(
   if (t === "cider") return "cider";
   if (t === "unknown") return "unknown";
 
-  // Keyword heuristics. Cider first (it has its own resolution), then malt, wine, spirits.
-  if (t.includes("cider")) return "cider";
-  if (/(malt|beer|ale|lager|stout|porter|ipa|pilsner)/.test(t)) return "maltBeverage";
-  if (/(wine|port|sherry|vermouth|madeira|mead|sake|sangria)/.test(t)) {
+  // Keyword heuristics on WORD boundaries (spaces preserved, punctuation collapsed). Substring
+  // matching here once sent every "Imported ..." spirit to the WINE tolerance band because
+  // "imported" contains "port" — a word like "port" must match only as its own word.
+  // Cider first (it has its own resolution), then malt, wine, spirits.
+  const words = classText.toLowerCase().replace(/[^a-z0-9]+/g, " ");
+  if (/\bciders?\b/.test(words)) return "cider";
+  if (/\b(?:malt|beers?|ales?|lagers?|stouts?|porters?|ipas?|pilsners?)\b/.test(words)) {
+    return "maltBeverage";
+  }
+  if (/\b(?:wines?|ports?|sherry|vermouth|madeira|meads?|sake|sangria)\b/.test(words)) {
     return abv !== undefined && abv > 14 ? "wineOver14" : "wineUnder14";
   }
   if (
-    /(spirit|whiskey|whisky|bourbon|rye|vodka|gin|rum|tequila|mezcal|brandy|cognac|liqueur|distilled|scotch)/.test(
-      t,
+    /\b(?:spirits?|whiskey|whisky|whiskies|bourbon|rye|vodka|gin|rum|tequila|mezcal|brandy|cognac|liqueurs?|distilled|scotch)\b/.test(
+      words,
     )
   ) {
     return "distilledSpirits";

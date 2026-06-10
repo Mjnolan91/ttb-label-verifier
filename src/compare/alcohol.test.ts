@@ -58,6 +58,17 @@ describe("parseAlcoholText", () => {
   it("uses a bare percentage only when no alcohol cue is present", () => {
     expect(parseAlcoholText("40%").abv).toBe(40);
   });
+  it("anchors to a cue with a wide gap instead of falling back to a bare percentage", () => {
+    // "ALCOHOL BY VOLUME 4.5%" has an 11-char gap between cue and number. The bare-% last resort
+    // must not grab "0%" from "0% SUGAR" — an ABV of 0 would falsely exempt a missing warning.
+    expect(parseAlcoholText("ALCOHOL BY VOLUME 4.5%").abv).toBe(4.5);
+    expect(parseAlcoholText("0% SUGAR. ALCOHOL BY VOLUME 4.5%").abv).toBe(4.5);
+  });
+  it("returns NO abv when an alcohol cue exists but no number anchors to it (never the bare %)", () => {
+    // A cue is present but unparseable -> undefined routes the field to review; the bare "55%"
+    // (a non-alcohol number) must not be promoted to the ABV just because the anchors missed.
+    expect(parseAlcoholText("55% RYE MASH. ALCOHOL CONTENT ON NECK LABEL").abv).toBeUndefined();
+  });
   it("treats 0% as a real value (non-alcoholic / <0.5% warning exemption needs a real 0)", () => {
     expect(parseAlcoholText("0.0% Alc./Vol.").abv).toBe(0);
   });
@@ -87,6 +98,16 @@ describe("resolveBeverageClass (class text -> BeverageClass enum)", () => {
     expect(resolveBeverageClass("")).toBe("unknown");
     expect(resolveBeverageClass(undefined)).toBe("unknown");
     expect(resolveBeverageClass("Mystery Beverage")).toBe("unknown");
+  });
+  it("matches keywords on WORD boundaries — 'Imported X' must not resolve to wine via 'port'", () => {
+    // The false-tolerance class: "imported" contains the substring "port", so substring matching
+    // sent every imported spirit to the WINE tolerance band (1.5x looser than spirits).
+    expect(resolveBeverageClass("Imported Vodka")).toBe("distilledSpirits");
+    expect(resolveBeverageClass("Imported Gin", 40)).toBe("distilledSpirits");
+    expect(resolveBeverageClass("Imported Herbal Anise Spirit", 69)).toBe("distilledSpirits");
+    // The real words keep their classes.
+    expect(resolveBeverageClass("Ruby Port", 20)).toBe("wineOver14");
+    expect(resolveBeverageClass("Porter")).toBe("maltBeverage");
   });
 });
 

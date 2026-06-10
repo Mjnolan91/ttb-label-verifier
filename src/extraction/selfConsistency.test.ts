@@ -42,6 +42,27 @@ describe("aggregateSamples", () => {
     expect(out.warningPrefixIsAllCaps).toBe(true);
   });
 
+  it("a tri-state warning-flag TIE asserts nothing — a 1/1/1 split must not adopt the first sample", () => {
+    // true/false/null split one apiece: there is no majority, and which sample sits first is an
+    // accident of array order. Adopting it would let a one-of-three "false" hard-fail the caps/bold
+    // check; a tie must fall to null (cannot assert -> surfaced for a human, never auto-failed).
+    const out = aggregateSamples([
+      readWith({ warningPrefixIsAllCaps: false, warningPrefixIsBold: false }),
+      readWith({ warningPrefixIsAllCaps: true, warningPrefixIsBold: true }),
+      readWith({ warningPrefixIsAllCaps: null, warningPrefixIsBold: null }),
+    ]);
+    expect(out.warningPrefixIsAllCaps).toBeNull();
+    expect(out.warningPrefixIsBold).toBeNull();
+  });
+
+  it("a two-sample warning-flag tie (true vs false) also falls to null", () => {
+    const out = aggregateSamples([
+      readWith({ warningPrefixIsBold: true }),
+      readWith({ warningPrefixIsBold: false }),
+    ]);
+    expect(out.warningPrefixIsBold).toBeNull();
+  });
+
   // ---- Presence vs value agreement ------------------------------------------------------------
 
   it("STABLE presence (all samples carry the field) is unchanged -> full agreement", () => {

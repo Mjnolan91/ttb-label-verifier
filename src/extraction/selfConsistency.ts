@@ -67,17 +67,33 @@ function vote(values: (string | undefined)[]): {
   return { value, agreement: best.n / values.length, presenceStable };
 }
 
-function voteBool<T>(values: T[]): T {
-  const counts = new Map<string, { raw: T; n: number }>();
+/**
+ * Majority vote over the tri-state warning flags. A TIE asserts nothing (null): a false flag
+ * hard-fails the caps/bold check, and on a tie the "winner" would just be whichever sample happened
+ * to sit first in the array — an accident of scheduling, not evidence. Ties (including a 1/1/1
+ * true/false/null split) fall to null so the verdict surfaces "could not verify" for a human
+ * instead of an order-dependent pass/fail. `undefined` folds into null (both mean "couldn't tell").
+ */
+function voteBool(values: (boolean | null | undefined)[]): boolean | null {
+  const counts = new Map<string, { raw: boolean | null; n: number }>();
   for (const v of values) {
-    const k = String(v);
-    const cur = counts.get(k) ?? { raw: v, n: 0 };
+    const raw = v ?? null;
+    const k = String(raw);
+    const cur = counts.get(k) ?? { raw, n: 0 };
     cur.n += 1;
     counts.set(k, cur);
   }
-  let best = { raw: values[0], n: 0 };
-  for (const c of counts.values()) if (c.n > best.n) best = c;
-  return best.raw;
+  let best: { raw: boolean | null; n: number } | undefined;
+  let tied = false;
+  for (const c of counts.values()) {
+    if (!best || c.n > best.n) {
+      best = c;
+      tied = false;
+    } else if (c.n === best.n) {
+      tied = true;
+    }
+  }
+  return tied || !best ? null : best.raw;
 }
 
 /**

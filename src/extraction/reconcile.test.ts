@@ -166,3 +166,32 @@ describe("mergeExtracted — field rules", () => {
     expect(mergeExtracted(front, back).brand).toBe("Old Tom Distillery");
   });
 });
+
+describe("mergeExtracted — numbers are load-bearing (digit noise must not pose as agreement)", () => {
+  it("routes a dropped-digit ABV (4% vs 14%) to review — containment must not bridge numbers", () => {
+    // "4alcvol" is a canonical substring of "14alcvol": text-level containment, but a totally
+    // different ABV. Asserting it at max confidence could drive a wrong tolerance/exemption verdict.
+    const a = fields({ alcoholContentText: "14% Alc./Vol.", confidence: { alcoholContent: 0.95 } });
+    const b = fields({ alcoholContentText: "4% Alc./Vol.", confidence: { alcoholContent: 0.9 } });
+    expect(mergeExtracted(a, b).confidence.alcoholContent).toBeLessThanOrEqual(DISAGREEMENT_CONFIDENCE);
+  });
+
+  it("routes a dropped-digit net contents (750 vs 1750 mL) to review", () => {
+    const a = fields({ netContents: "1750 mL", confidence: { netContents: 0.95 } });
+    const b = fields({ netContents: "750 mL", confidence: { netContents: 0.9 } });
+    expect(mergeExtracted(a, b).confidence.netContents).toBeLessThanOrEqual(DISAGREEMENT_CONFIDENCE);
+  });
+
+  it("routes a one-digit substitution in a long statement (45% vs 15%) to review — similarity must not bridge it", () => {
+    // One character out of ~24 differs, so normalized similarity is ~0.96 — but the ABV is wrong by 30 points.
+    const a = fields({ alcoholContentText: "45% Alc./Vol. (90 Proof)", confidence: { alcoholContent: 0.95 } });
+    const b = fields({ alcoholContentText: "15% Alc./Vol. (90 Proof)", confidence: { alcoholContent: 0.9 } });
+    expect(mergeExtracted(a, b).confidence.alcoholContent).toBeLessThanOrEqual(DISAGREEMENT_CONFIDENCE);
+  });
+
+  it("a one-sided EXTRA number is still agreement (proof printed on one read only)", () => {
+    const a = fields({ alcoholContentText: "45% Alc./Vol. (90 Proof)", confidence: { alcoholContent: 0.9 } });
+    const b = fields({ alcoholContentText: "45% Alc./Vol.", confidence: { alcoholContent: 0.95 } });
+    expect(mergeExtracted(a, b).confidence.alcoholContent).toBe(0.95);
+  });
+});

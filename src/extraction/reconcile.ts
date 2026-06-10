@@ -118,6 +118,33 @@ function isContainment(a: string, b: string): boolean {
   return shorter.length >= 3 && longer.includes(shorter);
 }
 
+/** The numeric tokens of a read, in order ("45% Alc./Vol. (90 Proof)" -> [45, 90]). */
+function numericTokens(s: string): number[] {
+  return (norm(s).match(/\d+(?:[.,]\d+)?/g) ?? []).map((m) => Number(m.replace(",", ".")));
+}
+
+/**
+ * Whether two reads' NUMBERS are compatible: the read with fewer numeric tokens must have every one
+ * of its numbers present in the other (multiset containment). Containment/similarity were built to
+ * tolerate one-character text noise, but on numbers one character IS the value: "4%" is a canonical
+ * substring of "14%" and "750 mL" of "1750 mL", and "45% ... (90 Proof)" vs "15% ... (90 Proof)" sits
+ * above the similarity threshold — each a digit-level misread that must route to review, never merge
+ * as confident agreement. A one-sided EXTRA number (proof printed on one read only) stays compatible.
+ */
+function numbersCompatible(a: string, b: string): boolean {
+  const na = numericTokens(a);
+  const nb = numericTokens(b);
+  if (na.length === 0 || nb.length === 0) return true;
+  const [small, big] = na.length <= nb.length ? [na, nb] : [nb, na];
+  const pool = [...big];
+  return small.every((n) => {
+    const i = pool.indexOf(n);
+    if (i === -1) return false;
+    pool.splice(i, 1);
+    return true;
+  });
+}
+
 /**
  * Whether two provider reads of the same field should be treated as AGREEMENT. Exact-after-normalization
  * agrees; so does a punctuation/spacing-only difference ("750 mL" vs "750ml", "ABC Co, Frederick MD" vs
@@ -130,6 +157,9 @@ function valuesAgree(a: string, b: string): boolean {
   if (norm(a) === norm(b)) return true;
   const ca = canonical(a);
   if (ca !== "" && ca === canonical(b)) return true;
+  // Numbers gate the tolerant paths: a digit-level mismatch is a real disagreement no matter how
+  // similar the surrounding text is (see numbersCompatible).
+  if (!numbersCompatible(a, b)) return false;
   if (isContainment(a, b)) return true;
   return similarity(norm(a), norm(b)) >= AGREEMENT_SIMILARITY;
 }
