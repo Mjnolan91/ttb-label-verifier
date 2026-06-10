@@ -5,17 +5,44 @@
  * measuring agreement is a better signal. `aggregateSamples` reduces N reads to one record whose
  * per-field confidence IS the fraction of samples that produced the (normalized) majority value.
  * A SINGLE sample is returned untouched, so the deterministic mock + offline eval are unaffected.
+ *
+ * Two robustness guards sit on top of the raw value vote, and only ever LOWER confidence (never
+ * raise it) so they cannot manufacture a false approval:
+ *   1. PRESENCE vs VALUE agreement. The value vote alone buckets `undefined`/`""` together with a
+ *      real value, so a field present in only a MINORITY of samples (e.g. 2 absent, 1 valued) could
+ *      surface a confident absence — a dropout read as a clean "field not on the label". We compute
+ *      presence-agreement separately; when presence is UNSTABLE across samples (split present/absent)
+ *      we cap the field's confidence into the review band rather than asserting the majority. When
+ *      every sample AGREES on presence (all present, or all absent) the behavior is unchanged.
+ *   2. ALCOHOL numeric cross-check. For the alcohol statement, if the samples disagree on the ABV
+ *      magnitude while the proof is stable (or vice versa), we cap confidence into review rather than
+ *      asserting a number that could drive a wrong tolerance verdict.
  */
 import type { ExtractedFields, FieldConfidence } from "@/domain";
 import { FIELD_CATALOG } from "./fieldCatalog";
-import { normalizeText } from "@/compare";
-import { reconcileExtract } from "./reconcile";
+import { normalizeText, parseAlcoholText } from "@/compare";
+import { DISAGREEMENT_CONFIDENCE, reconcileExtract } from "./reconcile";
 import type { ImageInput, VisionProvider } from "./VisionProvider";
 
 type ValueKey = (typeof FIELD_CATALOG)[number]["key"];
 
-/** The normalized-majority value among samples for one field, plus the agreement fraction. */
-function vote(values: (string | undefined)[]): { value: string | undefined; agreement: number } {
+/** A field value counts as PRESENT only when it is a non-empty, non-whitespace string. */
+function isPresent(v: string | undefined): boolean {
+  return v != null && v.trim() !== "";
+}
+
+/**
+ * Vote on one field across samples, tracking PRESENCE separately from VALUE.
+ *  - `value`/`agreement` — the normalized-majority value and the fraction of samples that produced it.
+ *  - `presenceStable` — every sample agrees on whether the field is present (all present, or all absent).
+ *    When it is UNSTABLE (split present/absent), the majority value/absence must NOT be asserted at high
+ *    confidence: a minority dropout/hallucination can otherwise read as a confident clean absence.
+ */
+function vote(values: (string | undefined)[]): {
+  value: string | undefined;
+  agreement: number;
+  presenceStable: boolean;
+} {
   const counts = new Map<string, { raw: string | undefined; n: number }>();
   for (const v of values) {
     const key = normalizeText(v ?? "");
@@ -25,7 +52,19 @@ function vote(values: (string | undefined)[]): { value: string | undefined; agre
   }
   let best = { raw: values[0], n: 0 };
   for (const c of counts.values()) if (c.n > best.n) best = c;
-  return { value: best.raw, agreement: best.n / values.length };
+
+  const presentCount = values.filter(isPresent).length;
+  const presenceStable = presentCount === 0 || presentCount === values.length;
+
+  // When presence is unstable, prefer the majority value AMONG THE PRESENT samples (so we surface the
+  // value a human can confirm, rather than asserting an absence the minority contradicts).
+  let value = best.raw;
+  if (!presenceStable) {
+    const presentValues = values.filter(isPresent);
+    const v = vote(presentValues);
+    value = v.value;
+  }
+  return { value, agreement: best.n / values.length, presenceStable };
 }
 
 function voteBool<T>(values: T[]): T {
@@ -41,6 +80,28 @@ function voteBool<T>(values: T[]): T {
   return best.raw;
 }
 
+/**
+ * For the alcohol field, whether the samples agree on the NUMERIC content (ABV and proof magnitudes),
+ * not just the raw text. Disagreement on the ABV magnitude while the proof is stable (or vice versa)
+ * is a dangerous split — it can drive a wrong tolerance verdict — so it caps confidence to review even
+ * if the raw-text vote happened to reach a majority. Only PRESENT samples are considered; a missing
+ * proof on some samples is not a magnitude disagreement (labels routinely omit proof).
+ */
+function alcoholNumbersStable(values: (string | undefined)[]): boolean {
+  const present = values.filter(isPresent);
+  if (present.length <= 1) return true;
+  const abvs = new Set<number>();
+  const proofs = new Set<number>();
+  for (const v of present) {
+    const { abv, proof } = parseAlcoholText(v);
+    if (abv !== undefined) abvs.add(abv);
+    if (proof !== undefined) proofs.add(proof);
+  }
+  // More than one distinct ABV OR more than one distinct proof across the samples = an unstable
+  // magnitude. (An absent number on some samples doesn't add to the set, so it isn't a disagreement.)
+  return abvs.size <= 1 && proofs.size <= 1;
+}
+
 export function aggregateSamples(samples: ExtractedFields[]): ExtractedFields {
   if (samples.length === 0) throw new Error("aggregateSamples requires at least one sample.");
   if (samples.length === 1) return samples[0]; // preserve the provider's own confidence (mock-safe)
@@ -49,9 +110,20 @@ export function aggregateSamples(samples: ExtractedFields[]): ExtractedFields {
   const confidence: FieldConfidence = { ...samples[0].confidence };
   for (const d of FIELD_CATALOG) {
     const key = d.key as ValueKey;
-    const { value, agreement } = vote(samples.map((s) => (s as unknown as Record<string, string | undefined>)[key]));
+    const rawValues = samples.map((s) => (s as unknown as Record<string, string | undefined>)[key]);
+    const { value, agreement, presenceStable } = vote(rawValues);
     (out as unknown as Record<string, string | undefined>)[key] = value;
-    confidence[d.confKey] = agreement;
+
+    // Start from the raw agreement fraction, then DOWN-WEIGHT (never up) for the robustness guards.
+    let conf = agreement;
+    // (1) Unstable presence: a minority dropout/hallucination must not assert a confident value or
+    // absence — route to review rather than trusting the majority.
+    if (!presenceStable) conf = Math.min(conf, DISAGREEMENT_CONFIDENCE);
+    // (2) Alcohol magnitude split: disagreeing ABV/proof numbers must not drive a tolerance verdict.
+    if (d.key === "alcoholContentText" && !alcoholNumbersStable(rawValues)) {
+      conf = Math.min(conf, DISAGREEMENT_CONFIDENCE);
+    }
+    confidence[d.confKey] = conf;
   }
   out.confidence = confidence;
   out.warningPrefixIsAllCaps = voteBool(samples.map((s) => s.warningPrefixIsAllCaps));

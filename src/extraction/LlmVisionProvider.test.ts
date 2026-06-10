@@ -14,6 +14,7 @@ import {
   type FetchLike,
 } from "./index";
 import { parseModelJson, USER_PROMPT, EXTRACTION_RESPONSE_FORMAT } from "./LlmVisionProvider";
+import { FIELD_REVIEW_CONFIDENCE, MIN_READABLE_CONFIDENCE } from "@/compare";
 
 /** A FetchLike that returns one canned Azure chat-completions payload (no network). */
 function fetchReturning(payload: unknown, ok = true, status = 200): FetchLike {
@@ -205,10 +206,41 @@ describe("parseModelJson — robust parsing (offline)", () => {
     expect(() => parseModelJson("no json here, sorry")).toThrow(/not valid JSON/i);
   });
 
-  it("defaults a missing per-field confidence to 0 (routes to review, never auto-approve)", () => {
+  it("routes a parse-DEGRADED field (missing confidence) to review, not a confident read", () => {
+    // A truncated/non-strict response can drop the confidence. Reading that at full-confidence-0 would
+    // make an empty value look like a CONFIDENT absence; instead it gets a low sentinel below both the
+    // review gate (0.7) and the readability floor (0.5), so it routes to human review everywhere
+    // confidence is consulted — but stays > 0 so one clean field still keeps the image readable.
     const r = parseModelJson('{"brand":{"value":"X"},"warningPrefixIsAllCaps":true,"warningPrefixIsBold":null}');
     expect(r.brand).toBe("X");
-    expect(r.confidence.brand).toBe(0);
+    expect(r.confidence.brand).toBeGreaterThan(0);
+    expect(r.confidence.brand!).toBeLessThan(MIN_READABLE_CONFIDENCE);
+    expect(r.confidence.brand!).toBeLessThan(FIELD_REVIEW_CONFIDENCE);
+  });
+
+  it("treats a non-finite confidence (NaN-shaped / non-number) as degraded, not confident-0", () => {
+    // confidence arrives as a string (a classic non-strict-output artifact) — not a trustworthy number.
+    const r = parseModelJson('{"brand":{"value":"X","confidence":"high"},"warningPrefixIsAllCaps":true,"warningPrefixIsBold":null}');
+    expect(r.confidence.brand!).toBeGreaterThan(0);
+    expect(r.confidence.brand!).toBeLessThan(MIN_READABLE_CONFIDENCE);
+  });
+
+  it("does NOT degrade a genuine confident-empty read (real value+finite confidence preserved)", () => {
+    // The distinction that matters: an explicit empty value WITH a finite confidence is a real
+    // confident absence and must pass through untouched (it must NOT be downgraded to the sentinel).
+    const r = parseModelJson('{"warningText":{"value":"","confidence":0.95},"warningPrefixIsAllCaps":false,"warningPrefixIsBold":null}');
+    expect(r.warningText).toBe("");
+    expect(r.confidence.warningText).toBeCloseTo(0.95, 5);
+  });
+
+  it("degrades a null-valued field that also lost its confidence (the warning present->missing flip)", () => {
+    // A parse-degraded warningText (null value, no confidence) is exactly the case that used to read as
+    // {value:'', confidence:0} — a confident absence that flips the completeness warning to a false
+    // 'missing'. It must now carry a low (review-routing) confidence instead.
+    const r = parseModelJson('{"warningText":{"value":null},"warningPrefixIsAllCaps":null,"warningPrefixIsBold":null}');
+    expect(r.warningText).toBe("");
+    expect(r.confidence.warningText!).toBeGreaterThan(0);
+    expect(r.confidence.warningText!).toBeLessThan(FIELD_REVIEW_CONFIDENCE);
   });
 
   it("coerces a non-boolean warningPrefixIsBold to null (never guesses true)", () => {
@@ -317,5 +349,42 @@ describe("prompt + schema restructure (A3)", () => {
     const props = EXTRACTION_RESPONSE_FORMAT.json_schema.schema.properties as Record<string, { description?: string }>;
     expect(props.brand.description).toMatch(/transcribe/i);
     expect(props.warningText.description).toMatch(/verbatim/i);
+  });
+});
+
+describe("self-consistency sampling temperature (env-tunable, calmer for verbatim transcription)", () => {
+  function bodyTemperatureOf(calls: { init: { body?: string } }[]): number {
+    return (JSON.parse(calls[0].init.body ?? "{}") as { temperature: number }).temperature;
+  }
+
+  it("a base (non-sample) read stays greedy at temperature 0", async () => {
+    const { fetchImpl, calls } = mockFetch();
+    const p = new LlmVisionProvider({ config: CONFIG, fetchImpl });
+    await p.extract({ filename: "x.jpg", data: new Uint8Array([1]) });
+    expect(bodyTemperatureOf(calls)).toBe(0);
+  });
+
+  it("a self-consistency SAMPLE uses the calmer default (~0.4), not the old hot 0.7", async () => {
+    const { fetchImpl, calls } = mockFetch();
+    const p = new LlmVisionProvider({ config: CONFIG, fetchImpl });
+    await p.extract({ filename: "x.jpg", data: new Uint8Array([1]) }, undefined, { sample: true });
+    const t = bodyTemperatureOf(calls);
+    expect(t).toBeGreaterThan(0); // still some variance so samples can disagree where unsure
+    expect(t).toBeLessThan(0.7); // but cooler than the old hardcoded value
+    expect(t).toBeCloseTo(0.4, 5);
+  });
+
+  it("honors SELF_CONSISTENCY_TEMPERATURE for the sample read", async () => {
+    const prev = process.env.SELF_CONSISTENCY_TEMPERATURE;
+    process.env.SELF_CONSISTENCY_TEMPERATURE = "0.2";
+    try {
+      const { fetchImpl, calls } = mockFetch();
+      const p = new LlmVisionProvider({ config: CONFIG, fetchImpl });
+      await p.extract({ filename: "x.jpg", data: new Uint8Array([1]) }, undefined, { sample: true });
+      expect(bodyTemperatureOf(calls)).toBeCloseTo(0.2, 5);
+    } finally {
+      if (prev === undefined) delete process.env.SELF_CONSISTENCY_TEMPERATURE;
+      else process.env.SELF_CONSISTENCY_TEMPERATURE = prev;
+    }
   });
 });

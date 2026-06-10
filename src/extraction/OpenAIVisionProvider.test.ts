@@ -103,6 +103,32 @@ describe("OpenAIVisionProvider.extract — request shape + parsing (HTTP mocked)
   });
 });
 
+describe("OpenAIVisionProvider.extract — self-consistency sampling temperature", () => {
+  function bodyTemperatureOf(calls: { init: { body?: string } }[]): number {
+    return (JSON.parse(calls[0].init.body ?? "{}") as { temperature: number }).temperature;
+  }
+
+  it("base read is greedy (0); a sample uses the calmer default (~0.4), not the old 0.7", async () => {
+    const base = mockFetch();
+    await new OpenAIVisionProvider({ config: CONFIG, fetchImpl: base.fetchImpl }).extract({
+      filename: "x.jpg",
+      data: new Uint8Array([1]),
+    });
+    expect(bodyTemperatureOf(base.calls)).toBe(0);
+
+    const sampled = mockFetch();
+    await new OpenAIVisionProvider({ config: CONFIG, fetchImpl: sampled.fetchImpl }).extract(
+      { filename: "x.jpg", data: new Uint8Array([1]) },
+      undefined,
+      { sample: true },
+    );
+    const t = bodyTemperatureOf(sampled.calls);
+    expect(t).toBeGreaterThan(0);
+    expect(t).toBeLessThan(0.7);
+    expect(t).toBeCloseTo(0.4, 5);
+  });
+});
+
 describe("OpenAIVisionProvider.judgeWarningBold — bold judgment via chat (HTTP mocked)", () => {
   it("judgeWarningBold maps the model's enum to true/false/null", async () => {
     const make = (content: string) => ({ ok: true, status: 200, json: async () => ({ choices: [{ message: { content } }] }) });

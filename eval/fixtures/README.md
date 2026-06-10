@@ -52,7 +52,17 @@ placeholders are human-viewable documentation of each scenario; they are not con
 | `wine-under14-approve` | `marisol-table-wine-clean.svg` | pass | pass | pass | **approve** |
 | `wine-over14-boundary-reject` | `oakmoor-port-over14-boundary.svg` | pass | **fail** | pass | **reject** |
 | `malt-beverage-approve` | `granite-peak-ipa-clean.svg` | pass | pass | pass | **approve** |
+| `malt-beverage-fuzzy-read-review` | `granite-peak-ipa-fuzzy.svg` | **review** | pass | pass | **review** |
 | `missing-net-contents-review` | `old-tom-no-net-contents.svg` | pass | pass | pass | **review** |
+| `puffery-excluded-rum-approve` | `cayo-verde-superior-rum.svg` | pass | pass | pass | **approve** |
+| `producer-acronym-brand-approve` | `northgate-acronym-vodka.svg` | pass | pass | pass | **approve** |
+| `specialty-spiced-rum-approve` | `cayo-verde-spiced-specialty.svg` | pass | pass | pass | **approve** |
+
+The last three are NEGATIVE-ALLOCATION fixtures — see "Per-field metrics and allocation fixtures" below.
+(The Brand/Alcohol/Warning columns are the three CFR-core checks; the eval also scores four more
+per-field metrics — `classType`, `netContents`, `fancifulName`, `statementOfComposition` — not shown
+here to keep the table narrow. Each case's full per-field expectation lives in its `expected.perField`
+in `cases.json`.)
 
 ### Verdict model (must match the comparator in `src/compare/`)
 - Per-field status is one of `pass` | `review` | `fail`.
@@ -109,6 +119,83 @@ placeholders are human-viewable documentation of each scenario; they are not con
   completeness-review} -> **review**. Proves a label can't be approved while missing a TTB-required
   field, without auto-rejecting a possible misread.
 
+## Per-field metrics and allocation fixtures
+
+The eval scores per-field precision/recall on **seven** fields, not three:
+
+- the three CFR-core checks — `brand`, `alcohol`, `warning` (off the `VerifyResult` named accessors);
+- four **completeness-driving** fields whose VALUE ALLOCATION the extractor must get right —
+  `classType`, `netContents`, `fancifulName`, `statementOfComposition` (off `VerifyResult.fields`,
+  scored only on the cases that supply a claimed value AND a labeled expectation, so unrelated cases
+  don't dilute the support counts).
+
+Three **negative-allocation** fixtures stress the field-allocation rules from
+`src/extraction/fieldCatalog.ts` (the brand / classType / fanciful-name / statement-of-composition
+descriptions). Each fixture **encodes the correct allocation** in its `extracted` block and proves the
+comparator accepts it:
+
+- **`puffery-excluded-rum-approve`** — masthead `CAYO VERDE`, descriptor `SUPERIOR CARIBBEAN RUM`,
+  class word `RUM`. Correct allocation: brand `Cayo Verde`, **classType `Rum` only** (the puffery
+  `Superior` and geographic `Caribbean` are NOT folded into the standard of identity, 27 CFR 5.63/5.143),
+  fanciful name empty. classType matches verbatim -> **pass**. (Caveat: because both `Rum` and a
+  hypothetical `Superior Caribbean Rum` resolve to `distilledSpirits`, the comparator would pass on
+  class *resolution* either way — so the load-bearing proof here is the ENCODED extracted classType
+  value `Rum`, visible in the field-table export, not the pass/fail alone.)
+- **`producer-acronym-brand-approve`** — initials masthead `NG` over `DISTILLED & BOTTLED BY:
+  NORTHGATE DISTILLERY`. Correct allocation puts the **full producer name in BOTH brand and name**, so
+  claimed brand `Northgate Distillery` matches the encoded brand -> **pass**. This one is genuinely
+  discriminating: had the masthead-only `NG` been allocated as the brand, `Northgate Distillery` vs `NG`
+  would **fail** (no shared core after suffix-stripping, low similarity) — verified by tracing the
+  comparator.
+- **`specialty-spiced-rum-approve`** — the only fixture exercising the `fancifulName` and
+  `statementOfComposition` comparators. Brand `Cayo Verde`, classType `Rum`, **fanciful name
+  `Spiced Rum`** (the distinctive/"sell" name — not the brand, not by itself the class designation), and
+  a plain statement of composition. The application supplies the latter two, so both comparators run and
+  match verbatim -> **pass**. The load-bearing proof is that `Spiced`/`Spiced Rum` is allocated to the
+  fanciful-name/composition fields, NOT folded into brand or classType.
+
+**What these fixtures prove — and what they do NOT.** Because the mock REPLAYS each fixture's encoded
+`extracted` block (it never reads pixels), these cases prove the deterministic **comparator** handles a
+correctly-allocated label — the right values flow to the right verdicts. They do **not** prove a live
+vision model performs the allocation; that is a property of the prompt + model, measured only against
+real images through a real provider. The fixtures pin the comparator/contract; the model's allocation
+accuracy is out of scope for the offline eval (by design — the suite is hermetic).
+
+## Calibration (Brier score + ECE)
+
+The report adds a **calibration** block: over every scored (case, field) pair it collects the read
+**confidence** the gate evaluated and whether the field's verdict was **correct** (matched its label),
+then prints:
+
+- **Brier score** — mean `(confidence − correct)²`. Lower is better; 0 is perfect.
+- **ECE** (Expected Calibration Error) — the support-weighted mean gap between each reliability bin's
+  mean confidence and its accuracy (10 equal-width bins). Lower is better.
+
+On these fixtures the metrics are small but **nonzero** (the canned confidences sit below 1.0 while the
+fixtures are all-correct), which is exactly what a calibration metric should surface. **Honesty note:**
+the mock replays the fixtures' hand-authored confidences, so this calibrates the **harness over the
+fixtures**, not a live model — a real provider's confidences (and its mistakes) would move both numbers.
+It answers "are confident reads in fact correct *here*?", a sanity check on the fixtures and the gate,
+not a claim about production calibration.
+
+## Multi-sample / disagreement (a documented limitation)
+
+The pipeline's per-field confidence is meant to be the **agreement fraction across N self-consistency
+samples** (`SELF_CONSISTENCY_SAMPLES`, default 3) — a better-calibrated signal than a model's
+self-reported confidence. The offline eval canNOT exercise that path: the mock provider is **forced to
+`samples = 1`** (in `src/pipeline.ts`, `providers.every(p => p.name === "mock")`) so the suite and eval
+stay byte-for-byte deterministic. With one sample there is no agreement fraction and no disagreement to
+reconcile, so the confidences scored above are the fixtures' **authored** values, not measured agreement.
+
+This is a deliberate, honest limitation, **not** faked. We do not synthesize a fake multi-sample spread
+into the mock, because doing so would either (a) make the offline suite non-deterministic, or (b) bake in
+hand-tuned "agreement" numbers that look like a measurement but aren't — both of which would make the
+calibration metric dishonest. Multi-sample agreement and ensemble disagreement (`reconcile.ts`, two
+providers -> `review`) are covered by their own unit tests (`src/extraction/selfConsistency.test.ts`,
+`src/extraction/reconcile.test.ts`) under controlled stub providers; the end-to-end agreement-as-confidence
+behavior is only observable against a real provider (`VISION_PROVIDER=openai`/`gemini`/`ensemble`) and is
+out of scope for the hermetic eval.
+
 ## Real images are user-supplied (per the MANIFEST)
 
 The tests and eval do **not** need real images. Real label images are supplied by a human **later**,
@@ -118,7 +205,10 @@ live demo. Until then, the `.svg` placeholders keep the whole offline suite gree
 `.svg` with a raster image, keep the `imageFilename` in `cases.json` and the path in the MANIFEST in
 lockstep — the filename is the only key the mock uses. (One real image is already wired in:
 `abc-single-barrel-clean.jpg`, the ABC clean-pass demo case, plus three generated demo rasters
-(`demo-*.png`); the other ten remain `.svg` placeholders.)
+(`demo-*.png`); the rest are `.svg` placeholders. The three negative-allocation fixtures
+(`cayo-verde-superior-rum.svg`, `northgate-acronym-vodka.svg`, `cayo-verde-spiced-specialty.svg`)
+still need their placeholder `.svg` + `MANIFEST.md` rows added — the eval and tests pass without them
+because the mock keys off the filename string, never the bytes.)
 
 ## Editing rules
 

@@ -11,6 +11,7 @@ import type { ExtractedFields } from "@/domain";
 import type { ExtractOptions, ImageInput, VisionProvider } from "./VisionProvider";
 import { buildExtractionBody, callChatCompletion, judgeWarningBoldViaChat } from "./LlmVisionProvider";
 import { defaultFetch, type FetchLike } from "./http";
+import { resolveSelfConsistencyTemperature } from "./config";
 
 // A current, generally-available multimodal model (gpt-4o is the older generation and on a 2026
 // retirement path). Override with OPENAI_MODEL — e.g. gpt-4.1-mini for lower cost/latency, or a
@@ -57,7 +58,9 @@ export class OpenAIVisionProvider implements VisionProvider {
       throw new Error("The openai provider requires image bytes (image.data).");
     }
     const dataUrl = `data:${image.contentType ?? "image/jpeg"};base64,${Buffer.from(image.data).toString("base64")}`;
-    const temperature = options?.sample ? 0.7 : 0;
+    // Base read is greedy (0); a self-consistency SAMPLE uses the env-tunable sampling temperature
+    // (default ~0.4) — shared with the Azure chat path via config so both stay tuned in one place.
+    const temperature = options?.sample ? resolveSelfConsistencyTemperature() : 0;
 
     return callChatCompletion({
       fetchImpl: this.fetchImpl,

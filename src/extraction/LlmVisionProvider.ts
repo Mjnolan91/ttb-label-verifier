@@ -20,6 +20,8 @@ import {
 } from "./extractedShape";
 import { FIELD_CATALOG } from "./fieldCatalog";
 import { defaultFetch, fetchWithRetry, withHardTimeout, type FetchLike } from "./http";
+import { resolveSelfConsistencyTemperature } from "./config";
+import { FIELD_REVIEW_CONFIDENCE, MIN_READABLE_CONFIDENCE } from "@/compare";
 
 /** Resolved Azure OpenAI connection config. */
 export interface AzureOpenAIConfig {
@@ -148,12 +150,28 @@ export const USER_PROMPT =
   'right. Use "" with low confidence ONLY when the text is truly not present. Each field\'s specific ' +
   "rule is given in its schema description.";
 
+/**
+ * Confidence we stamp on a PARSE-DEGRADED field — a `{value, confidence}` cell that survived JSON
+ * parsing but whose confidence is missing/non-finite (a partial/truncated/non-strict response, the
+ * classic symptom of a model that didn't honor the structured-output contract). The old code coerced
+ * a malformed confidence to 0, which on an empty/null value is INDISTINGUISHABLE from a CONFIDENT
+ * absence — and a confident-absence warningText flips the government-warning completeness check
+ * present->missing (a false hard fail). Stamping a low-but-nonzero sentinel instead routes the field
+ * to human REVIEW everywhere confidence is consulted (the per-field gate in `verifyLabel`, the
+ * completeness present-low-confidence path, and `isExtractionReadable`) rather than letting a parse
+ * artifact masquerade as a trustworthy read. Deliberately BELOW both trust thresholds (review gate at
+ * 0.7, readability floor at 0.5) yet ABOVE 0 so a single clean field still keeps the image readable.
+ */
+const DEGRADED_PARSE_CONFIDENCE = Math.min(FIELD_REVIEW_CONFIDENCE, MIN_READABLE_CONFIDENCE) / 10;
+
 function coerceConfidenced(v: unknown): RawConfidencedValue | undefined {
   if (typeof v === "object" && v !== null && "value" in v) {
     const obj = v as { value?: unknown; confidence?: unknown };
-    const confidence = typeof obj.confidence === "number" && Number.isFinite(obj.confidence)
-      ? obj.confidence
-      : 0;
+    // A trustworthy read carries a finite confidence number. When it's missing/non-finite the cell is
+    // a parse artifact (truncation/non-strict output): don't read it as a confident value — stamp the
+    // low sentinel so the field routes to review instead of asserting an (often empty) value at full 0.
+    const confidenceOk = typeof obj.confidence === "number" && Number.isFinite(obj.confidence);
+    const confidence = confidenceOk ? (obj.confidence as number) : DEGRADED_PARSE_CONFIDENCE;
     return { value: String(obj.value ?? ""), confidence };
   }
   return undefined;
@@ -380,7 +398,10 @@ export class LlmVisionProvider implements VisionProvider {
     const url =
       `${this.config.endpoint.replace(/\/+$/, "")}/openai/deployments/` +
       `${this.config.deployment}/chat/completions?api-version=${this.config.apiVersion}`;
-    const temperature = options?.sample ? 0.7 : 0;
+    // Base read is greedy (0); a self-consistency SAMPLE uses the env-tunable sampling temperature
+    // (default ~0.4) — warm enough to surface genuine uncertainty, cool enough not to scramble a
+    // verbatim transcription into spurious disagreement.
+    const temperature = options?.sample ? resolveSelfConsistencyTemperature() : 0;
 
     return callChatCompletion({
       fetchImpl: this.fetchImpl,
