@@ -52,6 +52,25 @@ import { OpenAIVisionProvider } from "./OpenAIVisionProvider";
 import { GeminiVisionProvider } from "./GeminiVisionProvider";
 
 /**
+ * Describe an unknown VISION_PROVIDER value WITHOUT echoing it. Env values get pasted into the
+ * wrong field (the classic: an API key in VISION_PROVIDER), and this error surfaces verbatim in the
+ * /api/verify error body — echoing the raw value once leaked a live key to any unauthenticated
+ * caller. A short safe name (letters/digits, like a typo'd "gemni") is fine to repeat; anything
+ * else is summarized, and a key-shaped value gets an explicit it-looks-like-a-secret hint.
+ */
+export function describeUnknownProvider(value: string): string {
+  const looksSecret = /^(sk-|aiza|key-|gsk_|xoxb-)/i.test(value) || value.length > 24;
+  if (looksSecret) {
+    return `VISION_PROVIDER is set to what looks like an API KEY (value hidden, ${value.length} chars). ` +
+      "Set VISION_PROVIDER to a provider NAME and put the key in its own variable " +
+      "(e.g. VISION_PROVIDER=openai + OPENAI_API_KEY=..., or VISION_PROVIDER=gemini + GEMINI_API_KEY=...). " +
+      "If this value was a real key, ROTATE it: it was pasted into a non-secret field.";
+  }
+  const safe = /^[a-z0-9+_-]{1,24}$/i.test(value) ? `'${value}'` : `(unrecognized ${value.length}-char value, hidden)`;
+  return `Unknown VISION_PROVIDER=${safe}. Use one of: mock|llm|ocr|openai|gemini|ensemble (default: mock).`;
+}
+
+/**
  * Resolve a single configured vision provider.
  * @param name optional explicit provider name; defaults to `process.env.VISION_PROVIDER`, then `mock`.
  * @throws if a real provider is selected without its env config, or the name is unknown. The mock
@@ -76,9 +95,7 @@ export function getVisionProvider(name?: string): VisionProvider {
       // Google Gemini directly; errors cleanly if GEMINI_API_KEY / GOOGLE_API_KEY is unset.
       return new GeminiVisionProvider();
     default:
-      throw new Error(
-        `Unknown VISION_PROVIDER='${selected}'. Use one of: mock|llm|ocr|openai|gemini|ensemble (default: mock).`,
-      );
+      throw new Error(describeUnknownProvider(selected));
   }
 }
 

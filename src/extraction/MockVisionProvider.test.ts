@@ -117,4 +117,31 @@ describe("getVisionProvider — env selection (mock by default, offline)", () =>
   it("rejects an unknown provider name", () => {
     expect(() => getVisionProvider("banana")).toThrow(/mock\|llm\|ocr/i);
   });
+
+  it("NEVER echoes a secret-shaped VISION_PROVIDER value (a pasted API key must not leak)", () => {
+    // Regression: this error surfaces verbatim in the public /api/verify error body, and a real key
+    // pasted into VISION_PROVIDER on the deployment dashboard was once echoed back to any caller.
+    const pastedKey = "sk-proj-abc123def456ghi789jkl012mno345pqr678stu901vwx234yz";
+    let message = "";
+    try {
+      getVisionProvider(pastedKey);
+    } catch (e) {
+      message = (e as Error).message;
+    }
+    expect(message).not.toContain(pastedKey);
+    expect(message).not.toContain("abc123"); // no fragment of the value either
+    expect(message).toMatch(/looks like an api key/i);
+    expect(message).toMatch(/rotate/i);
+  });
+
+  it("summarizes (does not echo) a long non-name value, but still names a short safe typo", () => {
+    let long = "";
+    try {
+      getVisionProvider("x".repeat(40));
+    } catch (e) {
+      long = (e as Error).message;
+    }
+    expect(long).not.toContain("xxxxx");
+    expect(() => getVisionProvider("gemni")).toThrow(/'gemni'/); // short typo: safe and helpful to repeat
+  });
 });
