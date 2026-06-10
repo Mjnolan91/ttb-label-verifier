@@ -197,13 +197,30 @@ async function drawSamples(
   return { reads, firstError: rejected?.reason };
 }
 
-/** Whether any read field sits in the borderline band: present-but-below the review gate. This is
- *  the "one noisy sample dragged a good read to 2/3" signature that more evidence can resolve;
- *  fields at exactly 0 or absent are not borderline (more samples won't conjure missing text). */
+/** The fields whose borderline confidence justifies paying for extra reads: the always-compared
+ *  application set plus the warning — the channels a verdict actually consumes. The long-tail
+ *  optional fields (fanciful name, age statement, vintage...) flicker between samples on real
+ *  labels (a hallucinated value in 1 of 3 reads caps them to 0.3 routinely); letting them trigger
+ *  escalated nearly EVERY live read and doubled p50 latency (measured 2026-06-10: 8.1s vs 4.1s). */
+const ESCALATION_FIELDS = [
+  "brand",
+  "classType",
+  "alcoholContent",
+  "netContents",
+  "name",
+  "address",
+  "warningText",
+] as const;
+
+/** Whether a VERDICT-RELEVANT field sits in the borderline band: present-but-below the review
+ *  gate. This is the "one noisy sample dragged a good read to 2/3" signature that more evidence
+ *  can resolve; fields at exactly 0 or absent are not borderline (more samples won't conjure
+ *  missing text), and long-tail fields never trigger (see ESCALATION_FIELDS). */
 function hasBorderlineField(e: ExtractedFields): boolean {
-  return Object.values(e.confidence).some(
-    (c) => typeof c === "number" && c > 0 && c < FIELD_REVIEW_CONFIDENCE,
-  );
+  return ESCALATION_FIELDS.some((k) => {
+    const c = e.confidence[k];
+    return typeof c === "number" && c > 0 && c < FIELD_REVIEW_CONFIDENCE;
+  });
 }
 
 /** Read the image `samples` times in PARALLEL (sampling mode) through the reconciler, then aggregate

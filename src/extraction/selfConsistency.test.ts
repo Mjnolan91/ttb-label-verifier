@@ -232,6 +232,25 @@ describe("selfConsistentExtract", () => {
     });
   });
 
+  it("a LONG-TAIL field flickering (hallucinated fanciful name in 1 of 3 reads) does NOT escalate", async () => {
+    // Optional detail fields flicker on real labels; paying an extra batch for them doubled live
+    // p50 latency. Only the verdict-relevant fields justify the cost.
+    await withEscalation(undefined, async () => {
+      let i = 0;
+      const provider: VisionProvider = {
+        name: "gemini",
+        extract: async () => {
+          i++;
+          return i === 2 ? readWith({ fancifulName: "Ghost Reserve" }) : read("Old Tom", 0.9);
+        },
+      };
+      const out = await selfConsistentExtract([provider], img, undefined, 3);
+      expect(i).toBe(3); // no escalation: brand agreed; the fanciful flicker is not verdict-relevant
+      expect(out.confidence.brand).toBe(1);
+      expect(out.confidence.fancifulName).toBeLessThanOrEqual(0.3); // still honestly low
+    });
+  });
+
   it("tolerates a partial sample failure (aggregates the survivors)", async () => {
     let i = 0;
     const provider: VisionProvider = {
