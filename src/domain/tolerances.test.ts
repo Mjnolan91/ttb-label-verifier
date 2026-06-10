@@ -48,7 +48,9 @@ describe("selectToleranceFor — per-class CFR tolerance values", () => {
   it("unknown uses the tightest conservative band (+/-0.3 pp) and is not a CFR tolerance", () => {
     const rule = selectToleranceFor("unknown");
     expect(rule.value).toBe(0.3);
-    expect(rule.cfrCitation).toContain("n/a");
+    // The citation string renders into the user-facing alcohol-card reason, so it must say in
+    // plain words that this is a product default, not a CFR rule (and carry no em dashes).
+    expect(rule.cfrCitation).toContain("not a CFR tolerance");
   });
 });
 

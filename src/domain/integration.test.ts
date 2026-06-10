@@ -54,7 +54,7 @@ describe("domain wiring through the @/domain barrel", () => {
       { cls: "wineOver14", value: 1.0, cfr: "4.36" },
       { cls: "maltBeverage", value: 0.3, cfr: "7.65" },
       { cls: "cider", value: 1.5, cfr: "4.36" },
-      { cls: "unknown", value: 0.3, cfr: "n/a" },
+      { cls: "unknown", value: 0.3, cfr: "not a CFR tolerance" },
     ];
 
     for (const { cls, value, cfr } of expected) {

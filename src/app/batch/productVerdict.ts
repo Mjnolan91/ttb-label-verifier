@@ -51,7 +51,7 @@ export interface ProductVerdict {
   application: ApplicationValues | null;
 }
 
-const NEED_PHRASE: Partial<Record<string, string>> = { brand: "a brand", alcoholContent: "alcohol content" };
+const NEED_PHRASE: Partial<Record<string, string>> = { brand: "a brand name", alcoholContent: "alcohol content" };
 
 /**
  * Gate + verdict for one product. Mirrors the original analyze-time logic exactly: the batch
@@ -82,7 +82,7 @@ export function deriveProductVerdict(
         extracted,
       )
     : null;
-  const needs = (gate?.missing ?? []).map((k) => NEED_PHRASE[k] ?? k).join(" + ");
+  const needs = (gate?.missing ?? []).map((k) => NEED_PHRASE[k] ?? k).join(" and ");
   const combined = readable ? combinedVerdict(gate?.claimed ?? null, extracted) : null;
   return {
     combined,

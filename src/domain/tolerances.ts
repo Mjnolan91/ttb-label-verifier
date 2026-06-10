@@ -121,7 +121,7 @@ export const TOLERANCE_TABLE: { readonly [K in BeverageClass]: ToleranceRule } =
     value: 0.3,
     cfrCitation: "27 CFR 7.65(c)",
     boundaryNote:
-      "Absolute limits not softened by the tolerance — 0.5% ABV floor for products labeled " +
+      "Absolute limits not softened by the tolerance: 0.5% ABV floor for products labeled " +
       '>=0.5% (27 CFR 7.65(c)), and the 2.5% ABV cap on "low/reduced alcohol" (27 CFR 7.65(d)).',
   },
 
@@ -167,7 +167,7 @@ export const TOLERANCE_TABLE: { readonly [K in BeverageClass]: ToleranceRule } =
   unknown: {
     beverageClass: "unknown",
     value: 0.3,
-    cfrCitation: "n/a (conservative product default; tightest band — not a CFR tolerance)",
+    cfrCitation: "product default, not a CFR tolerance; tightest band used",
     boundaryNote:
       "No class supplied; uses the tightest tolerance (0.3 pp) to avoid false approvals. " +
       "Prefer human review for unknown-class labels.",

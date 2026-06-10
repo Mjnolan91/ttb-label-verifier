@@ -78,7 +78,7 @@ const ALC_MANDATORY: RequirementSpec = {
   key: "alcoholContent",
   label: "Alcohol content",
   necessity: "mandatory",
-  note: "Numeric % Alc./Vol. — mandatory (27 CFR 5.65 spirits; 4.36(a) wine > 14% ABV).",
+  note: "Numeric % Alc./Vol. is mandatory (27 CFR 5.65 spirits; 4.36(a) wine > 14% ABV).",
 };
 const ALC_WINE_UNDER14: RequirementSpec = {
   key: "alcoholContent",

@@ -204,7 +204,7 @@ export function compareAlcohol(args: {
       "fail",
       claimedDisplay,
       extractedDisplay,
-      `Actual ${extracted.abv}% crosses the 14% wine tax-class boundary; the ±${tol} pp tolerance may not be applied across it (27 CFR 4.36(c)).`,
+      `Actual ${extracted.abv}% crosses the 14% wine tax-class boundary; the ±${tol} percentage-point tolerance may not be applied across it (27 CFR 4.36(c)).`,
     );
   }
   if (cls === "wineOver14" && extracted.abv <= WINE_TAX_CLASS_BOUNDARY + EPS) {
@@ -212,7 +212,7 @@ export function compareAlcohol(args: {
       "fail",
       claimedDisplay,
       extractedDisplay,
-      `Actual ${extracted.abv}% falls to/below the 14% wine tax-class boundary; the ±${tol} pp tolerance may not be applied across it (27 CFR 4.36(c)).`,
+      `Actual ${extracted.abv}% falls to/below the 14% wine tax-class boundary; the ±${tol} percentage-point tolerance may not be applied across it (27 CFR 4.36(c)).`,
     );
   }
   if (cls === "maltBeverage" && claimed.abv >= MALT_ABV_FLOOR && extracted.abv < MALT_ABV_FLOOR - EPS) {
@@ -242,14 +242,14 @@ export function compareAlcohol(args: {
       "pass",
       claimedDisplay,
       extractedDisplay,
-      `Actual ${extracted.abv}% is within the ±${tol} pp ${label} tolerance of the claimed ${claimed.abv}% (${rule.cfrCitation}).`,
+      `Actual ${extracted.abv}% is within the ±${tol} percentage-point ${label} tolerance of the claimed ${claimed.abv}% (${rule.cfrCitation}).`,
     );
   }
   return result(
     "fail",
     claimedDisplay,
     extractedDisplay,
-    `Actual ${extracted.abv}% is ${delta.toFixed(1)} pp from the claimed ${claimed.abv}%, outside the ±${tol} pp ${label} tolerance (${rule.cfrCitation}).`,
+    `Actual ${extracted.abv}% is ${delta.toFixed(1)} percentage points from the claimed ${claimed.abv}%, outside the ±${tol} percentage-point ${label} tolerance (${rule.cfrCitation}).`,
   );
 }
 

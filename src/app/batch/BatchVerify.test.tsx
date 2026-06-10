@@ -122,7 +122,7 @@ describe("BatchVerify — verify against an application CSV", () => {
     const q = await run("filename,brand\nacme-front.png,Acme");
     expect(await q.findByText(/add alcohol content/i)).toBeTruthy();
     expect(q.queryByText(/no application row/i)).toBeNull();
-    expect(q.queryByText(/re-scan/i)).toBeNull();
+    expect(q.queryByText(/upload a clearer image/i)).toBeNull();
   });
 
   it("the review drawer carries no orphaned 'Step 3' eyebrow (that numbering is the single screen's)", { retry: 2 }, async () => {
@@ -224,7 +224,7 @@ describe("BatchVerify — verify against an application CSV", () => {
     expect(dialog.getByText("Approve")).toBeTruthy();
   });
 
-  it("flags a matched-but-unreadable product as 're-scan', not 'no application row'", { retry: 2 }, async () => {
+  it("flags a matched-but-unreadable product with the clearer-image prompt, not 'no application row'", { retry: 2 }, async () => {
     const unreadable: VerifyApiResponse = {
       provider: "mock",
       readable: false,
@@ -236,7 +236,7 @@ describe("BatchVerify — verify against an application CSV", () => {
       "filename,brand,alcohol\nacme-front.png,Acme,40% Alc./Vol.",
       vi.fn(async () => ({ ok: true, json: async () => unreadable })) as unknown as typeof fetch,
     );
-    expect(await q.findByText(/couldn.t read label; re-scan/i)).toBeTruthy();
+    expect(await q.findByText(/Application matched\. Upload a clearer image\./i)).toBeTruthy();
     expect(q.queryByText(/no application row/i)).toBeNull();
   });
 

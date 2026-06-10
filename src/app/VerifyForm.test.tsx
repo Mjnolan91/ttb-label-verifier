@@ -318,7 +318,7 @@ describe("VerifyForm — verify against the application", () => {
     fireEvent.click(q.getByRole("button", { name: /Accept all AI suggestions/i }));
     expect((q.getByLabelText(/^Brand/i) as HTMLInputElement).value).toBe("Old Tom Distillery");
     // Removing the front (the realistic "replace" = Remove + re-add) drops the old application.
-    fireEvent.click(q.getByRole("button", { name: /^Remove$/i }));
+    fireEvent.click(q.getByRole("button", { name: /^Remove Front/i }));
     expect((q.getByLabelText(/^Brand/i) as HTMLInputElement).value).toBe("");
   });
 
@@ -393,7 +393,7 @@ describe("VerifyForm — verify against the application", () => {
     const q = within(container);
     dropLabelImage(container);
     expect(await q.findByText(/Could not reach the label reader/)).toBeTruthy();
-    fireEvent.click(q.getByRole("button", { name: /^Remove$/ }));
+    fireEvent.click(q.getByRole("button", { name: /^Remove Front/i }));
     expect(q.queryByText(/Could not reach the label reader/)).toBeNull();
   });
 

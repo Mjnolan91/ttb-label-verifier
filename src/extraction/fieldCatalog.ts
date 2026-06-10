@@ -85,7 +85,7 @@ export const FIELD_CATALOG: readonly FieldDescriptor[] = [
       "person can confirm.",
   },
   {
-    key: "classType", rawKey: "classType", confKey: "classType", label: "Class / type", csvColumn: "type", group: "headline",
+    key: "classType", rawKey: "classType", confKey: "classType", label: "Class / type designation", csvColumn: "type", group: "headline",
     description:
       "The TTB class/type DESIGNATION — the standard of identity that names what the product legally IS, " +
       "e.g. \"Rum\", \"Vodka\", \"Kentucky Straight Bourbon Whiskey\", \"India Pale Ale\", \"Cabernet Sauvignon\". " +

@@ -25,14 +25,14 @@ export interface AppInputSpec {
 /** Per-input copy, keyed so a new AppInputKey without a row is a compile error. */
 const SPEC: Record<AppInputKey, { label: string; hint?: string }> = {
   brand: { label: "Brand name" },
-  classType: { label: "Class / type" },
+  classType: { label: "Class / type designation" },
   alcoholContent: { label: "Alcohol content" },
   netContents: { label: "Net contents" },
   name: { label: "Producer / bottler name" },
   address: { label: "Producer / bottler address" },
   countryOfOrigin: { label: "Country of origin", hint: "imports only" },
   fancifulName: { label: "Distinctive / fanciful name", hint: "if any" },
-  statementOfComposition: { label: "Statement of composition", hint: "specialties" },
+  statementOfComposition: { label: "Statement of composition", hint: "specialty products only" },
 };
 
 /** Display order (a unit test asserts it covers every key of SPEC). */
@@ -86,7 +86,7 @@ export function countryOfOriginImportNote(extracted: ExtractedFields): string | 
   ].filter(Boolean);
   const what = evidence.length > 0 ? evidence.join(" and ") : "import evidence";
   return (
-    `Import detected: the label shows ${what} but no printed "Product of ..." statement. ` +
+    `Import detected. The label shows ${what} but no printed "Product of ..." statement. ` +
     "The verdict flags the missing country of origin."
   );
 }

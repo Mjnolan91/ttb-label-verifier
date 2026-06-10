@@ -35,7 +35,7 @@ export type FieldOverride = "ok" | "issue";
  *  have no real comparison card). Mirrors the labels verifyLabel gives the real cards. */
 const SYNTH_CONCERN_LABEL: Record<VerifyFieldKey, string> = {
   brand: "Brand name",
-  classType: "Class / type",
+  classType: "Class / type designation",
   alcohol: "Alcohol content",
   netContents: "Net contents",
   name: "Producer / bottler name",

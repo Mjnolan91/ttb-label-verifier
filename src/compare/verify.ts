@@ -99,7 +99,7 @@ export function verifyLabel(
   if (claimed.classType?.trim()) {
     add(
       "classType",
-      "Class / type",
+      "Class / type designation",
       applyConfidenceGate(
         compareClassType({
           claimed: claimed.classType,

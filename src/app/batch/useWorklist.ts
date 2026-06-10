@@ -69,13 +69,15 @@ export interface WorklistApi {
   /** MERGE application-value edits into a product's record (functional: several keys written in one
    *  event — "Accept all" — accumulate instead of last-write-wins on a stale snapshot). */
   setApplication: (product: string, application: ApplicationEdits) => void;
-  /** Clear ALL of a product's confirm/flag overrides. Every override was recorded against a
-   *  different application (a class/type edit even re-selects the ALCOHOL card's tolerance band, and
-   *  a completeness-only "ok" maps onto the comparison card once a verdict first computes), so after
-   *  ANY application edit none of them is trustworthy — a stale "ok" force-passing a recomputed
-   *  comparison is a false approval, the one error class this project refuses to ship. Per-field
-   *  reviewer NOTES are kept: they are commentary and never change a verdict. */
-  clearOverrides: (product: string) => void;
+  /** Invalidate a product's review after an application-value edit: clear ALL confirm/flag
+   *  overrides AND any recorded decision. Every override — and the decision itself — was recorded
+   *  against a different application (a class/type edit even re-selects the ALCOHOL card's tolerance
+   *  band, and a completeness-only "ok" maps onto the comparison card once a verdict first computes),
+   *  so after ANY application edit none of them is trustworthy — a stale "ok" or a stale "Approved"
+   *  force-passing a recomputed comparison is a false approval, the one error class this project
+   *  refuses to ship. Per-field reviewer NOTES and the application edits are kept: notes are
+   *  commentary and never change a verdict; the edits are the new ground truth. */
+  invalidateReview: (product: string) => void;
   /** Record (or re-record) a product's decision + note. */
   recordDecision: (product: string, decision: ReviewDecision, note: string) => void;
   /** Forget one product's record (back to un-reviewed). */
@@ -113,8 +115,17 @@ export function useWorklist(): WorklistApi {
           application: { ...prev[product]?.application, ...application },
         },
       })),
-    clearOverrides: (product) =>
-      update((prev) => (prev[product] ? { ...prev, [product]: { ...prev[product], overrides: {} } } : prev)),
+    invalidateReview: (product) =>
+      update((prev) => {
+        const rec = prev[product];
+        if (!rec) return prev;
+        // Rebuild the record keeping ONLY what survives an application edit: per-field notes
+        // (commentary) and the edits themselves. Overrides, decision, note, decidedAt all drop.
+        const next: ReviewRecord = { overrides: {} };
+        if (rec.notes) next.notes = rec.notes;
+        if (rec.application) next.application = rec.application;
+        return { ...prev, [product]: next };
+      }),
     recordDecision: (product, decision, note) =>
       update((prev) => ({
         ...prev,

@@ -72,20 +72,26 @@ describe("useWorklist — persistence + resume", () => {
     expect(loadWorklist().acme.application).toEqual({ brand: "", alcoholContent: "40% Alc./Vol." });
   });
 
-  it("clearOverrides empties ALL of a product's flags but keeps its notes and decision", () => {
+  it("invalidateReview clears flags AND the recorded decision, keeping notes and application edits", () => {
     const { result } = renderHook(() => useWorklist());
     act(() => {
       result.current.setOverrides("acme", { brand: "ok", warning: "issue" });
       result.current.setNotes("acme", { warning: "prefix looks light" });
-      result.current.recordDecision("acme", "reject", "send back");
+      result.current.setApplication("acme", { brand: "Acme" });
+      result.current.recordDecision("acme", "approve", "looks good");
     });
-    act(() => result.current.clearOverrides("acme"));
+    act(() => result.current.invalidateReview("acme"));
     const rec = loadWorklist().acme;
     expect(rec.overrides).toEqual({});
+    // The decision was made against DIFFERENT inputs: a stale "Approved" surviving an application
+    // edit whose recomputed verdict says reject is a false approval. The row returns to Undecided.
+    expect(rec.decision).toBeUndefined();
+    expect(rec.note).toBeUndefined();
+    expect(rec.decidedAt).toBeUndefined();
     expect(rec.notes?.warning).toBe("prefix looks light"); // commentary survives
-    expect(rec.decision).toBe("reject");
-    // Clearing a product with no record is a no-op, never a phantom record.
-    act(() => result.current.clearOverrides("ghost"));
+    expect(rec.application?.brand).toBe("Acme"); // the edit that triggered the invalidation survives
+    // Invalidating a product with no record is a no-op, never a phantom record.
+    act(() => result.current.invalidateReview("ghost"));
     expect(loadWorklist().ghost).toBeUndefined();
   });
 });

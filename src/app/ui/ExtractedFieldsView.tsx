@@ -75,14 +75,9 @@ export function ExtractedFieldsView({
   headingRef?: Ref<HTMLHeadingElement>;
 }) {
   const c = extracted.confidence;
-  const boldText =
-    extracted.warningPrefixIsBold === true
-      ? "yes"
-      : extracted.warningPrefixIsBold === false
-        ? "no"
-        : "undetectable";
-  // The supplementary 16.22 signals (body-not-bold, legibility): name the good/violating readings,
-  // fall back to "undetectable" on null/undefined.
+  // ALL the 16.22 typography flags are tri-state: name the good/violating readings, fall back to
+  // "undetectable" on null/undefined. A null must NEVER render as "no" — that would claim a
+  // violation reading on missing evidence ("verified" means verified, in both directions).
   const tri = (v: boolean | null | undefined, whenTrue: string, whenFalse: string): string =>
     v === true ? whenTrue : v === false ? whenFalse : "undetectable";
   return (
@@ -114,8 +109,8 @@ export function ExtractedFieldsView({
         </details>
 
         <div className="mt-3 flex flex-wrap gap-2 border-t border-border pt-3">
-          <Flag label="Warning prefix ALL CAPS" value={extracted.warningPrefixIsAllCaps ? "yes" : "no"} />
-          <Flag label="Warning prefix bold" value={boldText} />
+          <Flag label="Warning prefix ALL CAPS" value={tri(extracted.warningPrefixIsAllCaps, "yes", "no")} />
+          <Flag label="Warning prefix bold" value={tri(extracted.warningPrefixIsBold, "yes", "no")} />
           <Flag label="Warning body bold" value={tri(extracted.warningRemainderIsBold, "yes (violation)", "no")} />
           <Flag label="Warning readily legible" value={tri(extracted.warningIsReadilyLegible, "yes", "confirm")} />
         </div>

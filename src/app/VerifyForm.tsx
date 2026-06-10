@@ -64,7 +64,7 @@ const orderedImagesOf = (s: { front?: LabelImage; back?: LabelImage }): LabelIma
 /** Human label for each application input / requirement key (used by the "still needed" checklist). */
 const KEY_LABEL: Record<RequirementKey, string> = {
   brand: "Brand name",
-  classType: "Class / type",
+  classType: "Class / type designation",
   alcoholContent: "Alcohol content",
   netContents: "Net contents",
   name: "Producer / bottler name",
@@ -441,6 +441,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
                       <button
                         type="button"
                         onClick={() => clearSlot(key)}
+                        aria-label={`Remove ${label}`}
                         className="min-h-[40px] shrink-0 rounded-field border-2 border-border-strong px-3 text-sm font-semibold text-ink transition hover:border-fail-600 hover:text-fail-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2"
                       >
                         Remove

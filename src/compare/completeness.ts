@@ -149,17 +149,17 @@ export function evaluateWarningElement(spec: RequirementSpec, e: ExtractedFields
   }
   const capsNote =
     e.warningPrefixIsAllCaps === null
-      ? " The ALL-CAPS prefix could not be verified from the image — confirm it (27 CFR 16.22(a)(2))."
+      ? " The ALL-CAPS prefix could not be verified from the image. Confirm it on the label (27 CFR 16.22(a)(2))."
       : "";
   const boldNote =
     e.warningPrefixIsBold === null
-      ? " Bold type could not be verified from the image — confirm the prefix is bold (27 CFR 16.22(a)(2))."
+      ? " Bold type could not be verified from the image. Confirm the prefix is bold (27 CFR 16.22(a)(2))."
       : "";
   // Legibility (16.22(a)(1)) is a typography judgment: a confident "hard to read" is surfaced as a
   // confirm-note (the comparator routes it to review); it never hard-fails completeness.
   const legibilityNote =
     e.warningIsReadilyLegible === false
-      ? " The statement may not be readily legible under ordinary conditions — confirm on the label (27 CFR 16.22(a)(1))."
+      ? " The statement may not be readily legible under ordinary conditions. Confirm it on the label (27 CFR 16.22(a)(1))."
       : "";
   const prefixDesc = e.warningPrefixIsAllCaps === true ? "an ALL-CAPS prefix" : "the required warning text";
   return {

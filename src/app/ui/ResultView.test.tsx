@@ -31,13 +31,13 @@ describe("ResultView — at-a-glance label-vs-application verdict", () => {
   it("renders extra cards for the additional application fields (N > 3)", () => {
     const fields: VerifyField[] = [
       CORE[0],
-      { key: "classType", label: "Class / type", status: "pass", claimed: "distilled-spirits", extracted: "Straight Rye Whisky", reason: "Same class." },
+      { key: "classType", label: "Class / type designation", status: "pass", claimed: "distilled-spirits", extracted: "Straight Rye Whisky", reason: "Same class." },
       CORE[1],
       { key: "netContents", label: "Net contents", status: "pass", claimed: "750 mL", extracted: "750 mL", reason: "Match." },
       CORE[2],
     ];
     const q = within(render(<ResultView result={makeResult(fields, "approve")} />).container);
-    expect(q.getByText("Class / type")).toBeTruthy();
+    expect(q.getByText("Class / type designation")).toBeTruthy();
     expect(q.getByText("Net contents")).toBeTruthy();
   });
 

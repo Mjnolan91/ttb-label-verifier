@@ -175,16 +175,17 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
   }
 
   /** Record one application-value edit from the drawer. The edit overlays the CSV row (an explicit ""
-   *  clears a wrong CSV value), and it INVALIDATES ALL of the reviewer's prior confirm/flag calls on
-   *  this product — not just the edited field's: comparison cards depend on OTHER inputs (the claimed
-   *  class/type SELECTS the alcohol tolerance band; a completeness-only "ok" maps onto the comparison
-   *  card once the gate first passes), so a stale "ok" can force-pass a comparison the reviewer never
-   *  saw — a false approval. The single screen's fresh-read-drops-overrides principle, applied here. */
+   *  clears a wrong CSV value), and it INVALIDATES the reviewer's prior review of this product — every
+   *  confirm/flag call AND any recorded decision, not just the edited field's: comparison cards depend
+   *  on OTHER inputs (the claimed class/type SELECTS the alcohol tolerance band; a completeness-only
+   *  "ok" maps onto the comparison card once the gate first passes), so a stale "ok" or a stale
+   *  "Approved" can force-pass a comparison the reviewer never saw — a false approval. The single
+   *  screen's fresh-read-drops-overrides principle, applied here; the row returns to Undecided. */
   function applyApplicationEdit(product: string, key: AppInputKey, value: string) {
     // Both mutators are FUNCTIONAL (merge / replace against the latest state), so the several calls
     // one "Accept all" click fires accumulate instead of last-write-wins on a stale snapshot.
     worklist.setApplication(product, { [key]: value });
-    worklist.clearOverrides(product);
+    worklist.invalidateReview(product);
   }
 
   /** Re-read ONE failed product without re-running the whole batch. */
@@ -610,7 +611,7 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
                         <StatusBadge tone="review" label="Couldn't read" />
                         {matchedClaim && (
                           <span className="mt-1 block text-xs text-review-700">
-                            Matched, couldn&apos;t read label; re-scan
+                            Application matched. Upload a clearer image.
                           </span>
                         )}
                       </>
@@ -634,7 +635,7 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
                           />
                         )}
                         <span className="mt-1 block text-xs text-ink-muted">
-                          {claimed.size > 0 ? "no application row; add values in Review" : "add application values in Review to compare"}
+                          {claimed.size > 0 ? "No application row. Add values in Review." : "Add application values in Review to compare."}
                         </span>
                       </>
                     )}
