@@ -20,7 +20,7 @@ import {
 } from "./extractedShape";
 import { FIELD_CATALOG } from "./fieldCatalog";
 import { defaultFetch, fetchWithRetry, withHardTimeout, type FetchLike } from "./http";
-import { resolveSelfConsistencyTemperature } from "./config";
+import { resolveSelfConsistencyTemperature, resolveWarningJudgeModel } from "./config";
 import { FIELD_REVIEW_CONFIDENCE, MIN_READABLE_CONFIDENCE } from "@/compare";
 
 /** Resolved Azure OpenAI connection config. */
@@ -29,6 +29,8 @@ export interface AzureOpenAIConfig {
   apiKey: string;
   deployment: string;
   apiVersion: string;
+  /** Optional deployment for the dedicated warning judge (WARNING_JUDGE_MODEL); defaults to `deployment`. */
+  judgeDeployment?: string;
 }
 
 const DEFAULT_API_VERSION = "2024-10-21";
@@ -117,7 +119,7 @@ export function readAzureOpenAIConfig(
         "The default 'mock' provider needs no keys.",
     );
   }
-  return { endpoint, apiKey, deployment, apiVersion };
+  return { endpoint, apiKey, deployment, apiVersion, judgeDeployment: resolveWarningJudgeModel(env) };
 }
 
 export const SYSTEM_PROMPT =
@@ -288,10 +290,14 @@ export function buildExtractionBody(
 }
 
 export const BOLD_PROMPT =
-  'Look ONLY at the government health warning on this label. Compare the visual weight (stroke width ' +
-  'and darkness) of the "GOVERNMENT WARNING:" prefix against the warning body that follows it. Is the ' +
-  'prefix clearly bolder than the body? Respond as JSON {"bold":"BOLDER"|"SAME"|"CANNOT_DETERMINE"}. ' +
-  "If there is no warning, use CANNOT_DETERMINE.";
+  'Look ONLY at the government health warning statement on this label. Compare the STROKE WEIGHT ' +
+  '(line thickness and darkness) of the "GOVERNMENT WARNING:" prefix against the warning body text ' +
+  "that follows it. Bold means heavier strokes than the body, whatever the style: an italic, serif, " +
+  "or decorative prefix still counts as BOLDER when its strokes are clearly thicker or darker than " +
+  "the body. Do not penalize italics or ornate typefaces; judge stroke weight only. Respond as JSON " +
+  '{"bold":"BOLDER"|"SAME"|"CANNOT_DETERMINE"}. Use SAME only when the prefix is clearly the same ' +
+  "weight as the body. If there is no warning, or the resolution or styling leaves you unsure, use " +
+  "CANNOT_DETERMINE.";
 
 const BOLD_RESPONSE_FORMAT = {
   type: "json_schema",
@@ -300,9 +306,12 @@ const BOLD_RESPONSE_FORMAT = {
     required: ["bold"], additionalProperties: false } },
 } as const;
 
-/** Shared OpenAI-dialect bold judgment. Returns true/false/null; never throws. */
+/** Shared OpenAI-dialect bold judgment. Returns true/false/null; never throws.
+ *  `model` is REQUIRED for api.openai.com (the body names the model there) and omitted for Azure
+ *  (the deployment lives in the URL). */
 export async function judgeWarningBoldViaChat(opts: {
   fetchImpl: FetchLike; url: string; headers: Record<string, string>; dataUrl: string; signal?: AbortSignal;
+  model?: string;
 }): Promise<boolean | null> {
   try {
     const res = await fetchWithRetry(opts.fetchImpl, opts.url, {
@@ -310,6 +319,7 @@ export async function judgeWarningBoldViaChat(opts: {
       headers: { ...opts.headers, "content-type": "application/json" },
       signal: withHardTimeout(opts.signal),
       body: JSON.stringify({
+        ...(opts.model ? { model: opts.model } : {}),
         messages: [{ role: "user", content: [
           { type: "text", text: BOLD_PROMPT },
           { type: "image_url", image_url: { url: opts.dataUrl, detail: "high" } },
@@ -418,9 +428,12 @@ export class LlmVisionProvider implements VisionProvider {
   async judgeWarningBold(image: ImageInput, signal?: AbortSignal): Promise<boolean | null> {
     if (!image.data || image.data.length === 0) return null;
     const dataUrl = `data:${image.contentType ?? "image/jpeg"};base64,${Buffer.from(image.data).toString("base64")}`;
+    // The judge can run on a stronger deployment than extraction (WARNING_JUDGE_MODEL) — the warning
+    // is the one check that can hard-fail a label, so it gets the best eyes available.
+    const judgeDeployment = this.config.judgeDeployment ?? this.config.deployment;
     const url =
       `${this.config.endpoint.replace(/\/+$/, "")}/openai/deployments/` +
-      `${this.config.deployment}/chat/completions?api-version=${this.config.apiVersion}`;
+      `${judgeDeployment}/chat/completions?api-version=${this.config.apiVersion}`;
     return judgeWarningBoldViaChat({
       fetchImpl: this.fetchImpl,
       url,

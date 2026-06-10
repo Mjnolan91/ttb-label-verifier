@@ -176,6 +176,23 @@ describe("GeminiVisionProvider — bold pass + tuning", () => {
     expect(await unk.judgeWarningBold!(img)).toBeNull();
   });
 
+  it("the judge runs on judgeModel (WARNING_JUDGE_MODEL) when set, while extraction keeps the base model", async () => {
+    // The warning judge is the one call that can hard-fail a label, so it may run on a stronger
+    // (slower) model than the bulk extraction reads.
+    const urls: string[] = [];
+    const capture = (async (url: string) => {
+      urls.push(url);
+      return { ok: true, status: 200, json: async () => ({ candidates: [{ content: { parts: [{ text: '{"bold":"BOLDER"}' }] } }] }) };
+    }) as unknown as typeof fetch;
+    const p = new GeminiVisionProvider({
+      config: { apiKey: "k", model: "gemini-3.5-flash", judgeModel: "gemini-3.1-pro-preview" },
+      fetchImpl: capture,
+    });
+    expect(await p.judgeWarningBold!(img)).toBe(true);
+    expect(urls[0]).toContain("gemini-3.1-pro-preview");
+    expect(urls[0]).not.toContain("gemini-3.5-flash");
+  });
+
   it("the read request carries gen3 thinkingLevel 'low' and sends NO per-part mediaResolution (v1beta-unsupported)", async () => {
     type CapturedPart = { text?: string; inlineData?: unknown; mediaResolution?: unknown };
     type CapturedBody = {

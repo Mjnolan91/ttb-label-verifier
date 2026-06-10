@@ -28,3 +28,17 @@ export function resolveSelfConsistencyTemperature(
   if (!Number.isFinite(t) || t < 0 || t > 2) return DEFAULT_SELF_CONSISTENCY_TEMPERATURE;
   return t;
 }
+
+/**
+ * Optional model override for the DEDICATED government-warning judge pass (the bold/format
+ * verification). The warning is the one check that can hard-fail a label, so it can justify a
+ * stronger (slower) model than the bulk extraction reads: for the gemini/openai providers this is a
+ * model id (e.g. gemini-3.1-pro-preview, gpt-5.2); for Azure (llm) it names a DEPLOYMENT. Unset ->
+ * the judge runs on the same model as extraction. Read from WARNING_JUDGE_MODEL.
+ */
+export function resolveWarningJudgeModel(
+  env: Record<string, string | undefined> = process.env,
+): string | undefined {
+  const raw = env.WARNING_JUDGE_MODEL?.trim();
+  return raw ? raw : undefined;
+}

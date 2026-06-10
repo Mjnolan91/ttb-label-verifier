@@ -577,6 +577,23 @@ export function compareWarning(args: {
       '"Surgeon General" must be capitalized (the S and G) in the warning text. Confirm against the label.',
     );
   }
+  // VERIFIED means verified. The text matches and nothing is confidently wrong, but if a prefix
+  // format flag could not be read from the image (null), a pass here would claim a verification
+  // that never happened — and the warning is the one check where that silence is indistinguishable
+  // from a real check. Route to review naming exactly what a human still needs to confirm.
+  const unverified = [
+    ...(allCaps === null ? ["all capital letters"] : []),
+    ...(bold === null ? ["bold type"] : []),
+  ];
+  if (unverified.length > 0) {
+    return result(
+      "review",
+      canonical,
+      text,
+      `Warning text matches the statutory wording, but the "GOVERNMENT WARNING:" prefix could not be ` +
+        `verified as ${unverified.join(" and ")} from the image (27 CFR 16.22(a)(2)). Confirm on the label.`,
+    );
+  }
   return result(
     "pass",
     canonical,

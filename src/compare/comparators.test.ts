@@ -65,8 +65,18 @@ describe("compareWarning", () => {
   it("PASS: canonical text, all-caps bold prefix", () => {
     expect(compareWarning(ok).status).toBe("pass");
   });
-  it("PASS: bold undetectable (null) is not a violation", () => {
-    expect(compareWarning({ ...ok, warningPrefixIsBold: null }).status).toBe("pass");
+  it("REVIEW: bold undetectable (null) is surfaced for a human, never a silent verified pass", () => {
+    // Not a violation (no evidence of one), but not a verification either: the pass message claims a
+    // "correctly formatted prefix", so an unverifiable bold flag must route to review instead.
+    const r = compareWarning({ ...ok, warningPrefixIsBold: null });
+    expect(r.status).toBe("review");
+    expect(r.reason).toContain("bold");
+    expect(r.reason).toContain("could not be verified");
+  });
+  it("REVIEW: all-caps undetectable (null) is surfaced for a human too", () => {
+    const r = compareWarning({ ...ok, warningPrefixIsAllCaps: null });
+    expect(r.status).toBe("review");
+    expect(r.reason).toContain("could not be verified");
   });
   it("FAIL: title-case prefix (warningPrefixIsAllCaps=false), body otherwise verbatim", () => {
     const r = compareWarning({

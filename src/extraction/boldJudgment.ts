@@ -12,7 +12,9 @@
  *    of clobbering it; "not bold" (the hard-fail signal) is asserted ONLY when both agree, and any
  *    disagreement or lone "not bold" falls to null (surfaced for a human, never hard-failed).
  *
- * Tri-state throughout: true = bold, false = not bold (hard-fail signal), null = cannot assert (pass).
+ * Tri-state throughout: true = bold, false = not bold (hard-fail signal), null = cannot assert.
+ * A null is NOT a silent pass: compareWarning routes an unverified prefix to review, so "we could
+ * not check" is always surfaced to the reviewer rather than reading as "we checked and it's fine".
  */
 
 /** Majority vote over N tri-state bold samples; a tie (incl. all-null) is "cannot assert" (null). */

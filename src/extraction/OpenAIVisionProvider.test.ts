@@ -140,6 +140,27 @@ describe("OpenAIVisionProvider.judgeWarningBold — bold judgment via chat (HTTP
     const unk = new OpenAIVisionProvider({ config: { apiKey: "k", model: "gpt-4.1" }, fetchImpl: (async () => make('{"bold":"CANNOT_DETERMINE"}')) as unknown as typeof fetch });
     expect(await unk.judgeWarningBold!(img)).toBeNull();
   });
+
+  it("the judge request NAMES the model (api.openai.com 400s without it) and honors judgeModel", async () => {
+    // Regression: the shared judge body omitted `model` (fine for Azure, where the deployment is in
+    // the URL) — so every OpenAI judge call failed and silently degraded to "cannot determine".
+    const bodies: { model?: string }[] = [];
+    const capture = (async (_url: string, init: { body: string }) => {
+      bodies.push(JSON.parse(init.body) as { model?: string });
+      return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: '{"bold":"BOLDER"}' } }] }) };
+    }) as unknown as typeof fetch;
+    const img = { filename: "x.jpg", data: new Uint8Array([1]), contentType: "image/jpeg" };
+
+    await new OpenAIVisionProvider({ config: { apiKey: "k", model: "gpt-4.1" }, fetchImpl: capture }).judgeWarningBold!(img);
+    expect(bodies[0].model).toBe("gpt-4.1");
+
+    // WARNING_JUDGE_MODEL: the hard-fail check may run on a stronger model than extraction.
+    await new OpenAIVisionProvider({
+      config: { apiKey: "k", model: "gpt-4.1", judgeModel: "gpt-5.2" },
+      fetchImpl: capture,
+    }).judgeWarningBold!(img);
+    expect(bodies[1].model).toBe("gpt-5.2");
+  });
 });
 
 describe("getVisionProvider('openai') — selection + offline safety", () => {

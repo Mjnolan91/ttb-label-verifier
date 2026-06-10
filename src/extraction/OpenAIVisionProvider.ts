@@ -11,7 +11,7 @@ import type { ExtractedFields } from "@/domain";
 import type { ExtractOptions, ImageInput, VisionProvider } from "./VisionProvider";
 import { buildExtractionBody, callChatCompletion, judgeWarningBoldViaChat } from "./LlmVisionProvider";
 import { defaultFetch, type FetchLike } from "./http";
-import { resolveSelfConsistencyTemperature } from "./config";
+import { resolveSelfConsistencyTemperature, resolveWarningJudgeModel } from "./config";
 
 // A current, generally-available multimodal model (gpt-4o is the older generation and on a 2026
 // retirement path). Override with OPENAI_MODEL — e.g. gpt-4.1-mini for lower cost/latency, or a
@@ -23,6 +23,8 @@ const OPENAI_URL = "https://api.openai.com/v1/chat/completions";
 export interface OpenAIConfig {
   apiKey: string;
   model: string;
+  /** Optional model for the dedicated warning judge (WARNING_JUDGE_MODEL); defaults to `model`. */
+  judgeModel?: string;
 }
 
 /**
@@ -39,7 +41,7 @@ export function readOpenAIConfig(
         "The default 'mock' provider needs no keys.",
     );
   }
-  return { apiKey, model: env.OPENAI_MODEL?.trim() || DEFAULT_MODEL };
+  return { apiKey, model: env.OPENAI_MODEL?.trim() || DEFAULT_MODEL, judgeModel: resolveWarningJudgeModel(env) };
 }
 
 export class OpenAIVisionProvider implements VisionProvider {
@@ -81,12 +83,16 @@ export class OpenAIVisionProvider implements VisionProvider {
   async judgeWarningBold(image: ImageInput, signal?: AbortSignal): Promise<boolean | null> {
     if (!image.data || image.data.length === 0) return null;
     const dataUrl = `data:${image.contentType ?? "image/jpeg"};base64,${Buffer.from(image.data).toString("base64")}`;
+    // api.openai.com REQUIRES the model in the body (Azure names a deployment in the URL instead) —
+    // without it the judge 400s and silently degrades to "cannot determine" on every call. The judge
+    // can also run on a stronger model than extraction via WARNING_JUDGE_MODEL.
     return judgeWarningBoldViaChat({
       fetchImpl: this.fetchImpl,
       url: OPENAI_URL,
       headers: { authorization: `Bearer ${this.config.apiKey}` },
       dataUrl,
       signal,
+      model: this.config.judgeModel ?? this.config.model,
     });
   }
 }

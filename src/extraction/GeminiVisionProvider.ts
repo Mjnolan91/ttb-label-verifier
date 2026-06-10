@@ -16,6 +16,7 @@ import { SYSTEM_PROMPT, USER_PROMPT, parseModelJson } from "./LlmVisionProvider"
 import { FIELD_CATALOG } from "./fieldCatalog";
 import { defaultFetch, fetchWithRetry, withHardTimeout, type FetchLike } from "./http";
 import { geminiTuning } from "./geminiTuning";
+import { resolveWarningJudgeModel } from "./config";
 
 // Default is a GA Flash model — stable, multimodal, fast, and broadly available (a preview "pro" id
 // is fragile: it can rotate and has stricter param/quota rules). Override with GEMINI_MODEL (e.g.
@@ -31,6 +32,8 @@ const API_BASE = "https://generativelanguage.googleapis.com/v1beta";
 export interface GeminiConfig {
   apiKey: string;
   model: string;
+  /** Optional model for the dedicated warning judge (WARNING_JUDGE_MODEL); defaults to `model`. */
+  judgeModel?: string;
 }
 
 /**
@@ -48,7 +51,7 @@ export function readGeminiConfig(
         "The default 'mock' provider needs no keys.",
     );
   }
-  return { apiKey, model: env.GEMINI_MODEL?.trim() || DEFAULT_MODEL };
+  return { apiKey, model: env.GEMINI_MODEL?.trim() || DEFAULT_MODEL, judgeModel: resolveWarningJudgeModel(env) };
 }
 
 // Gemini's structured-output schema is an OpenAPI subset: UPPERCASE type names, `nullable` instead
@@ -199,16 +202,23 @@ export class GeminiVisionProvider implements VisionProvider {
   }
 
   private static readonly BOLD_PROMPT =
-    'Look ONLY at the government health warning on this label. Compare the visual weight (stroke ' +
-    'width and darkness) of the "GOVERNMENT WARNING:" prefix against the warning body text that ' +
-    'follows it. Is the prefix rendered in a clearly heavier/bolder typeface than the body? ' +
-    "Answer with one word: BOLDER, SAME, or CANNOT_DETERMINE. If there is no government warning, answer CANNOT_DETERMINE.";
+    'Look ONLY at the government health warning statement on this label. Compare the STROKE WEIGHT ' +
+    '(line thickness and darkness) of the "GOVERNMENT WARNING:" prefix against the warning body text ' +
+    "that follows it. Bold means heavier strokes than the body, whatever the style: an italic, serif, " +
+    "or decorative prefix still counts as BOLDER when its strokes are clearly thicker or darker than " +
+    "the body. Do not penalize italics or ornate typefaces; judge stroke weight only. Answer with one " +
+    "word: BOLDER, SAME, or CANNOT_DETERMINE. Use SAME only when the prefix is clearly the same weight " +
+    "as the body. If there is no government warning, or the resolution or styling leaves you unsure, " +
+    "answer CANNOT_DETERMINE.";
 
   async judgeWarningBold(image: ImageInput, signal?: AbortSignal): Promise<boolean | null> {
     if (!image.data || image.data.length === 0) return null;
     const base64 = Buffer.from(image.data).toString("base64");
-    const url = `${API_BASE}/models/${this.config.model}:generateContent`;
-    const tuning = geminiTuning(this.config.model, "bold");
+    // The judge can run on a stronger model than extraction (WARNING_JUDGE_MODEL) — the warning is
+    // the one check that can hard-fail a label, so it gets the best eyes available.
+    const judgeModel = this.config.judgeModel ?? this.config.model;
+    const url = `${API_BASE}/models/${judgeModel}:generateContent`;
+    const tuning = geminiTuning(judgeModel, "bold");
     try {
       const res = await fetchWithRetry(this.fetchImpl, url, {
         method: "POST",

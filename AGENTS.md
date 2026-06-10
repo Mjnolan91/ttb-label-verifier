@@ -103,7 +103,12 @@ label-carries-every-required-element check (`src/compare/completeness.ts`). `com
 - **Government warning — strict.** Compare the body to the canonical statutory text below.
   Confirm the "GOVERNMENT WARNING:" prefix is present and in capital letters (and bold
   where detectable; only that prefix is bold, the remainder is not). Title-case
-  ("Government Warning"), reworded, or missing = fail.
+  ("Government Warning"), reworded, or missing = fail. VERIFIED means verified: when the
+  caps/bold prefix format cannot be read from the image (tri-state null), the verdict is
+  review with a "could not be verified, confirm on the label" reason — never a silent pass
+  that claims a correctly formatted prefix. The dedicated bold judge can run on a stronger
+  model than the bulk reads via `WARNING_JUDGE_MODEL` (the warning is the one check that
+  can hard-fail a label, so it gets the best eyes available).
 
 ## Alcohol-content tolerance matrix (classType -> tolerance)
 The full beverage matrix below is the rule set the alcohol check selects from. `classType`
