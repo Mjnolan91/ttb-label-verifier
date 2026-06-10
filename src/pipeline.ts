@@ -6,7 +6,7 @@
  * evaluation measures the exact production pipeline.
  */
 import type { ClaimedFields, ExtractedFields } from "@/domain";
-import { selfConsistentExtract, resolveSelfConsistencySamples, resolveTimeoutMs, mergeExtracted, isAbortOrTimeout, aggregateBoldVotes, combineBoldSignals, type ImageInput, type VisionProvider } from "@/extraction";
+import { selfConsistentExtract, resolveSelfConsistencySamples, resolveTimeoutMs, mergeExtracted, isAbortOrTimeout, aggregateBoldVotes, combineBoldSignals, resolveLowConfidenceRescue, rescueEligibleKeys, rescueRawKeys, applyRescue, readFieldsBounded, type ImageInput, type VisionProvider } from "@/extraction";
 import { verifyLabel, isExtractionReadable, type VerifyResult } from "@/compare";
 
 export interface ExtractionOutcome {
@@ -96,6 +96,20 @@ export async function runExtraction(
   if (bolder && extracted.warningText && extracted.warningText.trim() !== "") {
     const judge = boldVerdicts.find((v) => v !== null) ?? null;
     extracted.warningPrefixIsBold = combineBoldSignals(extracted.warningPrefixIsBold, judge);
+  }
+
+  // LOW-CONFIDENCE RESCUE (rescue.ts): when verdict-relevant fields land in the borderline band,
+  // ONE bounded call re-reads exactly those fields on the provider's strongest model across ALL the
+  // product's images. Agreement clears the review gate; disagreement adopts the stronger read but
+  // stays in review. Fires only on contested reads; the mock has no readFields, so the offline
+  // suite and eval never enter this branch. A failed/timed-out rescue leaves the extraction as-is.
+  const rescuer = providers.find((p) => typeof p.readFields === "function");
+  if (rescuer && isExtractionReadable(extracted) && resolveLowConfidenceRescue()) {
+    const contested = rescueEligibleKeys(extracted);
+    if (contested.length > 0) {
+      const strong = await readFieldsBounded(rescuer, images, rescueRawKeys(contested), perCallTimeoutMs);
+      if (strong) applyRescue(extracted, contested, strong);
+    }
   }
 
   return { readable: isExtractionReadable(extracted), extracted };

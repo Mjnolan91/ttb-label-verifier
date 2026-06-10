@@ -94,7 +94,13 @@ image(s) ──> VisionProvider(s) ──> reconciler ──> completeness check
   the recommended 2, a single noisy sample out
   of three recovers to 4/5 agreement instead of sending a correct field to review, while genuine
   splits stay flagged. (Off by default on the demo, by measurement: contested reads pay one extra
-  parallel batch, which measurably pushed the live median toward the ~5s ceiling.) A
+  parallel batch, which measurably pushed the live median toward the ~5s ceiling.) When a
+  verdict-relevant field still lands below the review gate, a LOW-CONFIDENCE RESCUE re-reads
+  exactly those fields on the strongest model in one bounded call across all the product's images:
+  if the smarter read agrees with the fast majority, two independent models agreeing clears the
+  field for verdict; if it disagrees, the smarter read becomes the suggestion but the field still
+  goes to a human. A rescue can clear a false alarm; it can never silently flip a conflict to
+  pass. A
   dedicated second pass
   judges whether the "GOVERNMENT WARNING:" prefix is printed in bold; because the warning is the
   one check that can hard-fail a label, that judge can run on a stronger model than the bulk reads

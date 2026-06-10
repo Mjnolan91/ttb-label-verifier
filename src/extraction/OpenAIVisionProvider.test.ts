@@ -307,3 +307,69 @@ describe("getVisionProvider('openai') — selection + offline safety", () => {
     });
   });
 });
+
+describe("OpenAIVisionProvider.readFields — the rescue request (HTTP mocked)", () => {
+  const IMAGES = [
+    { filename: "front.png", data: new Uint8Array([1, 2]), contentType: "image/png", position: "front" as const },
+    { filename: "back.png", data: new Uint8Array([3, 4]), contentType: "image/png", position: "back" as const },
+  ];
+
+  function rescueFetch(payload: Record<string, unknown>): {
+    fetchImpl: FetchLike;
+    calls: { url: string; init: { headers: Record<string, string>; body?: string } }[];
+  } {
+    const calls: { url: string; init: { headers: Record<string, string>; body?: string } }[] = [];
+    const fetchImpl: FetchLike = (url, init) => {
+      calls.push({ url, init });
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () => Promise.resolve({ choices: [{ message: { content: JSON.stringify(payload) } }] }),
+      });
+    };
+    return { fetchImpl, calls };
+  }
+
+  it("runs on the STRONG model with reasoning-family params and a subset schema of exactly the asked keys", async () => {
+    const { fetchImpl, calls } = rescueFetch({ brand: "Old Tom Distillery", netContents: null });
+    const provider = new OpenAIVisionProvider({ config: CONFIG, fetchImpl });
+
+    const out = await provider.readFields!(IMAGES, ["brand", "netContents"]);
+
+    expect(calls).toHaveLength(1);
+    const body = JSON.parse(calls[0].init.body ?? "{}") as {
+      model: string;
+      temperature?: number;
+      max_tokens?: number;
+      max_completion_tokens?: number;
+      messages: { content: { type: string }[] }[];
+      response_format: { json_schema: { schema: { properties: Record<string, unknown>; required: string[] } } };
+    };
+    // Default judge model (gpt-5.5) => reasoning-family params, never the classic idioms (a wrong
+    // param family 400s silently and the rescue would always no-op).
+    expect(body.model).toBe(OpenAIVisionProvider.DEFAULT_JUDGE_MODEL);
+    expect(body.max_completion_tokens).toBeGreaterThan(0);
+    expect(body.max_tokens).toBeUndefined();
+    expect(body.temperature).toBeUndefined();
+    // Subset schema: exactly the asked keys, required, nothing else.
+    expect(Object.keys(body.response_format.json_schema.schema.properties)).toEqual(["brand", "netContents"]);
+    expect(body.response_format.json_schema.schema.required).toEqual(["brand", "netContents"]);
+    // BOTH images travel in the one call.
+    expect(body.messages[0].content.filter((p) => p.type === "image_url")).toHaveLength(2);
+    expect(out).toEqual({ brand: "Old Tom Distillery", netContents: null });
+  });
+
+  it("honors a WARNING_JUDGE_MODEL-style override and returns null on a failed call", async () => {
+    const { fetchImpl, calls } = rescueFetch({ brand: "x" });
+    const provider = new OpenAIVisionProvider({
+      config: { ...CONFIG, judgeModel: "gpt-4.1" },
+      fetchImpl,
+    });
+    await provider.readFields!(IMAGES, ["brand"]);
+    expect((JSON.parse(calls[0].init.body ?? "{}") as { model: string }).model).toBe("gpt-4.1");
+
+    const failing: FetchLike = () => Promise.resolve({ ok: false, status: 500, json: () => Promise.resolve({}) });
+    const out = await new OpenAIVisionProvider({ config: CONFIG, fetchImpl: failing }).readFields!(IMAGES, ["brand"]);
+    expect(out).toBeNull();
+  });
+});

@@ -9,7 +9,7 @@
  */
 import type { ExtractedFields } from "@/domain";
 import type { ExtractOptions, ImageInput, VisionProvider } from "./VisionProvider";
-import { buildExtractionBody, callChatCompletion, judgeWarningBoldViaChat } from "./LlmVisionProvider";
+import { buildExtractionBody, callChatCompletion, judgeWarningBoldViaChat, readFieldsViaChat } from "./LlmVisionProvider";
 import { defaultFetch, type FetchLike } from "./http";
 import { resolveSelfConsistencyTemperature, resolveWarningJudgeModel } from "./config";
 
@@ -106,6 +106,30 @@ export class OpenAIVisionProvider implements VisionProvider {
       signal,
       model: this.config.judgeModel ?? OpenAIVisionProvider.DEFAULT_JUDGE_MODEL,
       fallbackModel: this.config.model,
+    });
+  }
+
+  /** The low-confidence rescue pass (rescue.ts): the STRONG model re-reads only the contested
+   *  fields, across all the product's images in one call. Best-effort: null on any failure (no
+   *  fast-model fallback — re-asking the model that was already unsure adds nothing). */
+  async readFields(
+    images: ImageInput[],
+    rawKeys: string[],
+    signal?: AbortSignal,
+  ): Promise<Record<string, string | null> | null> {
+    const usable = images.filter((img) => img.data && img.data.length > 0);
+    if (usable.length === 0 || rawKeys.length === 0) return null;
+    return readFieldsViaChat({
+      fetchImpl: this.fetchImpl,
+      url: OPENAI_URL,
+      headers: { authorization: `Bearer ${this.config.apiKey}` },
+      images: usable.map((img) => ({
+        dataUrl: `data:${img.contentType ?? "image/jpeg"};base64,${Buffer.from(img.data!).toString("base64")}`,
+        position: img.position,
+      })),
+      rawKeys,
+      signal,
+      model: this.config.judgeModel ?? OpenAIVisionProvider.DEFAULT_JUDGE_MODEL,
     });
   }
 }

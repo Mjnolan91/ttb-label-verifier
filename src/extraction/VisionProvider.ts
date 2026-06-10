@@ -70,4 +70,12 @@ export interface VisionProvider {
    * Real providers implement this; the mock omits it (the pipeline skips the pass when absent).
    */
   judgeWarningBold?(image: ImageInput, signal?: AbortSignal): Promise<boolean | null>;
+  /**
+   * OPTIONAL rescue pass: re-read ONLY the named fields (RAW schema keys) across ALL of a product's
+   * images, on the provider's STRONGEST model. Returns each requested key's verbatim transcription,
+   * or null when not legibly present; returns null overall when the call fails (the pipeline then
+   * leaves the extraction untouched). Implemented by the chat providers; the mock omits it so the
+   * offline suite and eval never rescue.
+   */
+  readFields?(images: ImageInput[], rawKeys: string[], signal?: AbortSignal): Promise<Record<string, string | null> | null>;
 }

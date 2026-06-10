@@ -69,6 +69,21 @@ export function resolveOpenAIReasoningEffort(
 }
 
 /**
+ * Whether the low-confidence RESCUE pass runs (rescue.ts): when a verdict-relevant field lands in
+ * the borderline band after the fast reads, the provider's STRONGEST model re-reads exactly those
+ * fields across all the product's images in ONE bounded call. DEFAULT ON for providers that
+ * support it (the mock never does, so the offline suite/eval are unaffected): unlike escalation
+ * (more rolls of the same dice), the rescue adds a SMARTER reader, fires only on contested reads,
+ * and is capped by the per-call straggler timeout. Set LOW_CONFIDENCE_RESCUE=0 to disable.
+ */
+export function resolveLowConfidenceRescue(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  const raw = env.LOW_CONFIDENCE_RESCUE?.trim().toLowerCase();
+  return !(raw === "0" || raw === "false" || raw === "off");
+}
+
+/**
  * Optional model override for the DEDICATED government-warning judge pass (the bold/format
  * verification). The warning is the one check that can hard-fail a label, so it can justify a
  * stronger (slower) model than the bulk extraction reads: for the gemini/openai providers this is a

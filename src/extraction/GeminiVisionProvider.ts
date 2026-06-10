@@ -13,6 +13,7 @@
 import type { ExtractedFields } from "@/domain";
 import type { ExtractOptions, ImageInput, VisionProvider } from "./VisionProvider";
 import { SYSTEM_PROMPT, USER_PROMPT, parseModelJson } from "./LlmVisionProvider";
+import { RESCUE_PROMPT } from "./rescue";
 import { FIELD_CATALOG } from "./fieldCatalog";
 import { defaultFetch, fetchWithRetry, withHardTimeout, type FetchLike } from "./http";
 import { geminiTuning } from "./geminiTuning";
@@ -294,6 +295,77 @@ export class GeminiVisionProvider implements VisionProvider {
       return { ok: true, verdict: verdict === "BOLDER" ? true : verdict === "SAME" ? false : null };
     } catch {
       return { ok: false, verdict: null };
+    }
+  }
+
+  /** The low-confidence rescue pass (rescue.ts): the STRONG model re-reads only the contested
+   *  fields, across all the product's images in one call. Best-effort: null on any failure (no
+   *  fast-model fallback — re-asking the model that was already unsure adds nothing). */
+  async readFields(
+    images: ImageInput[],
+    rawKeys: string[],
+    signal?: AbortSignal,
+  ): Promise<Record<string, string | null> | null> {
+    const usable = images.filter((img) => img.data && img.data.length > 0);
+    if (usable.length === 0 || rawKeys.length === 0) return null;
+    const model = this.config.judgeModel ?? GeminiVisionProvider.DEFAULT_JUDGE_MODEL;
+    const url = `${API_BASE}/models/${model}:generateContent`;
+    const tuning = geminiTuning(model, "read");
+    const byRaw = new Map(FIELD_CATALOG.map((d) => [d.rawKey, d]));
+    try {
+      const res = await fetchWithRetry(this.fetchImpl, url, {
+        method: "POST",
+        headers: { "x-goog-api-key": this.config.apiKey, "content-type": "application/json" },
+        signal: withHardTimeout(signal),
+        body: JSON.stringify({
+          contents: [
+            {
+              role: "user",
+              parts: [
+                { text: RESCUE_PROMPT },
+                ...usable.flatMap((img) => [
+                  ...(img.position ? [{ text: `This image is the ${img.position} label.` }] : []),
+                  {
+                    inlineData: {
+                      mimeType: img.contentType ?? "image/jpeg",
+                      data: Buffer.from(img.data!).toString("base64"),
+                    },
+                  },
+                ]),
+              ],
+            },
+          ],
+          generationConfig: {
+            temperature: tuning.temperature,
+            maxOutputTokens: MAX_OUTPUT_TOKENS,
+            responseMimeType: "application/json",
+            responseSchema: {
+              type: "OBJECT",
+              properties: Object.fromEntries(
+                rawKeys.map((k) => [
+                  k,
+                  { type: "STRING", nullable: true, description: byRaw.get(k)?.description ?? "" },
+                ]),
+              ),
+              required: [...rawKeys],
+            },
+            thinkingConfig: tuning.thinkingConfig,
+          },
+        }),
+      });
+      if (!res.ok) return null;
+      const json = (await res.json()) as GeminiResponse;
+      const text = firstText(json.candidates?.[0]);
+      if (!text) return null;
+      const parsed = JSON.parse(text) as Record<string, unknown>;
+      const out: Record<string, string | null> = {};
+      for (const k of rawKeys) {
+        const v = parsed[k];
+        out[k] = typeof v === "string" && v.trim() !== "" ? v.trim() : null;
+      }
+      return out;
+    } catch {
+      return null;
     }
   }
 }

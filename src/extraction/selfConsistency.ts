@@ -197,12 +197,13 @@ async function drawSamples(
   return { reads, firstError: rejected?.reason };
 }
 
-/** The fields whose borderline confidence justifies paying for extra reads: the always-compared
+/** The fields whose borderline confidence justifies paying for extra evidence: the always-compared
  *  application set plus the warning — the channels a verdict actually consumes. The long-tail
  *  optional fields (fanciful name, age statement, vintage...) flicker between samples on real
  *  labels (a hallucinated value in 1 of 3 reads caps them to 0.3 routinely); letting them trigger
- *  escalated nearly EVERY live read and doubled p50 latency (measured 2026-06-10: 8.1s vs 4.1s). */
-const ESCALATION_FIELDS = [
+ *  escalated nearly EVERY live read and doubled p50 latency (measured 2026-06-10: 8.1s vs 4.1s).
+ *  Shared by the escalation lever here AND the strong-model rescue pass (rescue.ts). */
+export const VERDICT_RELEVANT_FIELDS = [
   "brand",
   "classType",
   "alcoholContent",
@@ -217,7 +218,7 @@ const ESCALATION_FIELDS = [
  *  can resolve; fields at exactly 0 or absent are not borderline (more samples won't conjure
  *  missing text), and long-tail fields never trigger (see ESCALATION_FIELDS). */
 function hasBorderlineField(e: ExtractedFields): boolean {
-  return ESCALATION_FIELDS.some((k) => {
+  return VERDICT_RELEVANT_FIELDS.some((k) => {
     const c = e.confidence[k];
     return typeof c === "number" && c > 0 && c < FIELD_REVIEW_CONFIDENCE;
   });

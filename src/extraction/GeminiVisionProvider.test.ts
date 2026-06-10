@@ -283,3 +283,45 @@ describe("getVisionProvider('gemini') — selection + offline safety", () => {
     });
   });
 });
+
+describe("GeminiVisionProvider.readFields — the rescue request (HTTP mocked)", () => {
+  const IMAGES = [
+    { filename: "front.png", data: new Uint8Array([1, 2]), contentType: "image/png", position: "front" as const },
+    { filename: "back.png", data: new Uint8Array([3, 4]), contentType: "image/png", position: "back" as const },
+  ];
+
+  it("runs on the STRONG model with a subset responseSchema of exactly the asked keys", async () => {
+    const calls: { url: string; body: string }[] = [];
+    const fetchImpl: FetchLike = (url, init) => {
+      calls.push({ url, body: (init as { body?: string }).body ?? "" });
+      return Promise.resolve({
+        ok: true,
+        status: 200,
+        json: () =>
+          Promise.resolve({
+            candidates: [{ content: { parts: [{ text: JSON.stringify({ brand: "Old Tom Distillery", address: null }) }] } }],
+          }),
+      });
+    };
+    const provider = new GeminiVisionProvider({ config: { apiKey: "k", model: "gemini-3.5-flash" }, fetchImpl });
+
+    const out = await provider.readFields!(IMAGES, ["brand", "address"]);
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0].url).toContain(`/models/${GeminiVisionProvider.DEFAULT_JUDGE_MODEL}:generateContent`);
+    const body = JSON.parse(calls[0].body) as {
+      contents: { parts: { inlineData?: unknown }[] }[];
+      generationConfig: { responseSchema: { properties: Record<string, unknown>; required: string[] } };
+    };
+    expect(Object.keys(body.generationConfig.responseSchema.properties)).toEqual(["brand", "address"]);
+    expect(body.generationConfig.responseSchema.required).toEqual(["brand", "address"]);
+    expect(body.contents[0].parts.filter((p) => p.inlineData)).toHaveLength(2); // both images, one call
+    expect(out).toEqual({ brand: "Old Tom Distillery", address: null });
+  });
+
+  it("returns null on a failed call (the pipeline leaves the extraction untouched)", async () => {
+    const failing: FetchLike = () => Promise.resolve({ ok: false, status: 429, json: () => Promise.resolve({}) });
+    const provider = new GeminiVisionProvider({ config: { apiKey: "k", model: "gemini-3.5-flash" }, fetchImpl: failing });
+    expect(await provider.readFields!(IMAGES, ["brand"])).toBeNull();
+  });
+});

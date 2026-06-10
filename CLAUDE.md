@@ -57,7 +57,13 @@ pipeline and the "why". As built, the load-bearing pieces are:
   batch and re-vote (`SELF_CONSISTENCY_ESCALATION`, OPT-IN, default 0 by measurement — contested
   reads pay an extra batch). `SELF_CONSISTENCY_SAMPLES`
   (default 3; `src/extraction/config.ts`) sets N; the mock provider is forced to 1 so the offline
-  suite/eval stay deterministic (and never escalates). When a warning is read, a dedicated `judgeWarningBold` pass over the
+  suite/eval stay deterministic (and never escalates). After the merge, a LOW-CONFIDENCE RESCUE
+  (`src/extraction/rescue.ts`, default ON, `LOW_CONFIDENCE_RESCUE=0` disables) re-reads any
+  verdict-relevant field still below the 0.7 gate on the provider's STRONG judge model — ONE
+  bounded call, ALL images, ONLY the contested fields: cross-model agreement boosts the field
+  above the gate; disagreement adopts the strong read but stays in review (a rescue clears false
+  alarms, never silently flips a conflict to pass; the mock has no `readFields`, so offline never
+  rescues). When a warning is read, a dedicated `judgeWarningBold` pass over the
   images sets `warningPrefixIsBold` (on gemini AND openai the judge DEFAULTS to the strongest model,
   `GeminiVisionProvider.DEFAULT_JUDGE_MODEL` / `OpenAIVisionProvider.DEFAULT_JUDGE_MODEL`, falling
   back to the extraction model when that

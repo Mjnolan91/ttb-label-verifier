@@ -22,6 +22,7 @@ import { FIELD_CATALOG } from "./fieldCatalog";
 import { defaultFetch, fetchWithRetry, withHardTimeout, type FetchLike } from "./http";
 import { resolveOpenAIReasoningEffort, resolveSelfConsistencyTemperature, resolveWarningJudgeModel } from "./config";
 import { chatParams } from "./openaiTuning";
+import { RESCUE_PROMPT } from "./rescue";
 import { FIELD_REVIEW_CONFIDENCE, MIN_READABLE_CONFIDENCE } from "@/compare";
 
 /** Resolved Azure OpenAI connection config. */
@@ -377,6 +378,90 @@ export async function judgeWarningBoldViaChat(opts: {
   if (first.ok || !opts.fallbackModel || opts.fallbackModel === opts.model) return first.verdict;
   const fallback = await judgeBoldOnce({ ...opts, model: opts.fallbackModel });
   return fallback.verdict;
+}
+
+/**
+ * Subset structured-output format for the RESCUE pass: only the requested raw keys, each a plain
+ * nullable string carrying its catalog description (no per-field confidence — the rescue's
+ * authority is structural: agree-boost / disagree-cap semantics live in rescue.ts, not in the
+ * model's self-report).
+ */
+export function rescueResponseFormat(rawKeys: string[]) {
+  const byRaw = new Map(FIELD_CATALOG.map((d) => [d.rawKey, d]));
+  return {
+    type: "json_schema",
+    json_schema: {
+      name: "ttb_label_fields_subset",
+      strict: true,
+      schema: {
+        type: "object",
+        properties: Object.fromEntries(
+          rawKeys.map((k) => [k, { type: ["string", "null"], description: byRaw.get(k)?.description ?? "" }]),
+        ),
+        required: rawKeys,
+        additionalProperties: false,
+      },
+    },
+  } as const;
+}
+
+/** Headroom for a rescue reply: the longest field (the verbatim statutory warning) plus slack. */
+const RESCUE_MAX_OUTPUT_TOKENS = 700;
+
+/**
+ * Shared OpenAI-dialect rescue read (see rescue.ts): ONE call on the strong model, ALL images, ONLY
+ * the requested fields. Returns the raw-keyed transcriptions or null when the call fails — never
+ * throws (a failed rescue must leave the extraction untouched).
+ */
+export async function readFieldsViaChat(opts: {
+  fetchImpl: FetchLike;
+  url: string;
+  headers: Record<string, string>;
+  images: { dataUrl: string; position?: string }[];
+  rawKeys: string[];
+  signal?: AbortSignal;
+  /** Required for api.openai.com (the body names the model); omitted for Azure (deployment in URL). */
+  model?: string;
+}): Promise<Record<string, string | null> | null> {
+  try {
+    const res = await fetchWithRetry(opts.fetchImpl, opts.url, {
+      method: "POST",
+      headers: { ...opts.headers, "content-type": "application/json" },
+      signal: withHardTimeout(opts.signal),
+      body: JSON.stringify({
+        ...(opts.model ? { model: opts.model } : {}),
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: RESCUE_PROMPT },
+              ...opts.images.flatMap((img) => [
+                ...(img.position ? [{ type: "text", text: `This image is the ${img.position} label.` }] : []),
+                { type: "image_url", image_url: { url: img.dataUrl, detail: "high" } },
+              ]),
+            ],
+          },
+        ],
+        // The rescue stays on "low" effort like the judge: it is a transcription, not a deduction,
+        // and it already runs on the strongest model.
+        ...chatParams(opts.model, RESCUE_MAX_OUTPUT_TOKENS, 0),
+        response_format: rescueResponseFormat(opts.rawKeys),
+      }),
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { choices?: { message?: { content?: unknown } }[] };
+    const content = json.choices?.[0]?.message?.content;
+    if (typeof content !== "string") return null;
+    const parsed = JSON.parse(content) as Record<string, unknown>;
+    const out: Record<string, string | null> = {};
+    for (const k of opts.rawKeys) {
+      const v = parsed[k];
+      out[k] = typeof v === "string" && v.trim() !== "" ? v.trim() : null;
+    }
+    return out;
+  } catch {
+    return null;
+  }
 }
 
 /**

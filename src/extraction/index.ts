@@ -41,8 +41,9 @@ export {
   DISAGREEMENT_CONFIDENCE,
 } from "./reconcile";
 export { aggregateSamples, selfConsistentExtract } from "./selfConsistency";
-export { resolveSelfConsistencySamples } from "./config";
+export { resolveSelfConsistencySamples, resolveLowConfidenceRescue } from "./config";
 export { aggregateBoldVotes, combineBoldSignals } from "./boldJudgment";
+export { rescueEligibleKeys, rescueRawKeys, applyRescue, readFieldsBounded } from "./rescue";
 
 import type { VisionProvider } from "./VisionProvider";
 import { MockVisionProvider } from "./MockVisionProvider";
