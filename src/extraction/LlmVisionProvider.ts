@@ -21,6 +21,7 @@ import {
 import { FIELD_CATALOG } from "./fieldCatalog";
 import { defaultFetch, fetchWithRetry, withHardTimeout, type FetchLike } from "./http";
 import { resolveSelfConsistencyTemperature, resolveWarningJudgeModel } from "./config";
+import { chatParams } from "./openaiTuning";
 import { FIELD_REVIEW_CONFIDENCE, MIN_READABLE_CONFIDENCE } from "@/compare";
 
 /** Resolved Azure OpenAI connection config. */
@@ -283,7 +284,9 @@ async function chatCompletionErrorDetail(
   return `${message}${hint}`;
 }
 
-/** The shared multimodal request body (system + user-with-image). `extra` lets OpenAI add `model`. */
+/** The shared multimodal request body (system + user-with-image). `extra` lets OpenAI add `model`;
+ *  when it does, the token/temperature params adapt to the model family (gpt-5/o-series reject the
+ *  classic `max_tokens`/`temperature` idioms — see openaiTuning.ts). */
 export function buildExtractionBody(
   image: ImageInput,
   dataUrl: string,
@@ -305,8 +308,7 @@ export function buildExtractionBody(
         ],
       },
     ],
-    temperature,
-    max_tokens: MAX_OUTPUT_TOKENS,
+    ...chatParams(extra?.model as string | undefined, MAX_OUTPUT_TOKENS, temperature),
     response_format: EXTRACTION_RESPONSE_FORMAT,
   };
 }
@@ -346,8 +348,7 @@ export async function judgeWarningBoldViaChat(opts: {
           { type: "text", text: BOLD_PROMPT },
           { type: "image_url", image_url: { url: opts.dataUrl, detail: "high" } },
         ] }],
-        temperature: 0,
-        max_tokens: 50,
+        ...chatParams(opts.model, 50, 0),
         response_format: BOLD_RESPONSE_FORMAT,
       }),
     });

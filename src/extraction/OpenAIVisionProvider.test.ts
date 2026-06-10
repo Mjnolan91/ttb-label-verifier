@@ -129,6 +129,49 @@ describe("OpenAIVisionProvider.extract — self-consistency sampling temperature
   });
 });
 
+describe("OpenAIVisionProvider — gpt-5/o-series param adaptation (HTTP mocked)", () => {
+  const img = { filename: "x.jpg", data: new Uint8Array([1]), contentType: "image/jpeg" };
+  function capture(): { fetchImpl: typeof fetch; bodies: Record<string, unknown>[] } {
+    const bodies: Record<string, unknown>[] = [];
+    const fetchImpl = (async (_url: string, init: { body: string }) => {
+      bodies.push(JSON.parse(init.body) as Record<string, unknown>);
+      return { ok: true, status: 200, json: async () => ({ choices: [{ message: { content: "{}" } }] }) };
+    }) as unknown as typeof fetch;
+    return { fetchImpl, bodies };
+  }
+
+  it("a reasoning-family model gets max_completion_tokens + low effort and NO temperature/max_tokens", async () => {
+    // Measured: gpt-5.5 400s on the classic params ("'max_tokens' is not supported with this model").
+    const { fetchImpl, bodies } = capture();
+    await new OpenAIVisionProvider({ config: { apiKey: "k", model: "gpt-5.5" }, fetchImpl }).extract(img).catch(() => {});
+    const body = bodies[0];
+    expect(body.max_completion_tokens).toBeGreaterThan(1500); // includes hidden-reasoning headroom
+    expect(body.reasoning_effort).toBe("low");
+    expect(body).not.toHaveProperty("max_tokens");
+    expect(body).not.toHaveProperty("temperature");
+  });
+
+  it("the gpt-4 line keeps the classic params", async () => {
+    const { fetchImpl, bodies } = capture();
+    await new OpenAIVisionProvider({ config: { apiKey: "k", model: "gpt-4.1" }, fetchImpl }).extract(img).catch(() => {});
+    const body = bodies[0];
+    expect(body.max_tokens).toBe(1500);
+    expect(body.temperature).toBe(0);
+    expect(body).not.toHaveProperty("max_completion_tokens");
+    expect(body).not.toHaveProperty("reasoning_effort");
+  });
+
+  it("the bold judge adapts the same way when its model is reasoning-family", async () => {
+    const { fetchImpl, bodies } = capture();
+    await new OpenAIVisionProvider({ config: { apiKey: "k", model: "gpt-4.1", judgeModel: "gpt-5.5" }, fetchImpl }).judgeWarningBold!(img);
+    const body = bodies[0];
+    expect(body.model).toBe("gpt-5.5");
+    expect(body).not.toHaveProperty("max_tokens");
+    expect(body).not.toHaveProperty("temperature");
+    expect(body.max_completion_tokens).toBeGreaterThan(50);
+  });
+});
+
 describe("OpenAIVisionProvider.judgeWarningBold — bold judgment via chat (HTTP mocked)", () => {
   it("judgeWarningBold maps the model's enum to true/false/null", async () => {
     const make = (content: string) => ({ ok: true, status: 200, json: async () => ({ choices: [{ message: { content } }] }) });

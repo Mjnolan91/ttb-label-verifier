@@ -147,8 +147,15 @@ default; 2 trades some confidence calibration for speed), `SELF_CONSISTENCY_ESCA
 extra reads on a contested verdict-relevant field; accuracy over tail latency), and the model
 choice. Uploads are downscaled in the browser to keep request sizes inside the budget.
 
-The model SPLIT was measured the same way (local dev server, real Gemini API, 9 sequential reads
-per config, 2026-06-10). Flash extraction with the Pro warning judge: **9/9 verdicts correct, p50
+The same split holds across providers: on OpenAI (local dev server, real API, 2026-06-10),
+gpt-4.1 extraction with a gpt-5.5 warning judge measured **6/6 verdicts at p50 2.8s, p95 3.0s**,
+while moving extraction itself to gpt-5.5 doubled the median (p50 6.5s) for identical verdicts —
+so on either vendor, the fast model transcribes and the strongest model judges the one check that
+can hard-fail a label. (The gpt-5/o-series' chat params differ from the gpt-4 line; the provider
+adapts automatically — see `src/extraction/openaiTuning.ts`.)
+
+The Gemini model SPLIT was measured the same way (local dev server, real Gemini API, 9 sequential
+reads per config, 2026-06-10). Flash extraction with the Pro warning judge: **9/9 verdicts correct, p50
 3.3s, p95 4.5s** — inside the budget, because the judge runs concurrently with extraction and its
 ~2s hides behind the extraction wall-clock. Running extraction itself on the Pro model: p50 6.0s,
 p95 8.1s, and 4 of 9 requests failed outright on the preview model's 25-requests/minute quota
