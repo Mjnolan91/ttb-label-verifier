@@ -139,25 +139,22 @@ export function ApplicationEditor({
                 : null;
           const showSuggestion = hasSuggestion && value.trim() === "";
           const hintId = `${id}-hint`;
+          const metaId = `${id}-meta`;
+          const describedBy = [showSuggestion ? hintId : null, lowConf || provenance ? metaId : null]
+            .filter(Boolean)
+            .join(" ");
           const needsAttention = Boolean(claimedNeeds) && (f.key === "brand" || f.key === "alcoholContent") && value.trim() === "";
           return (
             <div key={f.key}>
-              <div className="mb-1.5 flex flex-wrap items-center gap-1.5 text-sm font-medium text-ink">
+              {/* The label row holds ONLY constant-height content (label + "?"): the chips live
+                  BELOW the input, because anything variable ABOVE it wraps to a second line and
+                  shifts this cell's input out of alignment with its grid-row neighbor. */}
+              <div className="mb-1.5 flex items-center gap-1.5 text-sm font-medium text-ink">
                 <label htmlFor={id}>
                   {f.label}
                   {f.hint && <span className="font-normal text-ink-muted"> ({f.hint})</span>}
                 </label>
                 <FieldHelp label={f.label} text={APP_FIELD_HELP[f.key]} />
-                {lowConf && (
-                  <span className="rounded-pill border border-review-500 bg-review-50 px-1.5 py-0.5 text-xs font-semibold text-review-900">
-                    Low confidence ({Math.round((confidence ?? 0) * 100)}%)
-                  </span>
-                )}
-                {provenance && (
-                  <span className="rounded-pill border border-border bg-surface px-1.5 py-0.5 text-xs font-medium text-ink-muted">
-                    {provenance}
-                  </span>
-                )}
               </div>
               <input
                 ref={i === 0 ? firstInputRef : undefined}
@@ -165,9 +162,23 @@ export function ApplicationEditor({
                 type="text"
                 value={value}
                 onChange={(e) => onChange(f.key, e.target.value)}
-                aria-describedby={showSuggestion ? hintId : undefined}
+                aria-describedby={describedBy || undefined}
                 className={lowConf || needsAttention ? LOW_CONF_INPUT : inputClass}
               />
+              {(lowConf || provenance) && (
+                <span id={metaId} className="mt-1 flex flex-wrap items-center gap-1.5">
+                  {lowConf && (
+                    <span className="rounded-pill border border-review-500 bg-review-50 px-1.5 py-0.5 text-xs font-semibold text-review-900">
+                      Low confidence ({Math.round((confidence ?? 0) * 100)}%)
+                    </span>
+                  )}
+                  {provenance && (
+                    <span className="rounded-pill border border-border bg-surface px-1.5 py-0.5 text-xs font-medium text-ink-muted">
+                      {provenance}
+                    </span>
+                  )}
+                </span>
+              )}
               {showSuggestion && (
                 <span id={hintId} className="mt-1 flex flex-wrap items-center gap-2 break-words text-xs text-ink-muted">
                   <span>

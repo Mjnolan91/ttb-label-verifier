@@ -554,28 +554,25 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
             // user hears that Tab has a side effect here, not just sighted users.
             const showHint = f.value.trim() === "" && hasSuggestion && !editedInputs.has(f.id);
             const hintId = `${f.id}-hint`;
+            const metaId = `${f.id}-meta`;
+            const describedBy = [showHint ? hintId : null, lowConf || accepted ? metaId : null]
+              .filter(Boolean)
+              .join(" ");
             return (
               <div key={f.id} className="relative">
                 {/* The "?" toggletip sits BESIDE the label, not inside it: inside, a click would
                     focus the input and the help text would join the input's accessible name. The
-                    `relative` makes this field the open bubble's positioning context (full width). */}
-                <div className="mb-1.5 flex flex-wrap items-center gap-1.5 text-sm font-medium text-ink">
+                    `relative` makes this field the open bubble's positioning context (full width).
+                    The label row holds ONLY constant-height content (label + "?"): the chips live
+                    BELOW the input, because anything variable ABOVE it wraps to a second line and
+                    shifts this cell's input out of alignment with its grid-row neighbor. */}
+                <div className="mb-1.5 flex items-center gap-1.5 text-sm font-medium text-ink">
                   <label htmlFor={f.id}>
                     {f.label}
                     {required && <span className="text-fail-700" aria-hidden="true"> *</span>}
                     {f.hint && <span className="font-normal text-ink-muted"> ({f.hint})</span>}
                   </label>
                   <FieldHelp label={f.label} text={APP_FIELD_HELP[f.key]} />
-                  {lowConf && (
-                    <span className="rounded-pill border border-review-500 bg-review-50 px-1.5 py-0.5 text-xs font-semibold text-review-900">
-                      Low confidence ({Math.round((f.confidence ?? 0) * 100)}%)
-                    </span>
-                  )}
-                  {accepted && (
-                    <span className="rounded-pill border border-border bg-surface-muted px-1.5 py-0.5 text-xs font-medium text-ink-muted">
-                      from label
-                    </span>
-                  )}
                 </div>
                 <input
                   id={f.id}
@@ -589,9 +586,23 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
                   placeholder={hasSuggestion && !editedInputs.has(f.id) ? f.suggestion : undefined}
                   required={required}
                   aria-required={required}
-                  aria-describedby={showHint ? hintId : undefined}
+                  aria-describedby={describedBy || undefined}
                   className={lowConf ? LOW_CONF_INPUT : inputClass}
                 />
+                {(lowConf || accepted) && (
+                  <span id={metaId} className="mt-1 flex flex-wrap items-center gap-1.5">
+                    {lowConf && (
+                      <span className="rounded-pill border border-review-500 bg-review-50 px-1.5 py-0.5 text-xs font-semibold text-review-900">
+                        Low confidence ({Math.round((f.confidence ?? 0) * 100)}%)
+                      </span>
+                    )}
+                    {accepted && (
+                      <span className="rounded-pill border border-border bg-surface-muted px-1.5 py-0.5 text-xs font-medium text-ink-muted">
+                        from label
+                      </span>
+                    )}
+                  </span>
+                )}
                 {showHint && (
                   /* The FULL suggestion is repeated here (wrapping): a long value truncates inside
                      the single-line input's placeholder, and the agent must be able to read what
