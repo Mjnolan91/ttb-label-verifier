@@ -20,6 +20,8 @@ wrong — fix that, not the statute. This mirrors the project invariant in `AGEN
 | `types.ts` | `ClaimedFields`, `ExtractedFields` (with per-field confidence and the `warningPrefixIsAllCaps` / `warningPrefixIsBold` flags), `BeverageClass` union | — |
 | `tolerances.ts` | Per-`BeverageClass` tolerance table + `selectToleranceFor()` | 27 CFR 5.65(c), 4.36(b)(1)/(c), 7.65(c)/(d) |
 | `alcohol.ts` | `proofToAbv` / `abvToProof` (proof = 2 × ABV) and `isWarningRequired(abv)` | 27 CFR 16.10 (0.5% exemption) |
+| `labelRequirements.ts` | The per-beverage-class mandatory-elements matrix (`mandatoryElementsFor()`): which label elements TTB requires for spirits / wine / malt / cider, with the per-class nuances (malt ABV optional, wine ≤14% table-wine carve-out, conditional sulfite) | 27 CFR parts 4, 5, 7, 16 (per-row cites in the file) |
+| `standardsOfFill.ts` | Authorized container sizes (standards of fill) per class + `isAuthorizedFill()` | 27 CFR 5.203 (spirits), 4.72 (wine) |
 | `index.ts` | Public surface (re-exports) | — |
 | `*.test.ts` | Vitest unit tests: warning verbatim, proof round-trip, `selectToleranceFor` per class, exemption boundary | — |
 

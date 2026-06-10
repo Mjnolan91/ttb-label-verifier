@@ -76,7 +76,7 @@ image(s) ──> VisionProvider(s) ──> reconciler ──> completeness check
   makes the compliance verdict.
 - **Providers are swappable behind one interface.** `mock` (default, offline), `openai`,
   `gemini`, `llm` (Azure OpenAI), `ocr` (Azure AI Document Intelligence), and `ensemble`
-  (both Azure providers in parallel, disagreements routed to review). Adding Gemini was a ~150-line
+  (both Azure providers in parallel, disagreements routed to review). Adding Gemini was a ~200-line
   drop-in behind the [`VisionProvider`](src/extraction/VisionProvider.ts) interface.
 - **The real providers use current best practice.** Strict structured outputs
   (`response_format: json_schema` on the OpenAI-dialect providers, Gemini's `responseSchema`
@@ -84,7 +84,11 @@ image(s) ──> VisionProvider(s) ──> reconciler ──> completeness check
   self-limiting per-call timeout on every real provider. Each image is read N times in parallel
   (self-consistency, default 3) and per-field confidence is the agreement fraction across reads,
   which is better calibrated than a model's self-reported confidence. A dedicated second pass
-  judges whether the "GOVERNMENT WARNING:" prefix is printed in bold.
+  judges whether the "GOVERNMENT WARNING:" prefix is printed in bold; because the warning is the
+  one check that can hard-fail a label, that judge can run on a stronger model than the bulk reads
+  (`WARNING_JUDGE_MODEL`), and "verified" means verified: when neither the extraction nor the judge
+  can confirm the prefix format, the verdict says so and routes to review instead of silently
+  passing.
 - **The rules live once, in a CFR-verified module.** The canonical warning text, the per-class
   alcohol tolerance matrix, and the mandatory-elements matrix are hand-written in
   [`src/domain/`](src/domain/README.md) with inline CFR citations, and treated as statutory:
@@ -204,6 +208,31 @@ VISION_PROVIDER=ensemble
 
 If a selected provider's variables are missing, the request fails loudly with an actionable error.
 It never silently falls back to the mock and pretends to read the image.
+
+Two optional knobs tune accuracy against cost: `SELF_CONSISTENCY_SAMPLES` (how many times each
+image is read; agreement becomes the confidence) and `WARNING_JUDGE_MODEL` (run the dedicated
+government-warning format judge on a stronger model than the bulk reads, e.g.
+`WARNING_JUDGE_MODEL=gemini-3.1-pro-preview` while extraction stays on Flash; for Azure it names a
+deployment).
+
+## Internationalization (a design note, deliberately not shipped)
+
+The UI is English-only on purpose, but the i18n boundary was thought through, because in this
+domain it is unusual: the content that matters most is **regulatory English** and must stay that
+way. The statutory government warning (27 CFR 16.21) is verbatim English by law and is never
+translated; extracted label values are whatever the label prints; the field-level audit reasons
+cite CFR sections; and the CSV export schema is a stable interface. What a Spanish-speaking
+reviewer would actually need translated is the UI chrome: headings, buttons, step labels, verdict
+names, and helper copy.
+
+The design that fits this codebase, if shipped: a typed dictionary module (`en`/`es` objects behind
+one `Dict` type, so a missing key is a compile error), a React context with an `EN/ES` toggle next
+to the theme toggle, English as the default so all existing tests and the eval pass unchanged, and
+the regulatory-English boundary documented at the dictionary so the statutory warning, CFR-cited
+audit prose, and CSV schema are excluded by construction. No locale routing: a reviewer tool wants
+a per-person preference, not per-URL content. It is cut from this submission because a
+half-translated compliance screen (Spanish chrome around English statutory text) reads worse than a
+clean English one; the boundary decision is the part worth showing.
 
 ## Deploying
 

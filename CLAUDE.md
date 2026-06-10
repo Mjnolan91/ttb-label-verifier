@@ -46,7 +46,9 @@ pipeline and the "why". As built, the load-bearing pieces are:
   across samples — better calibrated than the model's self-reported confidence. `SELF_CONSISTENCY_SAMPLES`
   (default 3; `src/extraction/config.ts`) sets N; the mock provider is forced to 1 so the offline
   suite/eval stay deterministic. When a warning is read, a dedicated `judgeWarningBold` pass over the
-  images sets `warningPrefixIsBold`. `runVerification()` adds the claimed comparison. `/api/verify`
+  images sets `warningPrefixIsBold` (`WARNING_JUDGE_MODEL` runs that judge on a stronger
+  model/deployment; an UNVERIFIABLE caps/bold prefix routes the warning to review in
+  `compareWarning` — "verified" is never claimed on missing evidence). `runVerification()` adds the claimed comparison. `/api/verify`
   always extracts + runs the TTB **completeness** check (`src/compare/completeness.ts` over
   `src/domain/labelRequirements.ts`); it also returns a claimed-comparison verdict when
   `brand`+`alcoholContent` are posted. Batch pairs front/back by filename (`src/batch/pairing.ts`) and
@@ -106,7 +108,12 @@ pipeline and the "why". As built, the load-bearing pieces are:
   but completeness is a collapsed SUPPORTING check, NEVER the headline). The completeness breakdown +
   `ExtractedFieldsView` sit in collapsed disclosures. Thumbnails open the accessible `ImageLightbox`; a
   non-blocking `ForwardLookingNote` lists 2025 proposals) + `/api/verify` route + `/batch`; `src/app/ui/` holds
-  shared primitives. **`eval/`** — the harness and filename-keyed fixtures (`eval/fixtures/cases.json`).
+  shared primitives. Each application input has a `FieldHelp` "?" toggletip (copy lives ONCE in
+  `src/app/ui/fieldHelpCopy.ts`, typed so a new input without copy fails the build; the file is named
+  fieldHelpCopy, not fieldHelp, because Windows is case-insensitive and `FieldHelp.tsx` would collide).
+  The header has a `HelpButton` "?" beside `ThemeToggle` (layout.tsx stays a server component; the
+  button is the client leaf) opening the help panel in the shared `Drawer` (`closeLabel` prop). Modal
+  dialogs inert BOTH `#main-content` and the fixed `#site-controls` header wrapper. **`eval/`** — the harness and filename-keyed fixtures (`eval/fixtures/cases.json`).
 - **`src/extraction/fieldCatalog.ts`** — THE single source of truth for the extracted field set. One
   ordered descriptor list (`key`/`rawKey`/`confKey`/`label`/`csvColumn`/`group`) that the raw→domain
   mapper (`extractedShape.ts`), the front/back merge (`reconcile.ts`), the field table
