@@ -146,7 +146,10 @@ export const FIELD_CATALOG: readonly FieldDescriptor[] = [
   },
   {
     key: "countryOfOrigin", rawKey: "countryOfOrigin", confKey: "countryOfOrigin", label: "Country of origin", csvColumn: "country_of_origin", group: "detail",
-    description: "Country of origin as printed, e.g. \"Product of Scotland\" (imports). \"\" if none.",
+    description:
+      "A PRINTED origin/import statement only, e.g. \"Product of Scotland\" (imports carry one). " +
+      "NEVER infer a country from the producer/bottler address — a US city/state like \"Baltimore, MD\" " +
+      "is the address, not a country of origin. \"\" if no origin statement is printed.",
   },
   {
     key: "appellation", rawKey: "appellation", confKey: "appellation", label: "Appellation", csvColumn: "appellation", group: "detail",

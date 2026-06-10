@@ -74,6 +74,44 @@ describe("checkCompleteness — net contents standards of fill (27 CFR 5.203/4.7
   });
 });
 
+describe("checkCompleteness — country of origin (imports only, 27 CFR 5.69/7.69)", () => {
+  it("a domestic label (US address, no import statement) reads 'not applicable', never a prompt to confirm", () => {
+    const r = checkCompleteness(ds({ address: "Baltimore, MD" }));
+    const el = r.elements.find((e) => e.key === "countryOfOrigin");
+    expect(el?.status).toBe("unverifiable"); // neutral — does not gate the verdict
+    expect(el?.detail).toMatch(/not applicable/i);
+    expect(r.overall).toBe("complete");
+  });
+
+  it("an 'Imported by …' label with NO printed country is a genuinely missing element -> incomplete", () => {
+    const r = checkCompleteness(
+      ds({ name: "Imported by Sea Trader Co.", address: "Miami, FL", confidence: ds().confidence }),
+    );
+    expect(statusOf(r, "countryOfOrigin")).toBe("missing");
+    expect(r.overall).toBe("incomplete");
+  });
+
+  it("an import with its country printed is simply present (both signals on one label)", () => {
+    const r = checkCompleteness(
+      ds({
+        name: "Imported by Sea Trader Co.",
+        address: "Miami, FL",
+        countryOfOrigin: "Product of Barbados",
+        confidence: { ...ds().confidence, countryOfOrigin: 0.95 },
+      }),
+    );
+    expect(statusOf(r, "countryOfOrigin")).toBe("present");
+  });
+
+  it("no origin evidence either way keeps the neutral conditional note (today's behavior)", () => {
+    const r = checkCompleteness(ds({ address: undefined, confidence: { ...ds().confidence, address: undefined } }));
+    const el = r.elements.find((e) => e.key === "countryOfOrigin");
+    expect(el?.status).toBe("unverifiable");
+    expect(el?.detail).toMatch(/imported products/i);
+    expect(el?.detail).not.toMatch(/not applicable/i);
+  });
+});
+
 describe("checkCompleteness — statement of composition (specialties, 27 CFR 5.156)", () => {
   const conf = (extra: Record<string, number>) => ({ ...ds().confidence, ...extra });
 

@@ -97,7 +97,10 @@ const COUNTRY_OF_ORIGIN: RequirementSpec = {
   key: "countryOfOrigin",
   label: "Country of origin",
   necessity: "conditional",
-  note: "Mandatory for imported products (27 CFR 5.69 / 7.69; CBP rules 19 CFR 102/134).",
+  // The spirits/malt sections (5.69/7.69) and the wine cross-reference (4.35(e) — Part 4 was never
+  // renumbered and has no 4.69) all point to the same CBP marking rules; 19 CFR 134.11 reaches only
+  // articles of FOREIGN origin, so domestic products genuinely have no origin-marking element.
+  note: "Mandatory for imported products (27 CFR 5.69 / 7.69 / 4.35(e); CBP rules 19 CFR 102/134).",
 };
 const SULFITES: RequirementSpec = {
   key: "sulfiteDeclaration",

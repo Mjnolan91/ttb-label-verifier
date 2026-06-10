@@ -51,3 +51,10 @@ export {
   isLowOrReducedAlcoholClaim,
   type ParsedAlcohol,
 } from "./alcohol";
+export {
+  inferOrigin,
+  isUsAddress,
+  suggestedCountryOfOrigin,
+  type OriginInference,
+  type OriginEvidence,
+} from "./origin";

@@ -13,6 +13,7 @@ import { parseAlcoholText, resolveBeverageClass } from "./alcohol";
 import { normalizeWarning } from "./text";
 import { checkAlcoholInternalConsistency, validateNetContents } from "./comparators";
 import { FIELD_REVIEW_CONFIDENCE } from "./thresholds";
+import { inferOrigin } from "./origin";
 
 /** The ABV parsed from the as-written alcohol statement, or undefined if absent/unparseable.
  *  Extraction carries alcohol as text only (no pre-parsed struct); parsing lives here, next to
@@ -231,6 +232,38 @@ export function evaluateAbsentStatementOfComposition(spec: RequirementSpec, e: E
 }
 
 /**
+ * Resolve an ABSENT country of origin, which is mandatory for IMPORTS only. The label's own text
+ * decides which case this is (inferOrigin: import phrases always win over a US address):
+ *  - imported (an "Imported by …" phrase with no printed country) -> a GENUINE missing element;
+ *  - domestic (US producer address / printed US origin, no import evidence) -> not applicable,
+ *    said plainly so the reviewer isn't asked to confirm an element the label doesn't need;
+ *  - unknown -> today's neutral conditional note (surfaced, never failed).
+ */
+export function evaluateAbsentCountryOfOrigin(spec: RequirementSpec, e: ExtractedFields): CompletenessElement {
+  const origin = inferOrigin(e);
+  if (origin === "imported") {
+    return {
+      ...base(spec),
+      status: "missing",
+      detail:
+        "The label shows import evidence (an \"Imported by …\" statement or a foreign-distinctive " +
+        "designation) but no country of origin was read. Mandatory for imported products " +
+        "(27 CFR 5.69 / 7.69 / 4.35(e); CBP 19 CFR 134.11).",
+    };
+  }
+  if (origin === "domestic") {
+    return {
+      ...base(spec),
+      status: "unverifiable",
+      detail:
+        "Not applicable on its face: a US producer address and no import indicators were found, and " +
+        "country of origin is required for imported products only (27 CFR 5.69 / 7.69 / 4.35(e)).",
+    };
+  }
+  return { ...base(spec), status: "unverifiable", detail: spec.note };
+}
+
+/**
  * Evaluate every required element for the label's beverage class. The class is taken from the
  * extracted `beverageClass`, falling back to resolving it from the class/type text.
  */
@@ -275,6 +308,10 @@ export function checkCompleteness(extracted: ExtractedFields): CompletenessResul
     // Statement of composition is required only for specialties (signaled by a fanciful name).
     if (spec.key === "statementOfComposition") {
       return evaluateAbsentStatementOfComposition(spec, extracted);
+    }
+    // Country of origin is required for imports only; the label's own text decides which case.
+    if (spec.key === "countryOfOrigin") {
+      return evaluateAbsentCountryOfOrigin(spec, extracted);
     }
     if (spec.necessity === "mandatory") {
       return { ...base(spec), status: "missing", detail: "Required but not found on the label." };
