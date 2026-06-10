@@ -34,19 +34,24 @@ export function Drawer({
     const previouslyFocused = document.activeElement as HTMLElement | null;
     // Inert BOTH the page content and the fixed header controls (theme toggle / help): they sit
     // outside #main-content, so without this they'd stay reachable behind the open dialog.
-    const background = [document.getElementById("main-content"), document.getElementById("site-controls")];
+    // NESTING-SAFE: modals can stack (the batch review drawer opens an ImageLightbox), so each
+    // records whether it SET the attributes and the cleanup restores the prior state instead of
+    // blindly removing them — an inner modal closing must not un-inert the page under an outer one.
+    const background = [document.getElementById("main-content"), document.getElementById("site-controls")]
+      .filter((el): el is HTMLElement => el != null)
+      .map((el) => ({ el, hadInert: el.hasAttribute("inert"), hadHidden: el.hasAttribute("aria-hidden") }));
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    for (const el of background) {
-      el?.setAttribute("inert", "");
-      el?.setAttribute("aria-hidden", "true");
+    for (const { el } of background) {
+      el.setAttribute("inert", "");
+      el.setAttribute("aria-hidden", "true");
     }
     closeRef.current?.focus();
     return () => {
       document.body.style.overflow = prevOverflow;
-      for (const el of background) {
-        el?.removeAttribute("inert");
-        el?.removeAttribute("aria-hidden");
+      for (const { el, hadInert, hadHidden } of background) {
+        if (!hadInert) el.removeAttribute("inert");
+        if (!hadHidden) el.removeAttribute("aria-hidden");
       }
       previouslyFocused?.focus?.();
     };

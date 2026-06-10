@@ -234,4 +234,118 @@ describe("BatchVerify — verify against an application CSV", () => {
     expect(await q.findByText(/couldn.t read label; re-scan/i)).toBeTruthy();
     expect(q.queryByText(/no application row/i)).toBeNull();
   });
+
+  it("an UNREADABLE product is still reviewable: the drawer opens and a send-back is recordable", { retry: 2 }, async () => {
+    // The most direct "doesn't allow me to actually review it" case: the row told the reviewer to
+    // re-scan but offered nothing to click, and the drawer (had it opened) refused a decision.
+    const unreadable: VerifyApiResponse = {
+      provider: "mock",
+      readable: false,
+      extracted: RESPONSE.extracted,
+      result: null,
+      message: "We couldn't read this label clearly.",
+    };
+    const q = await run(
+      "filename,brand,alcohol\nacme-front.png,Acme,40% Alc./Vol.",
+      vi.fn(async () => ({ ok: true, json: async () => unreadable })) as unknown as typeof fetch,
+    );
+    fireEvent.click(await q.findByRole("button", { name: /^Review$/i }));
+    const dialog = within(await screen.findByRole("dialog"));
+    expect(dialog.getByRole("heading", { name: /Couldn.t read this label/i })).toBeTruthy();
+    fireEvent.click(dialog.getByRole("button", { name: /Reject \/ send back/i }));
+    fireEvent.click(dialog.getByRole("button", { name: /Record decision & send email/i }));
+    const stored = JSON.parse(window.localStorage.getItem("ttb-worklist-v1") ?? "{}");
+    expect(Object.values(stored).some((r) => (r as { decision?: string }).decision === "reject")).toBe(true);
+  });
+
+  it("an ERRORED product offers a per-row Retry that re-reads just that product", { retry: 2 }, async () => {
+    // First call fails, the retry succeeds — without re-running the whole batch.
+    let calls = 0;
+    const flaky = vi.fn(async () => {
+      calls++;
+      if (calls === 1) throw new Error("network down");
+      return { ok: true, json: async () => RESPONSE };
+    }) as unknown as typeof fetch;
+    const q = await run("filename,brand,alcohol\nacme-front.png,Acme,40% Alc./Vol.", flaky);
+    expect(await q.findByText("Read failed")).toBeTruthy();
+    fireEvent.click(q.getByRole("button", { name: /^Retry$/i }));
+    expect(await q.findByText("Approve")).toBeTruthy(); // the retried read verdicts normally
+  });
+
+  it("a NO-CSV product gets an honest completeness-only review with resolvable concern cards", { retry: 2 }, async () => {
+    // No application values at all: the row must not read as a green wall, and the drawer must offer
+    // the same confirm/flag controls as the single screen (it was reviewable in name only before).
+    const incomplete = {
+      ...RESPONSE,
+      extracted: { ...RESPONSE.extracted, netContents: "", confidence: { ...RESPONSE.extracted.confidence, netContents: 0.9 } },
+    };
+    globalThis.fetch = vi.fn(async () => ({ ok: true, json: async () => incomplete })) as unknown as typeof fetch;
+    const { container } = render(<BatchVerify />);
+    const q = within(container);
+    fireEvent.change(container.querySelector('input[accept="image/*"]') as HTMLInputElement, {
+      target: { files: [new File(["x"], "acme-front.png", { type: "image/png" })] },
+    });
+    fireEvent.click(q.getByRole("button", { name: /Read all labels/i }));
+    expect(await q.findByText("Incomplete label")).toBeTruthy(); // attention, not a green wall
+    expect(await q.findByText(/not compared to an application/i)).toBeTruthy();
+    fireEvent.click(q.getByRole("button", { name: /^Review$/i }));
+    const dialog = within(await screen.findByRole("dialog"));
+    // Honest heading (never "Label vs. application") + a resolvable synthesized concern card.
+    expect(dialog.getByText(/Label completeness \(no application values\)/i)).toBeTruthy();
+    expect(screen.queryByText(/Label vs\. application/)).toBeNull();
+    const netCard = dialog.getAllByText("Net contents")[0].closest("li") as HTMLElement;
+    fireEvent.click(within(netCard).getByRole("button", { name: /Looks correct/i }));
+    fireEvent.click(within(netCard).getByRole("button", { name: /Yes, mark correct/i }));
+    // Resolving the only concern flips the suggested verdict to Approve.
+    expect(dialog.getByText("Approve")).toBeTruthy();
+  });
+
+  it("renders as a list (no table), keeps the long tail in the identity stack, no standalone Complete badge", { retry: 2 }, async () => {
+    const q = await run("filename,brand,alcohol\nacme-front.png,Acme,40% Alc./Vol.");
+    expect(await q.findByText("Approve")).toBeTruthy();
+    const region = q.getByRole("region", { name: /Batch extraction results/i });
+    expect(within(region).getByRole("list")).toBeTruthy();
+    expect(within(region).getAllByRole("listitem").length).toBeGreaterThan(0);
+    expect(within(region).queryByRole("table")).toBeNull();
+    // Alcohol + image count moved into the row's identity metadata; the completeness badge left the
+    // list (the verdict already folds completeness in via combinedVerdict).
+    expect(within(region).getByText(/40% Alc\.\/Vol\. · 1 image/)).toBeTruthy();
+    expect(within(region).queryByText("Complete")).toBeNull();
+    // An undecided settled row says so explicitly instead of a silent dash.
+    expect(within(region).getByText("Undecided")).toBeTruthy();
+  });
+
+  it("the triage chips filter the list (Needs attention shows only attention rows)", { retry: 2 }, async () => {
+    // Two products: one approves (matched CSV), one is unreadable (attention). The mock keys off
+    // the uploaded image's filename so worker-pool ordering cannot flip the responses.
+    const UNREADABLE: VerifyApiResponse = {
+      provider: "mock",
+      readable: false,
+      extracted: RESPONSE.extracted,
+      result: null,
+      message: "Too blurry.",
+    };
+    const mixed = vi.fn(async (_url: string, init: { body: FormData }) => {
+      const file = init.body.get("image") as File;
+      return { ok: true, json: async () => (file.name.startsWith("acme") ? RESPONSE : UNREADABLE) };
+    }) as unknown as typeof fetch;
+    globalThis.fetch = mixed;
+    const { container } = render(<BatchVerify />);
+    const q = within(container);
+    fireEvent.change(container.querySelector('input[accept="image/*"]') as HTMLInputElement, {
+      target: { files: [new File(["x"], "acme-front.png", { type: "image/png" }), new File(["y"], "zeta-front.png", { type: "image/png" })] },
+    });
+    const csv = "filename,brand,alcohol\nacme-front.png,Acme,40% Alc./Vol.\nzeta-front.png,Zeta,40% Alc./Vol.";
+    const csvFile = new File([csv], "claims.csv", { type: "text/csv" });
+    Object.defineProperty(csvFile, "text", { value: () => Promise.resolve(csv) });
+    fireEvent.change(q.getByLabelText(/Application values CSV/i), { target: { files: [csvFile] } });
+    await q.findByText(/application row\(s\) loaded/i);
+    fireEvent.click(q.getByRole("button", { name: /Read all labels/i }));
+    expect(await q.findByText("Couldn't read")).toBeTruthy();
+    expect(await q.findByText("Approve")).toBeTruthy();
+    fireEvent.click(q.getByRole("button", { name: /Needs attention/i }));
+    const region = q.getByRole("region", { name: /Batch extraction results/i });
+    expect(within(region).getByText("Couldn't read")).toBeTruthy();
+    expect(within(region).queryByText("Approve")).toBeNull(); // filtered out
+  });
 });

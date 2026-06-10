@@ -441,6 +441,8 @@ export function ResultView({
   notes,
   onNote,
   step,
+  heading = "Label vs. application",
+  nextStepOverride,
 }: {
   result: VerifyResult;
   /** The headline verdict (comparison gated on completeness, recomputed after human overrides). */
@@ -461,6 +463,11 @@ export function ResultView({
   /** Optional step eyebrow (e.g. "Step 3") for the single screen's numbered flow; the batch review
    *  drawer omits it, so its heading carries no orphaned step number. */
   step?: string;
+  /** Section heading. The batch drawer's completeness-only review overrides the default so a label
+   *  with NO application values never masquerades as a "Label vs. application" comparison. */
+  heading?: string;
+  /** Overrides the next-step sentence under the verdict (same completeness-only honesty). */
+  nextStepOverride?: string;
 }) {
   const headline = overall ?? result.overall;
   const tone: Tone = toneForStatus(headline); // green / amber / red traffic-light
@@ -478,11 +485,13 @@ export function ResultView({
     !anyFlagged &&
     gatedMatches.length > 0;
 
-  const nextStep = calmReadReview
-    ? `Everything you entered matched the label, with no mismatches found. We read ${
-        gatedMatches.length === 1 ? "one value" : `${gatedMatches.length} values`
-      } from a slightly fuzzy photo. Confirm the highlighted field${gatedMatches.length === 1 ? "" : "s"} below (or open the label image) to approve.`
-    : NEXT_STEP[headline];
+  const nextStep =
+    nextStepOverride ??
+    (calmReadReview
+      ? `Everything you entered matched the label, with no mismatches found. We read ${
+          gatedMatches.length === 1 ? "one value" : `${gatedMatches.length} values`
+        } from a slightly fuzzy photo. Confirm the highlighted field${gatedMatches.length === 1 ? "" : "s"} below (or open the label image) to approve.`
+      : NEXT_STEP[headline]);
 
   return (
     <section aria-label="Verification result" className="mt-6 flex flex-col gap-4">
@@ -491,7 +500,8 @@ export function ResultView({
         tabIndex={-1}
         className="text-sm font-semibold uppercase tracking-wide text-ink-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2"
       >
-        {step ? `${step} · ` : ""}Label vs. application
+        {step ? `${step} · ` : ""}
+        {heading}
       </h2>
 
       <div

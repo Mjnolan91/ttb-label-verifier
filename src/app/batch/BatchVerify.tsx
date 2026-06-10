@@ -17,12 +17,12 @@ import type { LabelPosition } from "@/extraction";
 import { groupImagesByProduct } from "@/batch/pairing";
 import { analysisToCsv, parseClaimedCsv, type ClaimedRow } from "@/batch/csv";
 import { resolveClaimedFor } from "@/batch/claimedMatch";
-import { combinedVerdict, toClaimedFields, type VerifyResult } from "@/compare";
+import { combinedVerdict, resolveCompletenessOverall, toClaimedFields, type VerifyResult } from "@/compare";
 import type { VerifyApiResponse, VerifyApiError } from "../api/verify/contract";
 import { downscaleForUpload } from "../imageDownscale";
 import { ErrorAlert } from "../ui/ErrorAlert";
 import { StatusBadge } from "../ui/StatusBadge";
-import { toneForStatus, VERDICT_LABEL, COMPLETENESS_LABEL, type Tone } from "../ui/status";
+import { toneForStatus, TONE_TINT, VERDICT_LABEL, type Tone } from "../ui/status";
 import { CLASS_DISPLAY_LABEL } from "../ui/beverageClass";
 import { inputClass, primaryButtonClass, secondaryButtonClass } from "../ui/fieldStyles";
 import { downloadJson, downloadCsv } from "../ui/download";
@@ -32,7 +32,7 @@ import { Drawer } from "../ui/Drawer";
 import { ProductReview } from "../ui/ProductReview";
 import { deriveLabelReview, toggleOverride, setFieldNote } from "../ui/labelReview";
 import { useWorklist } from "./useWorklist";
-import { IconZoom, IconPass, IconFail } from "../ui/icons";
+import { IconZoom } from "../ui/icons";
 
 const CONCURRENCY = 4;
 
@@ -64,12 +64,6 @@ interface BatchRow {
   claimedNeeds?: string;
   note?: string;
 }
-
-const COMPLETENESS_TONE: Record<CompletenessResult["overall"], Tone> = {
-  complete: "pass",
-  incomplete: "fail",
-  review: "review",
-};
 
 function groupFiles(files: File[]): ProductImages[] {
   const byName = new Map(files.map((f) => [f.name, f]));
@@ -148,12 +142,15 @@ async function analyzeProduct(
 
 const ADD_IMAGES_ERROR = "Add one or more label images.";
 
-function cell(row: BatchRow, pick: (e: ExtractedFields) => string | undefined): string {
-  if (row.status === "pending") return "…";
-  if (!row.extracted) return "—";
-  const v = pick(row.extracted);
-  return v && v.trim() !== "" ? v : "—";
-}
+/** Triage category for one row — drives the roll-up chips, the filter, the sort and the row tint. */
+type RowCategory = "pending" | "attention" | "approve" | "notVerified" | "decided";
+const CATEGORY_RANK: Record<RowCategory, number> = {
+  attention: 0,
+  pending: 1,
+  notVerified: 2,
+  approve: 3,
+  decided: 4,
+};
 
 export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
   const ids = { images: useId(), help: useId() };
@@ -167,13 +164,53 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
   // The review worklist (localStorage-backed) + which row's review drawer is open.
   const worklist = useWorklist();
   const [reviewIndex, setReviewIndex] = useState<number | null>(null);
+  // Triage filter, driven by the roll-up chips ("all" shows everything).
+  const [filter, setFilter] = useState<"all" | RowCategory>("all");
 
   const groups = useMemo(() => groupFiles(images.map((im) => im.file)), [images]);
   const previewByName = useMemo(() => new Map(images.map((im) => [im.file.name, im.preview])), [images]);
 
-  /** The headline verdict for a row AFTER the reviewer's resolved flags (parity with the single screen). */
-  const effectiveVerdictOf = (r: BatchRow) =>
-    r.combined ? deriveLabelReview(r.combined, worklist.worklist[r.product]?.overrides ?? {}).effectiveOverall : null;
+  /** Everything the table derives per row, override-aware (parity with the single screen): the
+   *  effective verdict, the override-resolved completeness (for completeness-only rows), the recorded
+   *  decision, and the triage category. */
+  function derivedOf(r: BatchRow): {
+    verdict: VerifyResult["overall"] | null;
+    resolvedCompleteness: CompletenessResult["overall"] | null;
+    decision: "approve" | "reject" | undefined;
+    category: RowCategory;
+  } {
+    const rec = worklist.worklist[r.product];
+    const review = r.combined ? deriveLabelReview(r.combined, rec?.overrides ?? {}) : null;
+    const resolvedCompleteness = r.combined
+      ? resolveCompletenessOverall(r.combined.completeness, review?.completenessOverrides ?? {})
+      : null;
+    const verdict = review?.effectiveOverall ?? null;
+    const decision = rec?.decision;
+    const category: RowCategory =
+      r.status === "pending"
+        ? "pending"
+        : decision
+          ? "decided"
+          : r.status === "error" || r.readable === false || verdict === "review" || verdict === "reject" || r.claimedNeeds
+            ? "attention"
+            : verdict === "approve"
+              ? "approve"
+              : resolvedCompleteness !== null && resolvedCompleteness !== "complete"
+                ? "attention"
+                : "notVerified";
+    return { verdict, resolvedCompleteness, decision, category };
+  }
+  const effectiveVerdictOf = (r: BatchRow) => derivedOf(r).verdict;
+
+  /** Re-read ONE failed product without re-running the whole batch. */
+  async function retryRow(index: number) {
+    const row = rows[index];
+    const group = groups.find((g) => g.product === row?.product);
+    if (!row || !group) return;
+    setRows((prev) => prev.map((p, i) => (i === index ? { product: p.product, imageCount: p.imageCount, status: "pending" } : p)));
+    const next = await analyzeProduct(group, claimed, previewByName);
+    setRows((prev) => prev.map((p, i) => (i === index ? next : p)));
+  }
 
   function addFiles(newFiles: File[]) {
     setImages((prev) => [...prev, ...newFiles.map((file) => ({ file, preview: URL.createObjectURL(file) }))]);
@@ -266,13 +303,32 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
     );
   }
 
-  const COLS = ["Product", "Type", "Brand", "Alcohol", "Completeness", "Verdict", "Decision", "Review"];
+  // One shared grid template so the legend and every row stay column-aligned on sm+. Four priority
+  // tracks (Product | Result | Decision | Review) — the long tail (type, brand, alcohol) lives in
+  // the product identity stack and the review drawer, so the list NEVER scrolls sideways.
+  const ROW_GRID = "sm:grid-cols-[minmax(0,1fr)_10.5rem_6.5rem_7rem] sm:gap-x-3";
 
-  // Worklist roll-up: how many products the agent has decided, for the summary bar.
-  const decisions = completedRows.map((r) => worklist.worklist[r.product]?.decision);
-  const approvedCount = decisions.filter((d) => d === "approve").length;
-  const returnedCount = decisions.filter((d) => d === "reject").length;
-  const decidedCount = approvedCount + returnedCount;
+  // Triage roll-up: every row categorized (override-aware), for the chips + filter + sort.
+  const derivedRows = rows.map((r, i) => ({ r, i, d: derivedOf(r) }));
+  const countOf = (c: RowCategory) => derivedRows.filter((e) => e.d.category === c).length;
+  const counts = {
+    attention: countOf("attention"),
+    approve: countOf("approve"),
+    notVerified: countOf("notVerified"),
+    decided: countOf("decided"),
+  };
+  const decidedCount = counts.decided;
+  const visibleRows = derivedRows
+    .filter((e) => filter === "all" || e.d.category === filter)
+    .sort((a, b) => CATEGORY_RANK[a.d.category] - CATEGORY_RANK[b.d.category] || a.i - b.i);
+
+  const CHIPS: { key: "all" | RowCategory; label: string; count: number; tone: Tone }[] = [
+    { key: "all", label: "All", count: rows.length, tone: "neutral" },
+    { key: "attention", label: "Needs attention", count: counts.attention, tone: "review" },
+    { key: "approve", label: "Ready to approve", count: counts.approve, tone: "pass" },
+    { key: "notVerified", label: "Not verified", count: counts.notVerified, tone: "verify" },
+    { key: "decided", label: "Decided", count: counts.decided, tone: "neutral" },
+  ];
 
   function clearWorklist() {
     if (typeof window !== "undefined" && !window.confirm("Clear all recorded decisions and resolved flags? This can't be undone.")) {
@@ -457,24 +513,38 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
         )}
       </div>
 
-      {decidedCount > 0 && (
-        <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-card border border-border bg-surface-muted p-3 text-sm">
-          <span className="font-semibold text-ink">Worklist</span>
-          <span className="inline-flex items-center gap-1.5 text-pass-700">
-            <IconPass className="h-4 w-4" /> {approvedCount} approved
+      {rows.length > 0 && (
+        <div className="mt-5 flex flex-wrap items-center gap-2 rounded-card border border-border bg-surface-muted p-3 text-sm">
+          <span className="mr-1 font-semibold text-ink">Worklist</span>
+          {CHIPS.filter((c) => c.key === "all" || c.count > 0).map((c) => {
+            const selected = filter === c.key;
+            return (
+              <button
+                key={c.key}
+                type="button"
+                aria-pressed={selected}
+                onClick={() => setFilter(c.key)}
+                className={`inline-flex min-h-[36px] items-center gap-1.5 rounded-pill border px-3 py-1 font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2 ${
+                  selected ? `${TONE_TINT[c.tone]} ring-1 ring-inset ring-current` : "border-border bg-surface text-ink-muted hover:bg-brand-50"
+                }`}
+              >
+                {c.label}
+                <span className="rounded-pill bg-black/10 px-1.5 text-xs font-bold">{c.count}</span>
+              </button>
+            );
+          })}
+          {decidedCount > 0 && (
+            <button
+              type="button"
+              onClick={clearWorklist}
+              className="ml-auto rounded-field border-2 border-border-strong px-3 py-1.5 font-semibold text-ink transition hover:border-fail-600 hover:text-fail-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2"
+            >
+              Clear worklist
+            </button>
+          )}
+          <span className="w-full text-xs text-ink-muted">
+            Sorted needs-attention first. Decisions are saved in this browser only and never transmitted.
           </span>
-          <span className="inline-flex items-center gap-1.5 text-fail-700">
-            <IconFail className="h-4 w-4" /> {returnedCount} returned
-          </span>
-          <span className="text-ink-muted">{completedRows.length - decidedCount} not yet decided</span>
-          <button
-            type="button"
-            onClick={clearWorklist}
-            className="ml-auto rounded-field border-2 border-border-strong px-3 py-1.5 font-semibold text-ink transition hover:border-fail-600 hover:text-fail-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2"
-          >
-            Clear worklist
-          </button>
-          <span className="w-full text-xs text-ink-muted">Decisions are saved in this browser only and never transmitted.</span>
         </div>
       )}
 
@@ -483,84 +553,135 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
           tabIndex={0}
           role="region"
           aria-label="Batch extraction results"
-          className="mt-5 max-h-[32rem] overflow-auto rounded-card border border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2"
+          className="mt-5 max-h-[32rem] overflow-y-auto rounded-card border border-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2"
         >
-          <table className="w-full border-collapse text-left text-sm">
-            <caption className="sr-only">Batch extraction results</caption>
-            <thead>
-              <tr className="text-ink-muted">
-                {COLS.map((h) => (
-                  <th key={h} scope="col" className="sticky top-0 z-10 border-b-2 border-border bg-surface px-3 py-2.5 font-semibold">
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {rows.map((r, i) => {
-                const verdict = effectiveVerdictOf(r);
-                const decision = worklist.worklist[r.product]?.decision;
-                const canReview = r.status === "done" && r.readable === true && r.combined != null;
-                return (
-                  <tr key={`${r.product}-${i}`} className="border-b border-border align-top odd:bg-surface-muted hover:bg-brand-50">
-                    <td className="px-3 py-2.5 text-ink">
-                      <span className="font-mono text-xs">{r.product}</span>
-                      <span className="block text-xs text-ink-muted">
-                        {r.imageCount} image{r.imageCount === 1 ? "" : "s"}
+          {/* Column legend, sm+ only; aria-hidden because each row carries its own sr-only labels. */}
+          <div
+            aria-hidden="true"
+            className={`sticky top-0 z-10 hidden border-b-2 border-border bg-surface px-3 py-2.5 text-sm font-semibold text-ink-muted sm:grid ${ROW_GRID}`}
+          >
+            <span>Product</span>
+            <span>Result</span>
+            <span>Decision</span>
+            <span>Review</span>
+          </div>
+          <ul className="divide-y divide-border text-sm">
+            {visibleRows.length === 0 && (
+              <li className="px-3 py-4 text-ink-muted">No products in this view. Pick another chip above.</li>
+            )}
+            {visibleRows.map(({ r, i, d }) => {
+              const { verdict, resolvedCompleteness, decision, category } = d;
+              const settled = r.status !== "pending";
+              // Attention rows get a left accent + soft tint (red for hard failures, amber for the
+              // rest); decided rows dim so the open remainder pops. State is never color-only: every
+              // tinted row also carries a badge with an icon + label.
+              const accent =
+                category === "attention"
+                  ? r.status === "error" || verdict === "reject"
+                    ? "border-l-4 border-l-fail-600 bg-fail-50"
+                    : "border-l-4 border-l-review-500 bg-review-50"
+                  : category === "decided"
+                    ? "opacity-75"
+                    : "";
+              const meta = [
+                r.completeness ? CLASS_DISPLAY_LABEL[r.completeness.beverageClass] : null,
+                r.extracted?.alcoholContentText?.trim() || null,
+                `${r.imageCount} image${r.imageCount === 1 ? "" : "s"}`,
+              ]
+                .filter(Boolean)
+                .join(" · ");
+              return (
+                <li
+                  key={`${r.product}-${i}`}
+                  className={`grid items-start gap-y-2 px-3 py-3 hover:bg-brand-50 sm:items-center ${ROW_GRID} ${accent}`}
+                >
+                  {/* 1. Product identity (the only flexible track) */}
+                  <div className="min-w-0 text-ink">
+                    <span className="block break-all font-mono text-xs">{r.product}</span>
+                    {r.extracted?.brand && <span className="block text-sm font-medium">{r.extracted.brand}</span>}
+                    <span className="block text-xs text-ink-muted">{settled ? meta : "…"}</span>
+                    {r.note && <span className="mt-0.5 block text-sm text-ink-muted">{r.note}</span>}
+                  </div>
+                  {/* 2. Result (sr-only label is a SIBLING of the badge, never inside it) */}
+                  <div className="min-w-0">
+                    <span className="sr-only">Result: </span>
+                    {!settled ? (
+                      <span className="text-ink-muted">…</span>
+                    ) : r.status === "error" ? (
+                      <StatusBadge tone="fail" label="Read failed" />
+                    ) : r.readable === false ? (
+                      <>
+                        <StatusBadge tone="review" label="Couldn't read" />
+                        {r.matchedClaim && (
+                          <span className="mt-1 block text-xs text-review-700">
+                            Matched, couldn&apos;t read label; re-scan
+                          </span>
+                        )}
+                      </>
+                    ) : verdict ? (
+                      <StatusBadge tone={toneForStatus(verdict)} label={VERDICT_LABEL[verdict]} />
+                    ) : r.matchedClaim && r.claimedNeeds ? (
+                      <>
+                        <StatusBadge tone="review" label="Add application values" />
+                        <span className="mt-1 block text-xs text-review-700">
+                          Matched, add {r.claimedNeeds} to compare
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        {resolvedCompleteness === "complete" ? (
+                          <StatusBadge tone="verify" label="Label complete" />
+                        ) : (
+                          <StatusBadge
+                            tone="review"
+                            label={resolvedCompleteness === "incomplete" ? "Incomplete label" : "Check label"}
+                          />
+                        )}
+                        <span className="mt-1 block text-xs text-ink-muted">
+                          {claimed.size > 0 ? "no application row" : "not compared to an application"}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                  {/* 3. Decision */}
+                  <div className="min-w-0">
+                    <span className="sr-only">Your decision: </span>
+                    {decision ? (
+                      <StatusBadge tone={DECISION_CHIP[decision].tone} label={DECISION_CHIP[decision].label} />
+                    ) : settled ? (
+                      <span className="inline-flex items-center rounded-pill border border-border-strong px-2 py-0.5 text-xs font-medium text-ink-muted">
+                        Undecided
                       </span>
-                      {r.note && <span className="mt-0.5 block text-ink-muted">{r.note}</span>}
-                    </td>
-                    <td className="px-3 py-2.5 text-ink">
-                      {r.completeness ? CLASS_DISPLAY_LABEL[r.completeness.beverageClass] : r.status === "pending" ? "…" : "—"}
-                    </td>
-                    <td className="px-3 py-2.5 text-ink">{cell(r, (e) => e.brand)}</td>
-                    <td className="px-3 py-2.5 text-ink">{cell(r, (e) => e.alcoholContentText)}</td>
-                    <td className="px-3 py-2.5">
-                      {r.completeness ? (
-                        <StatusBadge
-                          tone={COMPLETENESS_TONE[r.completeness.overall]}
-                          label={COMPLETENESS_LABEL[r.completeness.overall]}
-                        />
-                      ) : (
-                        <span className="text-ink-muted">{r.status === "pending" ? "…" : "—"}</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2.5">
-                      {verdict ? (
-                        <StatusBadge tone={toneForStatus(verdict)} label={VERDICT_LABEL[verdict]} />
-                      ) : r.matchedClaim && r.readable === false ? (
-                        <span className="text-sm text-review-700">Matched, couldn&apos;t read label; re-scan</span>
-                      ) : r.matchedClaim && r.claimedNeeds ? (
-                        <span className="text-sm text-review-700">Matched, add {r.claimedNeeds} to compare</span>
-                      ) : (
-                        <span className="text-ink-muted">{claimed.size > 0 ? "no application row" : "—"}</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2.5">
-                      {decision ? (
-                        <StatusBadge tone={DECISION_CHIP[decision].tone} label={DECISION_CHIP[decision].label} />
-                      ) : (
-                        <span className="text-ink-muted">—</span>
-                      )}
-                    </td>
-                    <td className="px-3 py-2.5">
-                      {canReview ? (
-                        <button
-                          type="button"
-                          onClick={() => setReviewIndex(i)}
-                          className="inline-flex min-h-[36px] items-center rounded-field border border-brand-600 bg-surface px-3 py-1.5 text-sm font-semibold text-brand-700 transition hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2"
-                        >
-                          {decision ? "Re-review" : "Review"}
-                        </button>
-                      ) : (
-                        <span className="text-ink-muted">{r.status === "pending" ? "…" : "—"}</span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                    ) : (
+                      <span className="text-ink-muted">…</span>
+                    )}
+                  </div>
+                  {/* 4. Action: every settled row has one (review or retry); 44px target, full width on mobile */}
+                  <div>
+                    {!settled ? (
+                      <span className="text-ink-muted">…</span>
+                    ) : r.status === "error" ? (
+                      <button
+                        type="button"
+                        onClick={() => void retryRow(i)}
+                        className="inline-flex min-h-[44px] w-full items-center justify-center rounded-field border border-brand-600 bg-surface px-3 py-1.5 text-sm font-semibold text-brand-700 transition hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2 sm:w-auto"
+                      >
+                        Retry
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setReviewIndex(i)}
+                        className="inline-flex min-h-[44px] w-full items-center justify-center rounded-field border border-brand-600 bg-surface px-3 py-1.5 text-sm font-semibold text-brand-700 transition hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2 sm:w-auto"
+                      >
+                        {decision ? "Re-review" : "Review"}
+                      </button>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
+          </ul>
         </div>
       )}
 

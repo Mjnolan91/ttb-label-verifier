@@ -120,7 +120,12 @@ pipeline and the "why". As built, the load-bearing pieces are:
   fieldHelpCopy, not fieldHelp, because Windows is case-insensitive and `FieldHelp.tsx` would collide).
   The header has a `HelpButton` "?" beside `ThemeToggle` (layout.tsx stays a server component; the
   button is the client leaf) opening the help panel in the shared `Drawer` (`closeLabel` prop). Modal
-  dialogs inert BOTH `#main-content` and the fixed `#site-controls` header wrapper. **`eval/`** — the harness and filename-keyed fixtures (`eval/fixtures/cases.json`).
+  dialogs inert BOTH `#main-content` and the fixed `#site-controls` header wrapper, and the
+  set/restore is NESTING-SAFE (the batch drawer opens an `ImageLightbox` on top of itself). The
+  batch worklist renders as a 4-track GRID LIST (never a sideways-scrolling table): triage filter
+  chips + attention-first sort + row tints; EVERY settled row is reviewable (unreadable rows record
+  a send-back, errored rows get a per-row Retry, no-CSV rows get an honest completeness-only review
+  whose missing elements are resolvable concern cards via `labelReview`/`ProductReview`). **`eval/`** — the harness and filename-keyed fixtures (`eval/fixtures/cases.json`).
 - **`src/extraction/fieldCatalog.ts`** — THE single source of truth for the extracted field set. One
   ordered descriptor list (`key`/`rawKey`/`confKey`/`label`/`csvColumn`/`group`) that the raw→domain
   mapper (`extractedShape.ts`), the front/back merge (`reconcile.ts`), the field table

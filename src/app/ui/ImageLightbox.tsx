@@ -35,19 +35,24 @@ export function ImageLightbox({
     const previouslyFocused = document.activeElement as HTMLElement | null;
     // Inert BOTH the page content and the fixed header controls (theme toggle / help): they sit
     // outside #main-content, so without this they'd stay reachable behind the open dialog.
-    const background = [document.getElementById("main-content"), document.getElementById("site-controls")];
+    // NESTING-SAFE: the batch review drawer opens this lightbox ON TOP of itself, so record whether
+    // each attribute was already set and restore the prior state on close — closing the lightbox
+    // must not un-inert the page while the drawer underneath is still open.
+    const background = [document.getElementById("main-content"), document.getElementById("site-controls")]
+      .filter((el): el is HTMLElement => el != null)
+      .map((el) => ({ el, hadInert: el.hasAttribute("inert"), hadHidden: el.hasAttribute("aria-hidden") }));
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    for (const el of background) {
-      el?.setAttribute("inert", "");
-      el?.setAttribute("aria-hidden", "true");
+    for (const { el } of background) {
+      el.setAttribute("inert", "");
+      el.setAttribute("aria-hidden", "true");
     }
     closeRef.current?.focus();
     return () => {
       document.body.style.overflow = prevOverflow;
-      for (const el of background) {
-        el?.removeAttribute("inert");
-        el?.removeAttribute("aria-hidden");
+      for (const { el, hadInert, hadHidden } of background) {
+        if (!hadInert) el.removeAttribute("inert");
+        if (!hadHidden) el.removeAttribute("aria-hidden");
       }
       previouslyFocused?.focus?.();
     };

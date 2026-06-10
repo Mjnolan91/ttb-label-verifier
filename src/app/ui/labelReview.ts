@@ -112,8 +112,12 @@ export function deriveLabelReview(
     : (combined?.overall ?? null);
   const effectiveGatedByCompleteness = Boolean(effectiveComparison) && effectiveOverall !== effectiveComparison;
 
+  // Concerns are computed for EVERY combined verdict, comparison or not: a completeness-only row
+  // (batch with no application CSV) must still surface its missing/malformed elements as resolvable
+  // cards — this was previously gated on `verify`, which left the no-CSV drawer reviewable in name
+  // only (controls existed nowhere, so flagged labels were stranded).
   const completenessConcerns: Partial<Record<VerifyFieldKey, string>> = {};
-  if (combined?.verify) {
+  if (combined) {
     for (const el of combined.completeness.elements) {
       if (el.status !== "missing" && el.status !== "malformed") continue;
       const fk = REQUIREMENT_TO_FIELD[el.key];
@@ -124,25 +128,48 @@ export function deriveLabelReview(
   // The reviewer's per-field note (when they left one) is their own words and takes precedence over the
   // generic reason, so it reaches the applicant verbatim.
   const reviewedFields = combined?.verify?.fields ?? [];
-  const rejectNotes = reviewedFields
-    .filter((f) => effStatusOf(f) !== "pass")
-    .map((f) => {
-      const note = fieldNotes[f.key]?.trim();
-      if (note) return `  - ${f.label}: ${note}`;
-      return fieldOverrides[f.key] === "issue"
-        ? `  - ${f.label}: flagged by the reviewer as a problem.`
-        : `  - ${f.label}: ${f.reason}`;
-    })
-    .join("\n");
-  const approveNotes = reviewedFields
-    .filter((f) => fieldOverrides[f.key] === "ok")
-    .map((f) => {
-      const note = fieldNotes[f.key]?.trim();
-      return note
-        ? `  - ${f.label}: confirmed correct. ${note}`
-        : `  - ${f.label}: confirmed correct on review of the label.`;
-    })
-    .join("\n");
+  // For a completeness-only review (no comparison), the email notes are seeded from the flagged
+  // ELEMENTS instead, so a no-CSV send-back still names what is missing/malformed.
+  const concernLines = (Object.keys(completenessConcerns) as VerifyFieldKey[]).map((fk) => ({
+    key: fk,
+    label: combined?.completeness.elements.find((el) => REQUIREMENT_TO_FIELD[el.key] === fk)?.label ?? fk,
+    reason: completenessConcerns[fk] ?? "",
+  }));
+  const rejectNotes = (combined?.verify
+    ? reviewedFields
+        .filter((f) => effStatusOf(f) !== "pass")
+        .map((f) => {
+          const note = fieldNotes[f.key]?.trim();
+          if (note) return `  - ${f.label}: ${note}`;
+          return fieldOverrides[f.key] === "issue"
+            ? `  - ${f.label}: flagged by the reviewer as a problem.`
+            : `  - ${f.label}: ${f.reason}`;
+        })
+    : concernLines
+        .filter((c) => fieldOverrides[c.key] !== "ok")
+        .map((c) => {
+          const note = fieldNotes[c.key]?.trim();
+          return note ? `  - ${c.label}: ${note}` : `  - ${c.label}: ${c.reason}`;
+        })
+  ).join("\n");
+  const approveNotes = (combined?.verify
+    ? reviewedFields
+        .filter((f) => fieldOverrides[f.key] === "ok")
+        .map((f) => {
+          const note = fieldNotes[f.key]?.trim();
+          return note
+            ? `  - ${f.label}: confirmed correct. ${note}`
+            : `  - ${f.label}: confirmed correct on review of the label.`;
+        })
+    : concernLines
+        .filter((c) => fieldOverrides[c.key] === "ok")
+        .map((c) => {
+          const note = fieldNotes[c.key]?.trim();
+          return note
+            ? `  - ${c.label}: confirmed present on the label. ${note}`
+            : `  - ${c.label}: confirmed present on review of the label.`;
+        })
+  ).join("\n");
 
   return {
     effectiveOverall,
