@@ -6,30 +6,88 @@ import { describe, it, expect } from "vitest";
 import { combinedVerdict, worstVerdict, toClaimedFields } from "./reviewVerdict";
 import { CANONICAL_GOVERNMENT_WARNING, type ClaimedFields, type ExtractedFields } from "@/domain";
 
-describe("toClaimedFields — the single 'enough to compare?' rule", () => {
-  it("returns null unless BOTH a brand and an alcohol content are present", () => {
-    expect(toClaimedFields({ brand: "Acme" })).toBeNull();
-    expect(toClaimedFields({ alcoholContentText: "40% Alc./Vol." })).toBeNull();
-    expect(toClaimedFields({ brand: "   ", alcoholContentText: "40% Alc./Vol." })).toBeNull();
-    expect(toClaimedFields({})).toBeNull();
+describe("toClaimedFields — the batch 'enough to compare?' gate (brand always; alcohol per type)", () => {
+  const spiritsRead: ExtractedFields = {
+    classType: "Kentucky Straight Bourbon Whiskey",
+    alcoholContentText: "45% Alc./Vol. (90 Proof)",
+    warningPrefixIsAllCaps: true,
+    warningPrefixIsBold: true,
+    confidence: {},
+  };
+  const maltRead: ExtractedFields = {
+    classType: "India Pale Ale",
+    alcoholContentText: "6.5% Alc./Vol.",
+    warningPrefixIsAllCaps: true,
+    warningPrefixIsBold: true,
+    confidence: {},
+  };
+
+  it("brand is required for every class", () => {
+    const noBrand = toClaimedFields({ alcoholContentText: "40% Alc./Vol." }, spiritsRead);
+    expect(noBrand.claimed).toBeNull();
+    expect(noBrand.missing).toContain("brand");
+    const blankBrand = toClaimedFields({ brand: "   ", alcoholContentText: "40% Alc./Vol." }, spiritsRead);
+    expect(blankBrand.claimed).toBeNull();
+  });
+
+  it("alcohol is required for distilled spirits (27 CFR 5.65): a spirits row without it gets no verdict", () => {
+    const gate = toClaimedFields({ brand: "Acme", netContents: "750 mL" }, spiritsRead);
+    expect(gate.claimed).toBeNull();
+    expect(gate.missing).toEqual(["alcoholContent"]);
+    expect(gate.beverageClass).toBe("distilledSpirits");
+  });
+
+  it("alcohol is OPTIONAL for a malt beverage (27 CFR 7.63(a)(3)): the row verifies without it", () => {
+    const gate = toClaimedFields(
+      { brand: "Granite Peak", classType: "India Pale Ale", netContents: "12 FL OZ" },
+      maltRead,
+    );
+    expect(gate.missing).toEqual([]);
+    expect(gate.claimed).toEqual({
+      brand: "Granite Peak",
+      alcoholContentText: undefined,
+      classType: "India Pale Ale",
+      netContents: "12 FL OZ",
+      name: undefined,
+      address: undefined,
+      countryOfOrigin: undefined,
+      fancifulName: undefined,
+      statementOfComposition: undefined,
+    });
+    expect(gate.beverageClass).toBe("maltBeverage");
+  });
+
+  it("resolves the class from the CLAIMED class/type first, else the label's reading", () => {
+    // The claimed row says Table Wine; the label ABV (12.5%) puts it under 14% — alcohol optional.
+    const wineRead: ExtractedFields = {
+      classType: "Table Wine",
+      alcoholContentText: "12.5% Alc./Vol.",
+      warningPrefixIsAllCaps: true,
+      warningPrefixIsBold: true,
+      confidence: {},
+    };
+    const gate = toClaimedFields({ brand: "Marisol", classType: "Table Wine" }, wineRead);
+    expect(gate.beverageClass).toBe("wineUnder14");
+    expect(gate.missing).toEqual([]);
+    expect(gate.claimed).not.toBeNull();
+  });
+
+  it("an unknown class stays conservative: alcohol required", () => {
+    const blankRead: ExtractedFields = { warningPrefixIsAllCaps: false, warningPrefixIsBold: null, confidence: {} };
+    const gate = toClaimedFields({ brand: "Acme" }, blankRead);
+    expect(gate.claimed).toBeNull();
+    expect(gate.missing).toEqual(["alcoholContent"]);
   });
 
   it("builds ClaimedFields from loose inputs, trimming and dropping empty optional fields", () => {
-    expect(toClaimedFields({ brand: " Acme ", alcoholContentText: " 40% Alc./Vol. ", classType: " Vodka " }))
-      .toEqual({ brand: "Acme", alcoholContentText: "40% Alc./Vol.", classType: "Vodka", netContents: undefined, name: undefined, address: undefined, countryOfOrigin: undefined });
-    expect(toClaimedFields({ brand: "Acme", alcoholContentText: "40% Alc./Vol.", classType: "  " }))
-      .toEqual({ brand: "Acme", alcoholContentText: "40% Alc./Vol.", classType: undefined, netContents: undefined, name: undefined, address: undefined, countryOfOrigin: undefined });
-  });
-
-  it("forwards the full application field set (net contents, producer name/address, origin)", () => {
-    expect(
-      toClaimedFields({
-        brand: "Acme", alcoholContentText: "40% Alc./Vol.", classType: "Vodka",
-        netContents: " 750 mL ", name: " Acme Distillery ", address: " Peoria, IL ", countryOfOrigin: " USA ",
-      }),
-    ).toEqual({
+    const gate = toClaimedFields(
+      { brand: " Acme ", alcoholContentText: " 40% Alc./Vol. ", classType: " Vodka ", netContents: " 750 mL ", name: " Acme Distillery ", address: " Peoria, IL ", countryOfOrigin: " USA " },
+      spiritsRead,
+    );
+    expect(gate.claimed).toEqual({
       brand: "Acme", alcoholContentText: "40% Alc./Vol.", classType: "Vodka",
       netContents: "750 mL", name: "Acme Distillery", address: "Peoria, IL", countryOfOrigin: "USA",
+      fancifulName: undefined, statementOfComposition: undefined,
     });
   });
 });

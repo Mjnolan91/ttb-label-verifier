@@ -38,8 +38,9 @@ offline mock reproduces these verdicts deterministically.)
 
 For the batch workflow (the brief's importers dumping 200 to 300 applications at once), open
 [/batch](https://ttb-label-verifier-matthew-nolan-s-projects.vercel.app/batch): drop many images,
-fronts and backs pair by filename, optionally attach a CSV of claimed values (a template is
-downloadable on the page), and results stream into a reviewable worklist with CSV export.
+fronts and backs pair by filename, optionally attach a CSV of claimed values (the downloadable
+template ships ready-made rows for the three sample labels), and results stream into a reviewable
+worklist with CSV export.
 
 ## Run it locally
 

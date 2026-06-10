@@ -36,44 +36,63 @@ export interface ClaimedRow {
   statementOfComposition?: string;
 }
 
-/** Parse a single CSV line into fields, honoring double-quoted fields (with escaped "" quotes). */
-function parseCsvLine(line: string): string[] {
-  const fields: string[] = [];
+/**
+ * Tokenize CSV text into records of fields in ONE quote-aware pass (RFC 4180): a comma or newline
+ * inside a double-quoted cell is cell content, not a separator — so Excel multi-line cells and this
+ * module's own exports (csvCell quotes embedded newlines) both parse. Newlines inside quotes are
+ * normalized to "\n"; "" inside quotes is an escaped quote.
+ */
+function tokenize(text: string): string[][] {
+  const records: string[][] = [];
+  let fields: string[] = [];
   let cur = "";
   let inQuotes = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
+  const endField = () => {
+    fields.push(cur);
+    cur = "";
+  };
+  const endRecord = () => {
+    endField();
+    records.push(fields);
+    fields = [];
+  };
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
     if (inQuotes) {
       if (ch === '"') {
-        if (line[i + 1] === '"') {
+        if (text[i + 1] === '"') {
           cur += '"';
           i++;
         } else {
           inQuotes = false;
         }
+      } else if (ch === "\r" && text[i + 1] === "\n") {
+        cur += "\n";
+        i++;
       } else {
         cur += ch;
       }
     } else if (ch === '"') {
       inQuotes = true;
     } else if (ch === ",") {
-      fields.push(cur);
-      cur = "";
+      endField();
+    } else if (ch === "\n" || ch === "\r") {
+      if (ch === "\r" && text[i + 1] === "\n") i++;
+      endRecord();
     } else {
       cur += ch;
     }
   }
-  fields.push(cur);
-  return fields;
+  if (cur !== "" || fields.length > 0) endRecord();
+  return records;
 }
 
-/** Parse CSV text into an array of header-keyed row objects (blank lines skipped). */
+/** Parse CSV text into an array of header-keyed row objects (blank records skipped). */
 export function parseCsv(text: string): Record<string, string>[] {
-  const lines = text.split(/\r?\n/).filter((l) => l.trim().length > 0);
-  if (lines.length === 0) return [];
-  const headers = parseCsvLine(lines[0]).map((h) => h.trim());
-  return lines.slice(1).map((line) => {
-    const cells = parseCsvLine(line);
+  const records = tokenize(text).filter((cells) => cells.some((c) => c.trim().length > 0));
+  if (records.length === 0) return [];
+  const headers = records[0].map((h) => h.trim());
+  return records.slice(1).map((cells) => {
     const row: Record<string, string> = {};
     headers.forEach((h, i) => {
       row[h] = (cells[i] ?? "").trim();
@@ -82,23 +101,35 @@ export function parseCsv(text: string): Record<string, string>[] {
   });
 }
 
-/** Build a filename -> ClaimedRow map from a claimed-values CSV. Rows without a filename are skipped. */
+/**
+ * Build a filename -> ClaimedRow map from a claimed-values CSV. Rows without a filename are skipped.
+ * Headers match case-insensitively (Excel users retitle them), and the results-export column names
+ * (net_contents, country_of_origin, fanciful_name, statement_of_composition) are accepted as aliases
+ * so an edited export re-imports as application values. For class/type the printed DESIGNATION wins:
+ * `classType`/`type` before the broad derived `class` category the export also carries.
+ */
 export function parseClaimedCsv(text: string): Map<string, ClaimedRow> {
   const map = new Map<string, ClaimedRow>();
   for (const r of parseCsv(text)) {
-    const filename = r.filename || r.Filename || r.FILENAME || r.file || "";
+    const lower: Record<string, string> = {};
+    for (const [k, v] of Object.entries(r)) lower[k.toLowerCase()] = v;
+    const g = (...keys: string[]): string | undefined => {
+      for (const k of keys) if (lower[k]) return lower[k];
+      return undefined;
+    };
+    const filename = g("filename", "file") ?? "";
     if (!filename) continue;
     map.set(filename, {
       filename,
-      brand: r.brand || undefined,
-      alcoholContent: r.alcoholContent || r.alcohol || undefined,
-      classType: r.classType || r.class || r.type || undefined,
-      netContents: r.netContents || r.net || undefined,
-      name: r.name || r.producer || undefined,
-      address: r.address || r.addr || undefined,
-      countryOfOrigin: r.countryOfOrigin || r.country || r.origin || undefined,
-      fancifulName: r.fancifulName || r.fanciful || r.sellName || undefined,
-      statementOfComposition: r.statementOfComposition || r.composition || r.soc || undefined,
+      brand: g("brand"),
+      alcoholContent: g("alcoholcontent", "alcohol"),
+      classType: g("classtype", "type", "class"),
+      netContents: g("netcontents", "net", "net_contents"),
+      name: g("name", "producer"),
+      address: g("address", "addr"),
+      countryOfOrigin: g("countryoforigin", "country", "origin", "country_of_origin"),
+      fancifulName: g("fancifulname", "fanciful", "sellname", "fanciful_name"),
+      statementOfComposition: g("statementofcomposition", "composition", "soc", "statement_of_composition"),
     });
   }
   return map;

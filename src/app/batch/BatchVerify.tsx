@@ -1,12 +1,14 @@
 "use client";
 
 /**
- * BatchVerify — extraction-first batch screen with front/back pairing.
+ * BatchVerify — the batch worklist (the 200-300-labels-at-once story).
  *
  * Upload many label images; they're grouped into PRODUCTS by filename convention (acme-front.jpg +
- * acme-back.jpg -> one product, read together), the AI reads each product, and a per-product TTB
- * completeness verdict + extracted fields fill a table, exportable as JSON or CSV. A small pool keeps
- * the UI responsive on big batches.
+ * acme-back.jpg -> one product, read together) and read by the AI through a small worker pool. An
+ * optional application-values CSV supplies each product's claimed values: matched rows get the same
+ * combinedVerdict the single screen computes (gated per beverage type — see toClaimedFields). Every
+ * row lands in a reviewable worklist (localStorage decisions, per-row Review drawer built from the
+ * single screen's components) and exports as JSON or CSV, decisions included.
  */
 import { useId, useMemo, useState } from "react";
 import type { ExtractedFields } from "@/domain";
@@ -100,26 +102,29 @@ async function analyzeProduct(
       { product: group.product, images: group.images.map((im) => ({ filename: im.file.name, position: im.position })) },
       claimedMap,
     );
-    // The claimed-vs-label verdict needs BOTH a brand and an alcohol content; toClaimedFields owns
-    // that rule (shared with the single screen) and returns null for a partial claim — so a partial
-    // row can't masquerade as a (blank) verdict. `needs` reports exactly what's missing for the prompt.
-    const claimedFields = claimedRow
-      ? toClaimedFields({
-          brand: claimedRow.brand,
-          alcoholContentText: claimedRow.alcoholContent,
-          classType: claimedRow.classType,
-          netContents: claimedRow.netContents,
-          name: claimedRow.name,
-          address: claimedRow.address,
-          countryOfOrigin: claimedRow.countryOfOrigin,
-          fancifulName: claimedRow.fancifulName,
-          statementOfComposition: claimedRow.statementOfComposition,
-        })
+    // The batch "enough to compare?" gate (toClaimedFields): brand always, alcohol only where the
+    // law requires it for the resolved beverage class — so a legal malt/table-wine row without an
+    // ABV still gets a verdict. (The single screen gates interactively on its full per-type input
+    // set instead; same requiredInputKeysFor matrix, different gate.) `missing` drives the prompt.
+    const gate = claimedRow
+      ? toClaimedFields(
+          {
+            brand: claimedRow.brand,
+            alcoholContentText: claimedRow.alcoholContent,
+            classType: claimedRow.classType,
+            netContents: claimedRow.netContents,
+            name: claimedRow.name,
+            address: claimedRow.address,
+            countryOfOrigin: claimedRow.countryOfOrigin,
+            fancifulName: claimedRow.fancifulName,
+            statementOfComposition: claimedRow.statementOfComposition,
+          },
+          r.extracted,
+        )
       : null;
-    const needs = [
-      !claimedRow?.brand?.trim() && "a brand",
-      !claimedRow?.alcoholContent?.trim() && "alcohol content",
-    ].filter(Boolean).join(" + ");
+    const claimedFields = gate?.claimed ?? null;
+    const NEED_PHRASE: Partial<Record<string, string>> = { brand: "a brand", alcoholContent: "alcohol content" };
+    const needs = (gate?.missing ?? []).map((k) => NEED_PHRASE[k] ?? k).join(" + ");
     // Every readable product gets a combined verdict (completeness-only when no application row matched),
     // so it can be reviewed in the worklist — not just the ones with a matched claim.
     const combined = r.readable ? combinedVerdict(claimedFields, r.extracted) : null;
@@ -140,6 +145,8 @@ async function analyzeProduct(
     return { ...base, note: "Request failed." };
   }
 }
+
+const ADD_IMAGES_ERROR = "Add one or more label images.";
 
 function cell(row: BatchRow, pick: (e: ExtractedFields) => string | undefined): string {
   if (row.status === "pending") return "…";
@@ -170,6 +177,9 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
 
   function addFiles(newFiles: File[]) {
     setImages((prev) => [...prev, ...newFiles.map((file) => ({ file, preview: URL.createObjectURL(file) }))]);
+    // Adding images satisfies the "add images" validation; a stale error banner over a now-valid
+    // form reads as broken. (Other errors, e.g. a rejected CSV, are unrelated to this action.)
+    setError((prev) => (prev === ADD_IMAGES_ERROR ? null : prev));
   }
   function removeImage(index: number) {
     setImages((prev) => {
@@ -185,7 +195,7 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
   async function process() {
     setError(null);
     if (images.length === 0) {
-      setError("Add one or more label images.");
+      setError(ADD_IMAGES_ERROR);
       return;
     }
     setRows(groups.map((g) => ({ product: g.product, imageCount: g.images.length, status: "pending" })));
@@ -231,7 +241,7 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
           ...(overall ? { overall } : {}),
           // The worklist lifecycle: the reviewer's recorded decision, distinct from the AI verdict.
           ...(rec?.decision ? { decision: rec.decision, note: rec.note ?? "" } : {}),
-          ...(rec?.notes && Object.keys(rec.notes).length ? { fieldNotes: rec.notes } : {}),
+          ...(rec?.notes && Object.keys(rec.notes).length ? { humanNotes: rec.notes } : {}),
         };
       }),
     );
@@ -365,7 +375,17 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
             aria-label="Application values CSV"
             onChange={async (e) => {
               const f = e.target.files?.[0];
-              if (f) setClaimed(parseClaimedCsv(await f.text()));
+              if (f) {
+                const map = parseClaimedCsv(await f.text());
+                setClaimed(map);
+                // A zero-row parse (wrong delimiter, missing/renamed filename column) must not be
+                // silent: with no feedback the agent burns a whole batch run before noticing.
+                setError(
+                  map.size === 0
+                    ? "No usable rows found in that CSV. Each row needs a filename column matching an uploaded image; download the template below for the expected format."
+                    : null,
+                );
+              }
               e.target.value = "";
             }}
             className={inputClass}
@@ -383,7 +403,13 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
                   // class/type DESIGNATION only (e.g. "Rum", not "Superior Caribbean Rum"); `fanciful` +
                   // `composition` apply to specialties (no standard of identity); leave a cell blank if it
                   // doesn't apply.
+                  // The first three rows target the BUNDLED sample labels (downloadable from the
+                  // single screen's "No label handy?" links), so template + samples demo the full
+                  // verdict spread end to end — offline mock and live provider alike.
                   "filename,brand,class,fanciful,composition,alcohol,net,name,address,country\n" +
+                    "demo-old-tom-clean.png,OLD TOM DISTILLERY,Kentucky Straight Bourbon Whiskey,,,45% Alc./Vol. (90 Proof),750 mL,Old Tom Distillery,\"Louisville, KY\",\n" +
+                    "demo-warning-title-case.png,OLD TOM DISTILLERY,Kentucky Straight Bourbon Whiskey,,,45% Alc./Vol. (90 Proof),750 mL,Old Tom Distillery,\"Louisville, KY\",\n" +
+                    "demo-brand-typo.png,Old Tom Distillery,Kentucky Straight Bourbon Whiskey,,,45% Alc./Vol. (90 Proof),750 mL,Old Tom Distillery,\"Louisville, KY\",\n" +
                     "jolly-jerrys-front.jpg,Jolly Jerry's,Rum,,,40% Alc/Vol (80 Proof),750 mL,Sea Trader Imports,\"Miami, FL\",Product of Barbados\n" +
                     "granite-peak-front.jpg,Granite Peak,India Pale Ale,,,6.5% Alc/Vol,12 FL OZ,Granite Peak Brewing Co.,\"Portland, OR\",\n" +
                     "bayou-spiced-front.jpg,Bayou,,Spiced Rum,Rum with natural flavors added,35% Alc/Vol (70 Proof),750 mL,Bayou Spirits Co.,\"New Orleans, LA\",\n",
@@ -394,7 +420,9 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
             </button>
             {claimed.size > 0 && (
               <span className="text-sm text-ink-muted">
-                {claimed.size} application row(s) loaded. Products that match get an Approve/Review/Reject verdict.
+                {claimed.size} application row(s) loaded. Matched products get an Approve / Needs review /
+                Reject verdict once the row carries a brand (plus alcohol content where TTB requires it
+                for the type).
               </span>
             )}
           </div>

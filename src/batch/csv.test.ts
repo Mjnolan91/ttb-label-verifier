@@ -38,6 +38,19 @@ describe("parseCsv", () => {
   it("skips blank lines", () => {
     expect(parseCsv("filename\n\nlabel.jpg\n\n")).toHaveLength(1);
   });
+
+  it("keeps a NEWLINE inside a quoted cell in the cell (Excel multi-line address)", () => {
+    const rows = parseCsv('filename,address,country\na.png,"123 Main St\nSuite 200",USA');
+    expect(rows).toHaveLength(1);
+    expect(rows[0].address).toBe("123 Main St\nSuite 200");
+    expect(rows[0].country).toBe("USA"); // columns after the multi-line cell survive
+  });
+
+  it("round-trips the exporter's output (csvCell quotes embedded newlines; the parser must read them)", () => {
+    const rows = parseCsv('filename,note\na.png,"line one\r\nline two"');
+    expect(rows).toHaveLength(1);
+    expect(rows[0].note).toBe("line one\nline two");
+  });
 });
 
 describe("parseClaimedCsv", () => {
@@ -57,6 +70,38 @@ describe("parseClaimedCsv", () => {
     const map = parseClaimedCsv("filename,brand\n,No Name\nx.jpg,Has Name");
     expect(map.has("x.jpg")).toBe(true);
     expect(map.size).toBe(1);
+  });
+
+  it("accepts Title-Cased / UPPERCASED headers (Excel users retitle them)", () => {
+    const map = parseClaimedCsv("Filename,Brand,Alcohol,Class,Net,Name,Address,Country\nx.jpg,Acme,40% Alc./Vol.,Vodka,750 mL,Acme Co,\"Peoria, IL\",USA");
+    const row = map.get("x.jpg");
+    expect(row?.brand).toBe("Acme");
+    expect(row?.alcoholContent).toBe("40% Alc./Vol.");
+    expect(row?.classType).toBe("Vodka");
+    expect(row?.netContents).toBe("750 mL");
+    expect(row?.name).toBe("Acme Co");
+    expect(row?.address).toBe("Peoria, IL");
+    expect(row?.countryOfOrigin).toBe("USA");
+  });
+
+  it("accepts the results-export column names, so an edited export re-imports as application values", () => {
+    const map = parseClaimedCsv(
+      "filename,brand,alcohol,net_contents,country_of_origin,fanciful_name,statement_of_composition,type\n" +
+        "x.jpg,Acme,40% Alc./Vol.,750 mL,USA,Spiced Rum,Rum with natural flavors added,Rum",
+    );
+    const row = map.get("x.jpg");
+    expect(row?.netContents).toBe("750 mL");
+    expect(row?.countryOfOrigin).toBe("USA");
+    expect(row?.fancifulName).toBe("Spiced Rum");
+    expect(row?.statementOfComposition).toBe("Rum with natural flavors added");
+    expect(row?.classType).toBe("Rum");
+  });
+
+  it("prefers the class/type DESIGNATION (`type`) over the broad derived `class` category", () => {
+    // The results export carries both: `class` is the broad category ("Malt beverage"), `type` the
+    // printed designation ("India Pale Ale"). The designation is the comparable value.
+    const map = parseClaimedCsv("filename,class,type\nx.jpg,Malt beverage,India Pale Ale");
+    expect(map.get("x.jpg")?.classType).toBe("India Pale Ale");
   });
 });
 

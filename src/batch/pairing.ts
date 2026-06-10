@@ -35,7 +35,9 @@ const POSITION_TOKENS: Record<string, LabelPosition> = {
 };
 
 function parseName(filename: string): { product: string; position: LabelPosition } {
-  const stem = filename.replace(/\.[^.]+$/, "");
+  // Browsers rename a repeat download to "name (1).png"; strip that suffix so a re-downloaded back
+  // label still pairs with its front (and the position token is still recognized).
+  const stem = filename.replace(/\.[^.]+$/, "").replace(/ \(\d+\)$/, "");
   const m = stem.match(/^(.*?)[\s_-]+([a-z]+)$/i);
   if (m) {
     const token = m[2].toLowerCase();

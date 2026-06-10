@@ -6,8 +6,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
 import { BatchVerify } from "./BatchVerify";
-import { downloadJson } from "../ui/download";
+import { downloadJson, downloadCsv } from "../ui/download";
 import type { VerifyApiResponse } from "../api/verify/contract";
+import { parseClaimedCsv } from "@/batch/csv";
 import { CANONICAL_GOVERNMENT_WARNING } from "@/domain";
 
 // Stub the canvas downscale (variable-timing in jsdom) so the read settles deterministically.
@@ -122,6 +123,70 @@ describe("BatchVerify — verify against an application CSV", () => {
     expect(await q.findByText(/add alcohol content/i)).toBeTruthy();
     expect(q.queryByText(/no application row/i)).toBeNull();
     expect(q.queryByText(/re-scan/i)).toBeNull();
+  });
+
+  it("the review drawer carries no orphaned 'Step 3' eyebrow (that numbering is the single screen's)", { retry: 2 }, async () => {
+    const q = await run("filename,brand,alcohol\nacme-front.png,Acme,40% Alc./Vol.");
+    expect(await q.findByText("Approve")).toBeTruthy();
+    fireEvent.click(q.getByRole("button", { name: /^Review$/i }));
+    // The drawer renders outside the component container; query the whole document.
+    expect(await screen.findByText(/Label vs\. application/)).toBeTruthy();
+    expect(screen.queryByText(/Step 3/)).toBeNull();
+  });
+
+  it("the CSV template includes the three bundled sample labels, ready to demo end to end", () => {
+    const { container } = render(<BatchVerify />);
+    fireEvent.click(within(container).getByRole("button", { name: /Download CSV template/i }));
+    const content = (downloadCsv as unknown as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[1] as string;
+    const map = parseClaimedCsv(content);
+    expect(map.get("demo-old-tom-clean.png")?.brand).toBe("OLD TOM DISTILLERY");
+    expect(map.get("demo-warning-title-case.png")?.alcoholContent).toBe("45% Alc./Vol. (90 Proof)");
+    expect(map.get("demo-brand-typo.png")?.brand).toBe("Old Tom Distillery");
+    expect(map.get("jolly-jerrys-front.jpg")?.classType).toBe("Rum"); // the varied examples stay
+  });
+
+  it("a CSV with no usable rows shows an actionable error instead of silently loading nothing", { retry: 2 }, async () => {
+    const { container } = render(<BatchVerify />);
+    const q = within(container);
+    const csv = "image,brand\nx.png,Acme"; // no filename column -> zero usable rows
+    const csvFile = new File([csv], "claims.csv", { type: "text/csv" });
+    Object.defineProperty(csvFile, "text", { value: () => Promise.resolve(csv) });
+    fireEvent.change(q.getByLabelText(/Application values CSV/i), { target: { files: [csvFile] } });
+    expect(await q.findByText(/No usable rows/i)).toBeTruthy();
+    expect(q.queryByText(/application row\(s\) loaded/i)).toBeNull();
+  });
+
+  it("the 'add images' validation error clears once images are added", { retry: 2 }, async () => {
+    const { container } = render(<BatchVerify />);
+    const q = within(container);
+    fireEvent.click(q.getByRole("button", { name: /Read all labels/i }));
+    expect(await q.findByText(/Add one or more label images/i)).toBeTruthy();
+    fireEvent.change(container.querySelector('input[accept="image/*"]') as HTMLInputElement, {
+      target: { files: [new File(["x"], "a.png", { type: "image/png" })] },
+    });
+    expect(q.queryByText(/Add one or more label images/i)).toBeNull();
+  });
+
+  it("a malt-beverage row WITHOUT alcohol still gets a verdict (ABV optional, 27 CFR 7.63(a)(3))", { retry: 2 }, async () => {
+    const MALT: VerifyApiResponse = {
+      provider: "mock",
+      readable: true,
+      result: null,
+      extracted: {
+        brand: "Granite Peak", classType: "India Pale Ale", alcoholContentText: "6.5% Alc./Vol.",
+        netContents: "12 FL OZ", name: "Granite Peak Brewing", address: "Portland, OR",
+        warningText: CANONICAL_GOVERNMENT_WARNING, warningPrefixIsAllCaps: true, warningPrefixIsBold: true,
+        confidence: { brand: 0.97, classType: 0.96, alcoholContent: 0.96, netContents: 0.95, name: 0.95, address: 0.94, warningText: 0.97 },
+      },
+    };
+    const q = await run(
+      'filename,brand,class,net,name,address\nacme-front.png,Granite Peak,India Pale Ale,12 FL OZ,Granite Peak Brewing,"Portland, OR"',
+      vi.fn(async () => ({ ok: true, json: async () => MALT })) as unknown as typeof fetch,
+    );
+    // Alcohol is optional on malt: the row verdicts (the un-supplied alcohol comparison stays review-
+    // biased, so "Needs review" at best) instead of dead-ending on an "add alcohol content" prompt.
+    expect(await q.findByText("Needs review")).toBeTruthy();
+    expect(q.queryByText(/add alcohol content/i)).toBeNull();
   });
 
   it("opens a product's review drawer, records a decision, and persists it to the worklist", { retry: 2 }, async () => {

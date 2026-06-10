@@ -440,6 +440,7 @@ export function ResultView({
   concerns,
   notes,
   onNote,
+  step,
 }: {
   result: VerifyResult;
   /** The headline verdict (comparison gated on completeness, recomputed after human overrides). */
@@ -457,6 +458,9 @@ export function ResultView({
   /** The reviewer's per-field notes, and the setter for them. */
   notes?: Partial<Record<VerifyFieldKey, string>>;
   onNote?: (key: VerifyFieldKey, text: string) => void;
+  /** Optional step eyebrow (e.g. "Step 3") for the single screen's numbered flow; the batch review
+   *  drawer omits it, so its heading carries no orphaned step number. */
+  step?: string;
 }) {
   const headline = overall ?? result.overall;
   const tone: Tone = toneForStatus(headline); // green / amber / red traffic-light
@@ -487,7 +491,7 @@ export function ResultView({
         tabIndex={-1}
         className="text-sm font-semibold uppercase tracking-wide text-ink-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2"
       >
-        Step 3 · Label vs. application
+        {step ? `${step} · ` : ""}Label vs. application
       </h2>
 
       <div

@@ -629,6 +629,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
           {combined.verify ? (
             <>
               <ResultView
+                step="Step 3"
                 result={combined.verify}
                 overall={effectiveOverall ?? undefined}
                 gatedByCompleteness={effectiveGatedByCompleteness}

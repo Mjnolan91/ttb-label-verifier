@@ -11,43 +11,80 @@
  * The government warning keeps its hard-fail-on-missing via verifyLabel's strict check. A later plan
  * adds the human confirm-to-approve step that escalates a confirmed-missing element to `reject`.
  */
-import type { ClaimedFields, ExtractedFields } from "@/domain";
+import type { BeverageClass, ClaimedFields, ExtractedFields, RequirementKey } from "@/domain";
 import { verifyLabel, type VerifyResult, type OverallVerdict } from "./verify";
 import { checkCompleteness, type CompletenessResult, type CompletenessOverall } from "./completeness";
+import { requiredInputKeysFor } from "./requiredInputs";
+import { parseAlcoholText, resolveBeverageClass } from "./alcohol";
 
 const RANK: Record<OverallVerdict, number> = { approve: 0, review: 1, reject: 2 };
 
+/** The outcome of the batch "enough to compare?" gate. */
+export interface ClaimedGate {
+  /** ClaimedFields when the gate passes; null when a required input is missing. */
+  claimed: ClaimedFields | null;
+  /** The gate inputs still missing — only ever `brand` and/or `alcoholContent`. */
+  missing: RequirementKey[];
+  /** The beverage class the alcohol-required decision was resolved from. */
+  beverageClass: BeverageClass;
+}
+
 /**
- * Build ClaimedFields from loose application inputs, or null when there isn't enough to compare —
- * the claimed-vs-label verdict needs BOTH a brand AND an alcohol content. The SINGLE home of that
- * "enough to compare?" rule: the single screen and the batch screen both funnel their raw inputs
- * through this instead of re-deriving the check (and combinedVerdict keeps its own guard as a net).
+ * The BATCH screen's "enough to compare?" gate: build ClaimedFields from a loose application row, or
+ * report what's missing. Brand is required for every class (the one universally mandatory input);
+ * alcohol content is required ONLY where the law mandates it for the resolved beverage class
+ * (spirits / wine >14% / unknown — same `requiredInputKeysFor` matrix the single screen gates on), so
+ * a legal malt or table-wine application without an ABV still gets a verdict. The class resolves from
+ * the CLAIMED class/type first, else the label's reading; the wine ≤14/>14 split from the claimed ABV,
+ * else the label's. Other absent fields are simply not compared (or compared to `review`, never
+ * approved) — batch can't prompt interactively, so gaps route to the human worklist instead of
+ * blocking the row. (The single screen, which CAN prompt, blocks until its full per-type required
+ * input set is typed — a deliberate difference in gate, same underlying matrix.)
  */
-export function toClaimedFields(input: {
-  brand?: string;
-  alcoholContentText?: string;
-  classType?: string;
-  netContents?: string;
-  name?: string;
-  address?: string;
-  countryOfOrigin?: string;
-  fancifulName?: string;
-  statementOfComposition?: string;
-}): ClaimedFields | null {
-  const brand = (input.brand ?? "").trim();
-  const alcoholContentText = (input.alcoholContentText ?? "").trim();
-  if (!brand || !alcoholContentText) return null;
+export function toClaimedFields(
+  input: {
+    brand?: string;
+    alcoholContentText?: string;
+    classType?: string;
+    netContents?: string;
+    name?: string;
+    address?: string;
+    countryOfOrigin?: string;
+    fancifulName?: string;
+    statementOfComposition?: string;
+  },
+  extracted: ExtractedFields,
+): ClaimedGate {
+  const classText = input.classType?.trim()
+    ? input.classType
+    : extracted.classType?.trim()
+      ? extracted.classType
+      : extracted.class;
+  const abv = parseAlcoholText(input.alcoholContentText).abv ?? parseAlcoholText(extracted.alcoholContentText).abv;
+  const beverageClass = resolveBeverageClass(classText, abv);
+
+  const missing: RequirementKey[] = [];
+  if (!(input.brand ?? "").trim()) missing.push("brand");
+  if (requiredInputKeysFor(beverageClass).includes("alcoholContent") && !(input.alcoholContentText ?? "").trim()) {
+    missing.push("alcoholContent");
+  }
+  if (missing.length > 0) return { claimed: null, missing, beverageClass };
+
   const opt = (v?: string): string | undefined => (v?.trim() ? v.trim() : undefined);
   return {
-    brand,
-    alcoholContentText,
-    classType: opt(input.classType),
-    netContents: opt(input.netContents),
-    name: opt(input.name),
-    address: opt(input.address),
-    countryOfOrigin: opt(input.countryOfOrigin),
-    fancifulName: opt(input.fancifulName),
-    statementOfComposition: opt(input.statementOfComposition),
+    claimed: {
+      brand: (input.brand ?? "").trim(),
+      alcoholContentText: opt(input.alcoholContentText),
+      classType: opt(input.classType),
+      netContents: opt(input.netContents),
+      name: opt(input.name),
+      address: opt(input.address),
+      countryOfOrigin: opt(input.countryOfOrigin),
+      fancifulName: opt(input.fancifulName),
+      statementOfComposition: opt(input.statementOfComposition),
+    },
+    missing: [],
+    beverageClass,
   };
 }
 

@@ -32,6 +32,13 @@ describe("groupImagesByProduct", () => {
     expect(groups[1].images).toHaveLength(1); // b: single
   });
 
+  it("strips the browser download-rename ' (n)' so a re-downloaded back label still pairs", () => {
+    const groups = groupImagesByProduct(["acme-front.jpg", "acme-back (1).jpg"]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].product).toBe("acme");
+    expect(groups[0].images.map((i) => i.position)).toEqual(["front", "back"]);
+  });
+
   it("recognizes _, space, and short-form tokens, and neck", () => {
     expect(groupImagesByProduct(["p1_back.png"])[0].images[0].position).toBe("back");
     expect(groupImagesByProduct(["wine front.jpg"])[0]).toMatchObject({ product: "wine" });

@@ -48,8 +48,10 @@ export interface VerifyField extends FieldResult {
 /**
  * The full label-vs-application comparison. `fields` is the ordered, present-only list of every
  * comparison that RAN (a field the application didn't supply is omitted) — the uniform render/iterate
- * surface. `brand`/`alcohol`/`warning` are convenience accessors (the SAME verdicts as in `fields`,
- * always present: the gate guarantees brand+alcohol and warning is auto) to avoid churn in eval/CSV.
+ * surface. `brand`/`alcohol`/`warning` are convenience accessors (the SAME verdicts as in `fields`)
+ * to avoid churn in eval/CSV; they are always present because brand is gated everywhere, the warning
+ * is auto-compared, and the alcohol comparison always runs (an UNSUPPLIED claimed alcohol — legal for
+ * malt / wine ≤14% / cider — compares to `review`, never approve).
  */
 export interface VerifyResult {
   fields: VerifyField[];
