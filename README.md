@@ -242,7 +242,9 @@ dedicated government-warning format judge). On the Gemini provider the judge alr
 the strongest available model** (`gemini-3.1-pro-preview`) and automatically falls back to the
 extraction model if that call fails (a rotated preview id or its 25-requests/minute quota must
 degrade to the Flash judgment, never to no judgment); set `WARNING_JUDGE_MODEL` to pin something
-else. On OpenAI/Azure the judge defaults to the extraction model/deployment and the variable
+else. The OpenAI provider mirrors that: the judge **defaults to `gpt-5.5`** (the measured split
+above) and falls back to `OPENAI_MODEL` if the call fails; set `WARNING_JUDGE_MODEL` to pin
+something else. On Azure the judge defaults to the extraction deployment and the variable
 upgrades it.
 
 ## Internationalization (a design note, deliberately not shipped)

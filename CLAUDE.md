@@ -31,11 +31,19 @@ default; no PII, no auth, no COLA.
   entry `eval/run.ts`, which calls `runEval` from `eval/evaluate.ts`). It is a GATE: exits non-zero
   if approve-precision drops below `APPROVE_PRECISION_FLOOR` (0.98, in `eval/evaluate.ts`) — a false
   approval is the one error class we refuse to ship.
+- `npx tsx scripts/measure-live-latency.ts [baseUrl] [rounds]` — end-to-end `/api/verify` p50/p95
+  against a DEPLOYED target (the offline eval can't prove the ~5s budget; the mock skips the model
+  call). Sequential, verdict-checked; costs real model calls — keep rounds modest.
+- `npx tsx scripts/check-gemini-tier.ts` — empirically verify the Gemini key's QUOTA TIER (bursts
+  the pro judge model; the tier follows the Google Cloud project the key was minted in, and the
+  free tier caps pro at ~25 req/min — the classic silent cause of judge fallbacks).
 
 Requires Node ≥20.9 (`package.json` `engines`); a wrong major version fails confusingly.
 
 `typecheck` → `lint` → `test` is the load-bearing feedback loop; keep all three green (plus
 `npm run eval`) before any commit. The suite runs offline on the mock provider — no keys, no network.
+CI (`.github/workflows/ci.yml`) runs the same gate — typecheck → lint → test → eval → build — on
+every push/PR to main, also offline on the mock.
 
 ## Architecture as built (where the AGENTS.md pipeline lives)
 AGENTS.md describes the `image → VisionProvider(s) → reconciler → (optional) comparator → UI`
@@ -50,8 +58,9 @@ pipeline and the "why". As built, the load-bearing pieces are:
   reads pay an extra batch). `SELF_CONSISTENCY_SAMPLES`
   (default 3; `src/extraction/config.ts`) sets N; the mock provider is forced to 1 so the offline
   suite/eval stay deterministic (and never escalates). When a warning is read, a dedicated `judgeWarningBold` pass over the
-  images sets `warningPrefixIsBold` (on gemini the judge DEFAULTS to the strongest model,
-  `GeminiVisionProvider.DEFAULT_JUDGE_MODEL`, falling back to the extraction model when that
+  images sets `warningPrefixIsBold` (on gemini AND openai the judge DEFAULTS to the strongest model,
+  `GeminiVisionProvider.DEFAULT_JUDGE_MODEL` / `OpenAIVisionProvider.DEFAULT_JUDGE_MODEL`, falling
+  back to the extraction model when that
   call fails; `WARNING_JUDGE_MODEL` pins/upgrades it per provider; an UNVERIFIABLE caps/bold
   prefix routes the warning to review in `compareWarning` — "verified" is never claimed on
   missing evidence). Extraction stays on Flash by measurement (Pro extraction blew the ~5s
@@ -62,11 +71,15 @@ pipeline and the "why". As built, the load-bearing pieces are:
   resolves each product's claimed values from an optional CSV (`src/batch/claimedMatch.ts`). Change the
   flow here, not in two places.
 - **`src/domain/`** — pre-seeded, CFR-verified, the one hand-written human-trusted module
-  (canonical warning, tolerance matrix, label-requirements matrix, proof helper). Treat its constants
+  (canonical warning, tolerance matrix, label-requirements matrix, standards-of-fill enumerations,
+  proof helper). Treat its constants
   as statutory: extend/integrate, never reword or retune them to make a test pass. The completeness
   matrix encodes the per-class nuance (malt ABV optional by default; wine ≤14% table-wine carve-out;
   warning exempt <0.5% ABV — the exemption ABV is parsed from `alcoholContentText`; sulfite is
-  **conditional** per 27 CFR 4.32(e), surfaced not failed). See `src/domain/README.md`.
+  **conditional** per 27 CFR 4.32(e), surfaced not failed). `standardsOfFill.ts` enumerates the
+  authorized container sizes (spirits 27 CFR 5.203 / wine 4.72, per the Jan 2025 final rule; malt has
+  NO standard of fill) — an unlisted size routes to REVIEW, never hard-fail, since TTB periodically
+  adds sizes. See `src/domain/README.md`.
 - **`src/extraction/`** — the `VisionProvider` interface + `MockVisionProvider` (default; keys
   off the image FILENAME, not bytes) + `Llm`/`Ocr` Azure providers + `OpenAI`-direct + `Gemini`-direct
   providers (env-gated via `VISION_PROVIDER` — `mock`|`llm`|`ocr`|`openai`|`gemini`|`ensemble`, opt-in;
@@ -79,7 +92,10 @@ pipeline and the "why". As built, the load-bearing pieces are:
   strict **structured outputs** (`response_format: json_schema`), bounded retry on 429/5xx
   (`fetchWithRetry`), and a self-limiting request timeout (`withHardTimeout`) — see `http.ts`.
   `selfConsistency.ts` (+ `config.ts`) wraps the reconciler with the N-sample agreement pass the
-  pipeline drives; `geminiTuning.ts` holds Gemini-specific request tuning.
+  pipeline drives; `geminiTuning.ts`/`openaiTuning.ts` hold per-provider request tuning —
+  the OpenAI side is FAMILY-AWARE (`chatParams`): gpt-5/o-series reasoning models reject
+  `max_tokens` and non-default `temperature`, need `max_completion_tokens` with reasoning
+  headroom, and get `reasoning_effort: "low"` to stay in the latency budget.
 - **`src/compare/`** — pure, deterministic comparators + `verifyLabel` (claimed comparison) +
   `completeness.ts` (each TTB-required element present / missing / malformed / unverifiable, per
   beverage type) + `thresholds.ts`. Two DISTINCT thresholds, easy to confuse:
@@ -124,8 +140,16 @@ pipeline and the "why". As built, the load-bearing pieces are:
   set/restore is NESTING-SAFE (the batch drawer opens an `ImageLightbox` on top of itself). The
   batch worklist renders as a 4-track GRID LIST (never a sideways-scrolling table): triage filter
   chips + attention-first sort + row tints; EVERY settled row is reviewable (unreadable rows record
-  a send-back, errored rows get a per-row Retry, no-CSV rows get an honest completeness-only review
-  whose missing elements are resolvable concern cards via `labelReview`/`ProductReview`). **`eval/`** — the harness and filename-keyed fixtures (`eval/fixtures/cases.json`).
+  a send-back, errored rows get a per-row Retry, no-CSV rows start as an honest completeness-only
+  review whose missing elements are resolvable concern cards via `labelReview`/`ProductReview` — and
+  the drawer's `ApplicationEditor` lets the reviewer SUPPLY or correct application values in place:
+  persisted edits OVERLAY the matched CSV row (an explicit "" clears a CSV value), ANY edit clears
+  ALL of that product's confirm/flag overrides (a stale "ok" must never force-pass a recomputed
+  comparison), and the verdict derives at render — NOT cached at analyze time — via
+  `deriveProductVerdict` (`src/app/batch/productVerdict.ts`), the ONE derivation shared by the row
+  badges/triage, the drawer, and both exports. The nine application-input descriptors (labels/hints/
+  suggestion+confidence mapping) live ONCE in `src/app/ui/appInputs.ts`, consumed by BOTH VerifyForm
+  and ApplicationEditor). **`eval/`** — the harness and filename-keyed fixtures (`eval/fixtures/cases.json`).
 - **`src/extraction/fieldCatalog.ts`** — THE single source of truth for the extracted field set. One
   ordered descriptor list (`key`/`rawKey`/`confKey`/`label`/`csvColumn`/`group`) that the raw→domain
   mapper (`extractedShape.ts`), the front/back merge (`reconcile.ts`), the field table
