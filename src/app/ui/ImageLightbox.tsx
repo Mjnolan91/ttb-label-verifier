@@ -33,16 +33,22 @@ export function ImageLightbox({
   useEffect(() => {
     if (!open) return;
     const previouslyFocused = document.activeElement as HTMLElement | null;
-    const main = document.getElementById("main-content");
+    // Inert BOTH the page content and the fixed header controls (theme toggle / help): they sit
+    // outside #main-content, so without this they'd stay reachable behind the open dialog.
+    const background = [document.getElementById("main-content"), document.getElementById("site-controls")];
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    main?.setAttribute("inert", "");
-    main?.setAttribute("aria-hidden", "true");
+    for (const el of background) {
+      el?.setAttribute("inert", "");
+      el?.setAttribute("aria-hidden", "true");
+    }
     closeRef.current?.focus();
     return () => {
       document.body.style.overflow = prevOverflow;
-      main?.removeAttribute("inert");
-      main?.removeAttribute("aria-hidden");
+      for (const el of background) {
+        el?.removeAttribute("inert");
+        el?.removeAttribute("aria-hidden");
+      }
       previouslyFocused?.focus?.();
     };
   }, [open]);

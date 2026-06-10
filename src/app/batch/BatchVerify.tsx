@@ -357,7 +357,7 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
           <span className="mb-1.5 block font-medium text-ink">
             The application{" "}
             <span className="font-normal text-ink-muted">
-              (CSV — one row per product: filename, brand, class, fanciful, composition, alcohol, net,
+              (CSV, one row per product: filename, brand, class, fanciful, composition, alcohol, net,
               name, address, country)
             </span>
           </span>

@@ -215,8 +215,8 @@ export async function POST(request: Request): Promise<Response> {
     const nothingRead = confidences.length === 0 || Math.max(...confidences) === 0;
     const message =
       usingMock && nothingRead
-        ? "Demo (mock) mode only recognizes the built-in test fixtures — with no API keys there is no real model reading the image. Set VISION_PROVIDER + an API key (or use the deployed URL) to read your own photos."
-        : "We couldn't read this label clearly — please re-upload a clearer, well-lit photo with the label flat and in focus.";
+        ? "Demo (mock) mode only recognizes the built-in test fixtures. With no API keys there is no real model reading the image. Set VISION_PROVIDER + an API key (or use the deployed URL) to read your own photos."
+        : "We couldn't read this label clearly. Please re-upload a clearer, well-lit photo with the label flat and in focus.";
     const payload: VerifyApiResponse = {
       provider: providerName,
       readable: false,

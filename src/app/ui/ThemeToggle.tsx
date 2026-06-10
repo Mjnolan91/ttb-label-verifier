@@ -3,8 +3,8 @@
 /**
  * ThemeToggle — flips light/dark and remembers the choice in localStorage. The `.dark` class is applied
  * to <html> before paint by the inline script in layout.tsx (so there's no flash); this control just
- * toggles it and persists the preference. First-visit default is the OS setting (handled by that
- * script).
+ * toggles it and persists the preference. First-visit default is LIGHT (the script applies dark only
+ * when this control explicitly chose it; prefers-color-scheme is deliberately not consulted).
  *
  * The current theme is read from the DOM with useSyncExternalStore: the server snapshot is "light" so
  * hydration matches the SSR output, then the client reflects the real (pre-paint) class — no

@@ -146,3 +146,14 @@ export function IconMoon(props: IconProps) {
     </Svg>
   );
 }
+
+/** IconHelp — the header help-panel trigger glyph (question mark in a circle). */
+export function IconHelp(props: IconProps) {
+  return (
+    <Svg strokeWidth={1.8} {...props}>
+      <circle cx="10" cy="10" r="7.6" />
+      <path d="M7.9 7.7a2.1 2.1 0 113.3 1.8c-.7.5-1.2.9-1.2 1.9" />
+      <path d="M10 14.3h.01" strokeWidth={2.6} />
+    </Svg>
+  );
+}

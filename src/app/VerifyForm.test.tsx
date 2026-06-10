@@ -165,7 +165,9 @@ describe("VerifyForm — verify against the application", () => {
     fireEvent.click(q.getByRole("button", { name: /Accept all AI suggestions/i }));
     const verdict = within(await q.findByRole("region", { name: "Verification result" }));
     expect(verdict.getByText("Approve")).toBeTruthy();
-    const brandCard = q.getAllByText("Brand name")[0].closest("li") as HTMLElement;
+    // "Brand name" appears both as the Step 2 input label and as the comparison card title; the
+    // card is the match that lives inside the result list's <li>.
+    const brandCard = q.getAllByText("Brand name").map((el) => el.closest("li")).find(Boolean) as HTMLElement;
     fireEvent.click(within(brandCard).getByRole("button", { name: /Flag a problem/i }));
     expect(verdict.getByText("Reject")).toBeTruthy();
   });
@@ -184,7 +186,9 @@ describe("VerifyForm — verify against the application", () => {
     // reads "Needs review" from the same low-confidence read, so an unscoped match is ambiguous).
     const verdict = within(await q.findByRole("region", { name: "Verification result" }));
     expect(verdict.getByText("Needs review")).toBeTruthy();
-    const brandCard = q.getAllByText("Brand name")[0].closest("li") as HTMLElement;
+    // "Brand name" appears both as the Step 2 input label and as the comparison card title; the
+    // card is the match that lives inside the result list's <li>.
+    const brandCard = q.getAllByText("Brand name").map((el) => el.closest("li")).find(Boolean) as HTMLElement;
     fireEvent.click(within(brandCard).getByRole("button", { name: /Looks correct/i }));
     expect(verdict.getByText("Approve")).toBeTruthy();
   });
@@ -251,7 +255,9 @@ describe("VerifyForm — verify against the application", () => {
     dropLabelImage(container);
     await q.findByText("Complete the application to verify");
     fireEvent.click(q.getByRole("button", { name: /Accept all AI suggestions/i }));
-    const brandCard = q.getAllByText("Brand name")[0].closest("li") as HTMLElement;
+    // "Brand name" appears both as the Step 2 input label and as the comparison card title; the
+    // card is the match that lives inside the result list's <li>.
+    const brandCard = q.getAllByText("Brand name").map((el) => el.closest("li")).find(Boolean) as HTMLElement;
     fireEvent.click(within(brandCard).getByRole("button", { name: /Flag a problem/i }));
     // A note field appears on the flagged card; the reviewer's words land in the applicant email.
     const noteField = within(brandCard).getByPlaceholderText(/Explain the problem/i);
@@ -270,8 +276,10 @@ describe("VerifyForm — verify against the application", () => {
     const q = within(container);
     dropLabelImage(container);
     await q.findByText("Complete the application to verify");
-    const soc = q.getByLabelText(/Statement of composition/i) as HTMLInputElement;
-    const fanciful = q.getByLabelText(/Distinctive \/ fanciful name/i) as HTMLInputElement;
+    // ^ anchors: the FieldHelp toggletip's aria-label ("About Statement of composition") would
+    // otherwise match too.
+    const soc = q.getByLabelText(/^Statement of composition/i) as HTMLInputElement;
+    const fanciful = q.getByLabelText(/^Distinctive \/ fanciful name/i) as HTMLInputElement;
     expect(soc.required).toBe(false);
     expect(fanciful.required).toBe(false);
     // Accepting the AI suggestions (which carry no fanciful/SoC for a standard bourbon) still verifies.
@@ -287,7 +295,9 @@ describe("VerifyForm — verify against the application", () => {
     dropLabelImage(container);
     await q.findByText("Complete the application to verify");
     fireEvent.click(q.getByRole("button", { name: /Accept all AI suggestions/i }));
-    const brandCard = q.getAllByText("Brand name")[0].closest("li") as HTMLElement;
+    // "Brand name" appears both as the Step 2 input label and as the comparison card title; the
+    // card is the match that lives inside the result list's <li>.
+    const brandCard = q.getAllByText("Brand name").map((el) => el.closest("li")).find(Boolean) as HTMLElement;
     fireEvent.click(within(brandCard).getByRole("button", { name: /Flag a problem/i }));
     fireEvent.click(q.getByRole("button", { name: /Reject \/ send back/i })); // drafts the email
     // Change + save a field note AFTER drafting -> the panel surfaces a refresh affordance.
@@ -390,7 +400,7 @@ describe("VerifyForm — verify against the application", () => {
   it("shows the re-upload prompt for an unreadable image (never a fabricated verdict)", ASYNC, async () => {
     mockFetch({
       provider: "mock", readable: false, extracted: extractedBourbon(), result: null,
-      message: "We couldn't read this label clearly — please re-upload a clearer, well-lit photo.",
+      message: "We couldn't read this label clearly. Please re-upload a clearer, well-lit photo.",
     });
     const { container } = render(<VerifyForm />);
     const q = within(container);

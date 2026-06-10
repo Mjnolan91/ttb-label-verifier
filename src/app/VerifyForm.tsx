@@ -36,6 +36,8 @@ import { PipelineSteps } from "./ui/PipelineSteps";
 import { CLASS_DISPLAY_LABEL } from "./ui/beverageClass";
 import { downscaleForUpload } from "./imageDownscale";
 import { DropZone } from "./ui/DropZone";
+import { FieldHelp } from "./ui/FieldHelp";
+import { APP_FIELD_HELP, type AppInputKey } from "./ui/fieldHelpCopy";
 import { ErrorAlert } from "./ui/ErrorAlert";
 import { ResultSkeleton } from "./ui/ResultSkeleton";
 import { inputClass, linkClass, secondaryButtonClass } from "./ui/fieldStyles";
@@ -60,7 +62,7 @@ const orderedImagesOf = (s: { front?: LabelImage; back?: LabelImage }): LabelIma
 
 /** Human label for each application input / requirement key (used by the "still needed" checklist). */
 const KEY_LABEL: Record<RequirementKey, string> = {
-  brand: "Brand",
+  brand: "Brand name",
   classType: "Class / type",
   alcoholContent: "Alcohol content",
   netContents: "Net contents",
@@ -172,7 +174,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
   // The AI's per-field suggestion + confidence, and which application input it maps to. The required
   // set is dynamic (below), so each input is rendered uniformly and marked required per the resolved type.
   const appInputs: {
-    key: RequirementKey | "fancifulName";
+    key: AppInputKey;
     id: string;
     label: string;
     value: string;
@@ -181,7 +183,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
     confidence?: number;
     hint?: string;
   }[] = [
-    { key: "brand", id: ids.appBrand, label: "Brand", value: claimBrand, set: setClaimBrand, suggestion: extracted?.brand, confidence: extracted?.confidence.brand },
+    { key: "brand", id: ids.appBrand, label: "Brand name", value: claimBrand, set: setClaimBrand, suggestion: extracted?.brand, confidence: extracted?.confidence.brand },
     { key: "classType", id: ids.appClass, label: "Class / type", value: claimClass, set: setClaimClass, suggestion: extracted?.classType?.trim() ? extracted.classType : extracted?.class, confidence: extracted?.confidence.classType ?? extracted?.confidence.class },
     { key: "alcoholContent", id: ids.appAlcohol, label: "Alcohol content", value: claimAlcohol, set: setClaimAlcohol, suggestion: extracted?.alcoholContentText, confidence: extracted?.confidence.alcoholContent },
     { key: "netContents", id: ids.appNet, label: "Net contents", value: claimNet, set: setClaimNet, suggestion: extracted?.netContents, confidence: extracted?.confidence.netContents },
@@ -290,41 +292,41 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
 
   const orderedImages = orderedImagesOf(slots);
 
+  // Side effects (the POST to /api/verify, object-URL create/revoke, sibling setState) stay OUTSIDE
+  // the setSlots call: React Strict Mode double-invokes setState UPDATER functions in dev, so an
+  // updater with a fetch inside fires every upload twice (doubled vision-API cost) and leaks one
+  // object URL per upload. Updaters must be pure; the new state is computed from the current render.
   function setSlot(key: SlotKey, file: File) {
-    setSlots((prev) => {
-      const old = prev[key];
-      if (old) {
-        if (zoom?.src === old.preview) setZoom(null);
-        URL.revokeObjectURL(old.preview);
-      }
-      const next = { ...prev, [key]: { file, preview: URL.createObjectURL(file), position: key as LabelPosition } };
-      void read(orderedImagesOf(next));
-      return next;
-    });
+    const old = slots[key];
+    if (old) {
+      if (zoom?.src === old.preview) setZoom(null);
+      URL.revokeObjectURL(old.preview);
+    }
+    const next = { ...slots, [key]: { file, preview: URL.createObjectURL(file), position: key as LabelPosition } };
+    setSlots(next);
+    void read(orderedImagesOf(next));
   }
   function clearSlot(key: SlotKey) {
-    setSlots((prev) => {
-      const target = prev[key];
-      if (target) {
-        if (zoom?.src === target.preview) setZoom(null);
-        URL.revokeObjectURL(target.preview);
-      }
-      const next = { ...prev, [key]: undefined };
-      const imgs = orderedImagesOf(next);
-      // Clearing the FRONT (the product anchor) or removing the last image starts a NEW product — drop the
-      // typed application + beverage-type override so the next label isn't verified against the old one.
-      // (The realistic "replace" is Remove + re-add, since a filled slot shows Remove, not a drop zone.)
-      if (key === "front" || imgs.length === 0) resetApplication();
-      if (imgs.length === 0) {
-        readToken.current++; // cancel any in-flight read
-        setState("idle");
-        setResponse(null);
-        setFormError(null); // no images -> nothing to retry; a leftover error banner would be unactionable
-      } else {
-        void read(imgs);
-      }
-      return next;
-    });
+    const target = slots[key];
+    if (target) {
+      if (zoom?.src === target.preview) setZoom(null);
+      URL.revokeObjectURL(target.preview);
+    }
+    const next = { ...slots, [key]: undefined };
+    setSlots(next);
+    const imgs = orderedImagesOf(next);
+    // Clearing the FRONT (the product anchor) or removing the last image starts a NEW product — drop the
+    // typed application + beverage-type override so the next label isn't verified against the old one.
+    // (The realistic "replace" is Remove + re-add, since a filled slot shows Remove, not a drop zone.)
+    if (key === "front" || imgs.length === 0) resetApplication();
+    if (imgs.length === 0) {
+      readToken.current++; // cancel any in-flight read
+      setState("idle");
+      setResponse(null);
+      setFormError(null); // no images -> nothing to retry; a leftover error banner would be unactionable
+    } else {
+      void read(imgs);
+    }
   }
 
   const exportBase = (orderedImages[0]?.file.name ?? "label").replace(/\.[^.]+$/, "");
@@ -368,7 +370,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
 
   const firstImage = orderedImages[0];
   const viewFirstImage = firstImage
-    ? () => setZoom({ src: firstImage.preview, alt: `Label — ${firstImage.file.name}` })
+    ? () => setZoom({ src: firstImage.preview, alt: `Label: ${firstImage.file.name}` })
     : undefined;
 
   const pipelineStage: "reading" | "awaiting" | "done" | null =
@@ -418,7 +420,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
                   <figure className="overflow-hidden rounded-card border border-border bg-surface-muted shadow-card">
                     <button
                       type="button"
-                      onClick={() => setZoom({ src: img.preview, alt: `${label} — ${img.file.name}` })}
+                      onClick={() => setZoom({ src: img.preview, alt: `${label}: ${img.file.name}` })}
                       aria-label={`Enlarge ${img.file.name}`}
                       className="group relative block w-full cursor-zoom-in bg-surface-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand-700"
                     >
@@ -445,6 +447,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
                   <DropZone
                     id={`${ids.image}-${key}`}
                     multiple={false}
+                    required={key === "front"}
                     ariaLabel={key === "front" ? "Upload front or full label (required)" : "Upload back label (optional)"}
                     onFiles={(files) => files[0] && setSlot(key, files[0])}
                     describedById={ids.imageHelp}
@@ -524,7 +527,11 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
               ))}
             </select>
             <span className="mt-1 block text-xs text-ink-muted">
-              {classChoice ? "Changed by you. Required fields updated." : "The AI read this. Change it if it's wrong."}
+              {classChoice
+                ? "Changed by you. Required fields updated."
+                : aiClassText?.trim()
+                  ? "The AI read this. Change it if it's wrong."
+                  : "No type was read from the label. Pick one to set the required fields."}
             </span>
           </div>
         )}
@@ -535,14 +542,22 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
             const hasSuggestion = Boolean(f.suggestion && f.suggestion.trim());
             const lowConf = hasSuggestion && typeof f.confidence === "number" && f.confidence < FIELD_REVIEW_CONFIDENCE;
             const accepted = hasSuggestion && f.value.trim() !== "" && norm(f.value) === norm(f.suggestion ?? "");
+            // The Tab-to-accept hint is wired to the input via aria-describedby so a screen-reader
+            // user hears that Tab has a side effect here, not just sighted users.
+            const showHint = f.value.trim() === "" && hasSuggestion && !editedInputs.has(f.id);
+            const hintId = `${f.id}-hint`;
             return (
-              <div key={f.id}>
-                <label htmlFor={f.id} className="mb-1.5 flex flex-wrap items-center gap-1.5 text-sm font-medium text-ink">
-                  <span>
+              <div key={f.id} className="relative">
+                {/* The "?" toggletip sits BESIDE the label, not inside it: inside, a click would
+                    focus the input and the help text would join the input's accessible name. The
+                    `relative` makes this field the open bubble's positioning context (full width). */}
+                <div className="mb-1.5 flex flex-wrap items-center gap-1.5 text-sm font-medium text-ink">
+                  <label htmlFor={f.id}>
                     {f.label}
                     {required && <span className="text-fail-700" aria-hidden="true"> *</span>}
                     {f.hint && <span className="font-normal text-ink-muted"> ({f.hint})</span>}
-                  </span>
+                  </label>
+                  <FieldHelp label={f.label} text={APP_FIELD_HELP[f.key]} />
                   {lowConf && (
                     <span className="rounded-pill border border-review-500 bg-review-50 px-1.5 py-0.5 text-xs font-semibold text-review-900">
                       Low confidence ({Math.round((f.confidence ?? 0) * 100)}%)
@@ -553,7 +568,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
                       from label
                     </span>
                   )}
-                </label>
+                </div>
                 <input
                   id={f.id}
                   type="text"
@@ -566,10 +581,11 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
                   placeholder={hasSuggestion && !editedInputs.has(f.id) ? f.suggestion : undefined}
                   required={required}
                   aria-required={required}
+                  aria-describedby={showHint ? hintId : undefined}
                   className={lowConf ? LOW_CONF_INPUT : inputClass}
                 />
-                {f.value.trim() === "" && hasSuggestion && !editedInputs.has(f.id) && (
-                  <span className="mt-1 block text-xs text-ink-muted">
+                {showHint && (
+                  <span id={hintId} className="mt-1 block text-xs text-ink-muted">
                     Suggested from the label. Press Tab to accept.
                   </span>
                 )}

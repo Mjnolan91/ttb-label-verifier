@@ -17,11 +17,14 @@ export function Drawer({
   onClose,
   title,
   children,
+  closeLabel = "Close review",
 }: {
   open: boolean;
   onClose: () => void;
   title: string;
   children: ReactNode;
+  /** Accessible name for the close button ("Close review" suits the batch drawer; override elsewhere). */
+  closeLabel?: string;
 }) {
   const panelRef = useRef<HTMLDivElement>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -29,16 +32,22 @@ export function Drawer({
   useEffect(() => {
     if (!open) return;
     const previouslyFocused = document.activeElement as HTMLElement | null;
-    const main = document.getElementById("main-content");
+    // Inert BOTH the page content and the fixed header controls (theme toggle / help): they sit
+    // outside #main-content, so without this they'd stay reachable behind the open dialog.
+    const background = [document.getElementById("main-content"), document.getElementById("site-controls")];
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    main?.setAttribute("inert", "");
-    main?.setAttribute("aria-hidden", "true");
+    for (const el of background) {
+      el?.setAttribute("inert", "");
+      el?.setAttribute("aria-hidden", "true");
+    }
     closeRef.current?.focus();
     return () => {
       document.body.style.overflow = prevOverflow;
-      main?.removeAttribute("inert");
-      main?.removeAttribute("aria-hidden");
+      for (const el of background) {
+        el?.removeAttribute("inert");
+        el?.removeAttribute("aria-hidden");
+      }
       previouslyFocused?.focus?.();
     };
   }, [open]);
@@ -86,7 +95,7 @@ export function Drawer({
             ref={closeRef}
             type="button"
             onClick={onClose}
-            aria-label="Close review"
+            aria-label={closeLabel}
             className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-border-strong bg-surface text-xl text-ink transition hover:border-fail-600 hover:text-fail-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2"
           >
             <IconClose />

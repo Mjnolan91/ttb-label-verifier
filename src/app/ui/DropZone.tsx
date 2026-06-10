@@ -18,6 +18,7 @@ export function DropZone({
   ariaLabel,
   accept = "image/*",
   multiple = true,
+  required = false,
 }: {
   id: string;
   onFiles: (files: File[]) => void;
@@ -27,6 +28,9 @@ export function DropZone({
   ariaLabel?: string;
   accept?: string;
   multiple?: boolean;
+  /** Announce the input as required. Caller-driven: a blanket aria-required would contradict an
+   *  optional slot's visible "(optional)" designation for screen-reader users. */
+  required?: boolean;
 }) {
   const [dragOver, setDragOver] = useState(false);
   const handle = (list: FileList | null | undefined) => {
@@ -81,7 +85,7 @@ export function DropZone({
             handle(e.target.files);
             e.target.value = "";
           }}
-          aria-required="true"
+          aria-required={required ? "true" : undefined}
           aria-label={ariaLabel}
           aria-describedby={describedById}
           className="sr-only"
