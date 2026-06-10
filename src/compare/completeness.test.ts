@@ -340,3 +340,39 @@ describe("checkCompleteness", () => {
     expect(r.overall).toBe("incomplete");
   });
 });
+
+describe("checkCompleteness — a printed origin on an import must name a COUNTRY", () => {
+  const importedRegion = () =>
+    ds({
+      name: "Jolly Jerry's Distillery",
+      address: "Bridgetown, Barbados.",
+      countryOfOrigin: "Imported from the Caribbean",
+      confidence: {
+        brand: 0.98, classType: 0.97, alcoholContent: 0.98, netContents: 0.96,
+        name: 0.95, address: 0.95, warningText: 0.96, countryOfOrigin: 0.95,
+      },
+    });
+
+  it("a region statement is malformed (present is not compliance) and names the likely country", () => {
+    const r = checkCompleteness(importedRegion());
+    const el = r.elements.find((e) => e.key === "countryOfOrigin");
+    expect(el?.status).toBe("malformed");
+    expect(el?.detail).toMatch(/does not name a country/);
+    expect(el?.detail).toMatch(/Product of Barbados/);
+    expect(r.overall).toBe("incomplete"); // a malformed element can never read complete
+  });
+
+  it("a real country marking stays present", () => {
+    const r = checkCompleteness(
+      ds({
+        address: "Bridgetown, Barbados.",
+        countryOfOrigin: "Product of Barbados",
+        confidence: {
+          brand: 0.98, classType: 0.97, alcoholContent: 0.98, netContents: 0.96,
+          name: 0.95, address: 0.95, warningText: 0.96, countryOfOrigin: 0.95,
+        },
+      }),
+    );
+    expect(r.elements.find((e) => e.key === "countryOfOrigin")?.status).toBe("present");
+  });
+});

@@ -23,6 +23,7 @@ import {
   resolveBeverageClass,
   isLowOrReducedAlcoholClaim,
 } from "./alcohol";
+import { displayCountry, foreignCountryFromAddress, namedCountryIn } from "./origin";
 
 /** Float comparison slack so e.g. 40.3 - 40 (== 0.2999999996) lands inside a ±0.3 band. */
 const EPS = 1e-6;
@@ -452,7 +453,7 @@ export function compareAddress(args: { claimed?: string; extracted?: string }): 
  * Country of origin — normalized text, import-only (compared only when the application provides it).
  * A genuinely different country is a real defect, so this CAN fail; close/contained -> review.
  */
-export function compareOrigin(args: { claimed?: string; extracted?: string }): FieldResult {
+export function compareOrigin(args: { claimed?: string; extracted?: string; extractedAddress?: string }): FieldResult {
   const claimed = args.claimed ?? "";
   const extracted = args.extracted ?? "";
   const nc = normalizeText(claimed.replace(ORIGIN_PREFIX, ""));
@@ -461,6 +462,23 @@ export function compareOrigin(args: { claimed?: string; extracted?: string }): F
     return result("review", claimed || "(none)", extracted || "(none)", "No country of origin was read from the label to compare.");
   }
   if (nc === ne) {
+    // Matching the application is not the whole check: the marking must name a COUNTRY. A region
+    // ("Imported from the Caribbean") can match the application verbatim and still be unlawful
+    // under the CBP rules the TTB origin sections incorporate. Review, never auto-fail: the
+    // country list is conservative and a person decides.
+    if (!namedCountryIn(extracted)) {
+      const from = foreignCountryFromAddress(args.extractedAddress);
+      const hint = from
+        ? ` The producer address suggests "Product of ${displayCountry(from)}".`
+        : "";
+      return result(
+        "review",
+        claimed,
+        extracted,
+        `The label matches the application, but "${extracted}" does not name a country. ` +
+          `CBP marking requires the country of origin (19 CFR 134; 27 CFR 5.69 / 7.69 / 4.35(e)).${hint}`,
+      );
+    }
     return result("pass", claimed, extracted, "Country of origin matches.");
   }
   if (wordBoundaryContains(ne, nc) || wordBoundaryContains(nc, ne) || similarity(nc, ne) >= ORIGIN_REVIEW_SIMILARITY) {

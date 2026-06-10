@@ -123,7 +123,10 @@ pipeline and the "why". As built, the load-bearing pieces are:
   label's specific designation ("Kentucky Straight Bourbon Whiskey"); `origin.ts` infers
   domestic-vs-import deterministically (importer line, foreign producer address, "Product of ..."),
   so an import with NO printed country statement is flagged instead of slipping through, and a
-  domestic label never demands one. `toClaimedFields` (also in
+  domestic label never demands one. Match is NOT compliance on origin: a printed statement that
+  names a REGION ("Imported from the Caribbean") instead of a country routes to review even when
+  it matches the application verbatim (`namedCountryIn`; the producer address suggests the likely
+  country), and completeness marks it malformed on an import. `toClaimedFields` (also in
   `reviewVerdict.ts`) is the BATCH screen's "enough to compare?" rule (needs brand AND alcohol); the
   single screen instead gates on the per-type required-input set (`requiredInputKeysFor`,
   `src/compare/requiredInputs.ts`), and `combinedVerdict` keeps a brand-only safety net since alcohol

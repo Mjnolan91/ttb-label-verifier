@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { inferOrigin, isUsAddress, suggestedCountryOfOrigin } from "./origin";
+import { displayCountry, foreignCountryFromAddress, inferOrigin, isUsAddress, namedCountryIn, suggestedCountryOfOrigin } from "./origin";
 import type { ExtractedFields } from "@/domain";
 
 /** Minimal extracted shape for origin inference (only the consulted text fields). */
@@ -202,5 +202,34 @@ describe("suggestedCountryOfOrigin", () => {
   it("suggests nothing when nothing was read", () => {
     expect(suggestedCountryOfOrigin(ex({ address: "Baltimore, MD" }))).toBeUndefined();
     expect(suggestedCountryOfOrigin(ex({}))).toBeUndefined();
+  });
+});
+
+describe("namedCountryIn — does the printed statement name an actual country?", () => {
+  it("recognizes country names and US forms in marking phrases", () => {
+    expect(namedCountryIn("Product of Barbados")).toBe("barbados");
+    expect(namedCountryIn("Imported from Trinidad and Tobago")).toBe("trinidad");
+    expect(namedCountryIn("Made in the U.S.A.")).toBeTruthy();
+    expect(namedCountryIn("PRODUCT OF MEXICO")).toBe("mexico");
+  });
+
+  it("a region is NOT a country (the Jolly Jerry's case)", () => {
+    expect(namedCountryIn("Imported from the Caribbean")).toBeNull();
+    expect(namedCountryIn("Product of Europe")).toBeNull();
+    expect(namedCountryIn("Imported")).toBeNull();
+    expect(namedCountryIn("")).toBeNull();
+    expect(namedCountryIn(undefined)).toBeNull();
+  });
+});
+
+describe("foreignCountryFromAddress — the likely intended country", () => {
+  it("reads the structured foreign tail and ignores US addresses", () => {
+    expect(foreignCountryFromAddress("Bridgetown, Barbados.")).toBe("barbados");
+    expect(foreignCountryFromAddress("Baltimore, MD")).toBeNull();
+    expect(foreignCountryFromAddress(undefined)).toBeNull();
+  });
+
+  it("displayCountry title-cases multi-word names", () => {
+    expect(displayCountry("dominican republic")).toBe("Dominican Republic");
   });
 });

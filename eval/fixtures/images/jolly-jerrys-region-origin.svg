@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="800" viewBox="0 0 600 800" font-family="Georgia, 'Times New Roman', serif">
+  <!-- Placeholder fixture image: the mock provider keys off the FILENAME and replays the cases.json
+       extracted block; this SVG exists so the fixture set stays complete (see images/MANIFEST.md).
+       Scenario: an imported rum whose origin statement names a REGION ("Imported from the
+       Caribbean") instead of a country - matches the application, still not a lawful marking. -->
+  <rect width="600" height="800" fill="#f5efdf"/>
+  <rect x="24" y="24" width="552" height="752" fill="none" stroke="#1d5c46" stroke-width="4"/>
+  <text x="300" y="120" text-anchor="middle" font-size="44" fill="#1d5c46" font-weight="bold">JOLLY JERRY'S</text>
+  <text x="300" y="170" text-anchor="middle" font-size="34" fill="#1d5c46">RUM</text>
+  <text x="300" y="290" text-anchor="middle" font-size="22" fill="#222">40% ALC/VOL (80 PROOF)</text>
+  <text x="300" y="325" text-anchor="middle" font-size="22" fill="#222">750 mL</text>
+  <text x="300" y="430" text-anchor="middle" font-size="15" fill="#222">JOLLY JERRY'S DISTILLERY</text>
+  <text x="300" y="455" text-anchor="middle" font-size="15" fill="#222">BRIDGETOWN, BARBADOS.</text>
+  <text x="300" y="490" text-anchor="middle" font-size="15" fill="#222">IMPORTED FROM THE CARIBBEAN</text>
+  <text x="300" y="540" text-anchor="middle" font-size="13" fill="#1d5c46">(a region, not a country: the deliberate defect; should say "Product of Barbados")</text>
+  <text x="60" y="620" font-size="13" fill="#111" font-weight="bold">GOVERNMENT WARNING:</text>
+  <text x="60" y="642" font-size="12" fill="#111">(1) According to the Surgeon General, women should not drink</text>
+  <text x="60" y="660" font-size="12" fill="#111">alcoholic beverages during pregnancy because of the risk of birth</text>
+  <text x="60" y="678" font-size="12" fill="#111">defects. (2) Consumption of alcoholic beverages impairs your ability</text>
+  <text x="60" y="696" font-size="12" fill="#111">to drive a car or operate machinery, and may cause health problems.</text>
+</svg>

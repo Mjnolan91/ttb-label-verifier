@@ -13,7 +13,7 @@ import { parseAlcoholText, resolveBeverageClass } from "./alcohol";
 import { normalizeWarning } from "./text";
 import { checkAlcoholInternalConsistency, validateNetContents } from "./comparators";
 import { FIELD_REVIEW_CONFIDENCE } from "./thresholds";
-import { inferOrigin } from "./origin";
+import { displayCountry, foreignCountryFromAddress, inferOrigin, namedCountryIn } from "./origin";
 
 /** The ABV parsed from the as-written alcohol statement, or undefined if absent/unparseable.
  *  Extraction carries alcohol as text only (no pre-parsed struct); parsing lives here, next to
@@ -291,6 +291,21 @@ export function checkCompleteness(extracted: ExtractedFields): CompletenessResul
       if (spec.key === "netContents") {
         const problem = validateNetContents(value, beverageClass);
         if (problem) return { ...base(spec), status: "malformed", value, detail: problem };
+      }
+      // A printed origin statement on an IMPORT must name a COUNTRY: "Imported from the Caribbean"
+      // is present but not a lawful marking (a region; CBP 19 CFR 134, via 27 CFR 5.69/7.69/4.35(e)).
+      // Conservative: a country missing from the recognizer routes to review, never fail.
+      if (spec.key === "countryOfOrigin" && inferOrigin(extracted) === "imported" && !namedCountryIn(value)) {
+        const from = foreignCountryFromAddress(extracted.address);
+        const example = from ? `"Product of ${displayCountry(from)}"` : 'a "Product of ..." country marking';
+        return {
+          ...base(spec),
+          status: "malformed",
+          value,
+          detail:
+            `Printed as "${value}", which does not name a country. CBP marking requires the ` +
+            `country of origin (19 CFR 134; 27 CFR 5.69 / 7.69 / 4.35(e)), like ${example}.`,
+        };
       }
       const lowConf = confidence === undefined || confidence < FIELD_REVIEW_CONFIDENCE;
       if (lowConf) lowConfidencePresent = true;

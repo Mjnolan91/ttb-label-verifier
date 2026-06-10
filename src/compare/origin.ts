@@ -167,6 +167,47 @@ export function isForeignAddress(address: string | undefined): boolean {
   return FOREIGN_COUNTRY_NAMES.has(addressTail(address));
 }
 
+/** Phrase-wise membership: does the normalized text contain `name` as whole word(s)? */
+function containsName(normalized: string, names: ReadonlySet<string>): string | null {
+  const padded = ` ${normalized} `;
+  for (const name of names) {
+    if (padded.includes(` ${name} `)) return name;
+  }
+  return null;
+}
+
+/**
+ * The country a printed origin statement actually NAMES, or null when it names none. "Imported
+ * from the Caribbean" matches an application that says the same thing, but it is not a lawful
+ * marking: the CBP rules the TTB origin sections incorporate (19 CFR 134; 27 CFR 5.69 / 7.69 /
+ * 4.35(e)) require the COUNTRY of origin, and "the Caribbean" is a region. This check powers the
+ * match-is-not-compliance validation in compareOrigin and the completeness malformed path: a
+ * statement can agree with the application and still need a human to fix it to "Product of
+ * Barbados". Conservative on purpose: an obscure country missing from the list reads as
+ * "names no country" and routes to REVIEW (a person confirms), never to fail.
+ */
+export function namedCountryIn(text: string | undefined): string | null {
+  const norm = normalize(text ?? "");
+  if (norm === "") return null;
+  const foreign = containsName(norm, FOREIGN_COUNTRY_NAMES);
+  if (foreign) return foreign;
+  // US forms count as naming a country ("Product of the USA" is a valid marking form).
+  return containsName(norm.replace(/\bthe\s+/g, " ").replace(/\s+/g, " ").trim(), US_COUNTRY_SYNONYMS);
+}
+
+/** The foreign country a structured producer address ends in ("Bridgetown, Barbados." ->
+ *  "barbados"), or null. Used to SUGGEST the likely intended country when a printed origin
+ *  statement names a region instead of a country. */
+export function foreignCountryFromAddress(address: string | undefined): string | null {
+  const tail = addressTail(address);
+  return FOREIGN_COUNTRY_NAMES.has(tail) ? tail : null;
+}
+
+/** Title-case a normalized country name for display: "dominican republic" -> "Dominican Republic". */
+export function displayCountry(name: string): string {
+  return name.replace(/\b[a-z]/g, (c) => c.toUpperCase());
+}
+
 /**
  * Classify the label's origin from its own text. Import evidence — an "imported …" phrase in any
  * responsibility text, a separate importer statement, a FOREIGN producer address, a

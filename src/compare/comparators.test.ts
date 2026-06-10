@@ -402,3 +402,28 @@ describe("comparators are pure (no I/O) and deterministic", () => {
     expect(a).toEqual(b);
   });
 });
+
+describe("compareOrigin — match is not compliance: the statement must name a country", () => {
+  it("a region matching the application verbatim still routes to review, naming the likely country", () => {
+    const r = compareOrigin({
+      claimed: "Imported from the Caribbean",
+      extracted: "Imported from the Caribbean",
+      extractedAddress: "Bridgetown, Barbados.",
+    });
+    expect(r.status).toBe("review");
+    expect(r.reason).toMatch(/does not name a country/);
+    expect(r.reason).toMatch(/Product of Barbados/);
+    expect(r.reason).not.toMatch(/[–—]/); // copy standard
+  });
+
+  it("a region with no address hint reviews with the generic CBP reason", () => {
+    const r = compareOrigin({ claimed: "Product of Europe", extracted: "Product of Europe" });
+    expect(r.status).toBe("review");
+    expect(r.reason).toMatch(/CBP/);
+  });
+
+  it("a real country marking still passes, including US forms", () => {
+    expect(compareOrigin({ claimed: "Product of Barbados", extracted: "Product of Barbados" }).status).toBe("pass");
+    expect(compareOrigin({ claimed: "Made in the USA", extracted: "Made in the USA" }).status).toBe("pass");
+  });
+});

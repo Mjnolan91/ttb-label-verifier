@@ -91,7 +91,11 @@ label-carries-every-required-element check (`src/compare/completeness.ts`). `com
 > hard-fail) and class/type uses `resolveBeverageClass` so a broad application class matches the
 > label's specific standard of identity. `src/compare/origin.ts` infers domestic-vs-import
 > deterministically (importer line, foreign producer address, "Product of ..." phrase), so an
-> import with no printed country statement is flagged rather than slipping through. On the single
+> import with no printed country statement is flagged rather than slipping through — and a printed
+> statement must NAME A COUNTRY: "Imported from the Caribbean" matches an application that says the
+> same thing, but a region is not a lawful CBP marking (19 CFR 134, via 27 CFR 5.69/7.69/4.35(e)),
+> so a matched-but-region statement routes to review with the producer address suggesting the
+> likely country. On the single
 > screen the application is now REQUIRED for a
 > verdict (no completeness-only headline).
 

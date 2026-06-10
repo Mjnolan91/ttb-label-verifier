@@ -155,7 +155,11 @@ export function verifyLabel(
       "countryOfOrigin",
       "Country of origin",
       applyConfidenceGate(
-        compareOrigin({ claimed: claimed.countryOfOrigin, extracted: extracted.countryOfOrigin }),
+        compareOrigin({
+          claimed: claimed.countryOfOrigin,
+          extracted: extracted.countryOfOrigin,
+          extractedAddress: extracted.address,
+        }),
         extracted.confidence.countryOfOrigin,
       ),
     );
