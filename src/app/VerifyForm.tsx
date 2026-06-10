@@ -34,6 +34,7 @@ import { deriveLabelReview, toggleOverride, setFieldNote, type FieldNotes } from
 import { DecisionPanel } from "./ui/DecisionPanel";
 import { PipelineSteps } from "./ui/PipelineSteps";
 import { CLASS_DISPLAY_LABEL } from "./ui/beverageClass";
+import { AppValueField } from "./ui/AppValueField";
 import { downscaleForUpload } from "./imageDownscale";
 import { DropZone } from "./ui/DropZone";
 import { FieldHelp } from "./ui/FieldHelp";
@@ -247,7 +248,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
 
   // Accept the AI's grey suggestion for one field by pressing Tab while it's empty (the agent confirms
   // the read as the application value) — fast, but deliberate, so an unaccepted required field still blocks.
-  function acceptOnTab(e: KeyboardEvent<HTMLInputElement>, id: string, value: string, suggestion: string | undefined, set: (v: string) => void) {
+  function acceptOnTab(e: KeyboardEvent<HTMLTextAreaElement>, id: string, value: string, suggestion: string | undefined, set: (v: string) => void) {
     // Only auto-accept an UNTOUCHED suggested field. Once the reviewer has edited/cleared it, Tab must
     // not force the (possibly wrong, low-confidence) suggestion back in — they can leave it blank or fix it.
     if (e.key === "Tab" && !e.shiftKey && value.trim() === "" && !editedInputs.has(id) && suggestion && suggestion.trim()) {
@@ -584,18 +585,16 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
                   </label>
                   <FieldHelp label={f.label} text={APP_FIELD_HELP[f.key]} />
                 </div>
-                <input
+                <AppValueField
                   id={f.id}
-                  type="text"
                   value={f.value}
-                  onChange={(e) => {
-                    f.set(e.target.value);
+                  onValueChange={(v) => {
+                    f.set(v);
                     markEdited(f.id);
                   }}
                   onKeyDown={(e) => acceptOnTab(e, f.id, f.value, f.suggestion, f.set)}
                   placeholder={hasSuggestion && !editedInputs.has(f.id) ? f.suggestion : undefined}
                   required={required}
-                  aria-required={required}
                   aria-describedby={describedBy || undefined}
                   className={lowConf ? LOW_CONF_INPUT : inputClass}
                 />

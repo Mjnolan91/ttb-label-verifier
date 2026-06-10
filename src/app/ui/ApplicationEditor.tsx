@@ -25,6 +25,7 @@ import type { ApplicationValues } from "../batch/productVerdict";
 import type { ApplicationEdits } from "../batch/useWorklist";
 import { APP_FIELD_HELP, type AppInputKey } from "./fieldHelpCopy";
 import { APP_INPUT_SPECS, appInputConfidence, appInputSuggestion, countryOfOriginImportNote } from "./appInputs";
+import { AppValueField } from "./AppValueField";
 import { FieldHelp } from "./FieldHelp";
 import { inputClass } from "./fieldStyles";
 import { IconPass } from "./icons";
@@ -59,7 +60,7 @@ export function ApplicationEditor({
 }) {
   // One mounted editor per open drawer; useId keeps the input ids valid (no product-name spaces).
   const idBase = useId();
-  const firstInputRef = useRef<HTMLInputElement>(null);
+  const firstInputRef = useRef<HTMLTextAreaElement>(null);
 
   const suggestionFor = (key: AppInputKey): string | undefined => appInputSuggestion(extracted, key);
   const confidenceFor = (key: AppInputKey): number | undefined => appInputConfidence(extracted, key);
@@ -162,12 +163,12 @@ export function ApplicationEditor({
                 </label>
                 <FieldHelp label={f.label} text={APP_FIELD_HELP[f.key]} />
               </div>
-              <input
+              <AppValueField
                 ref={i === 0 ? firstInputRef : undefined}
                 id={id}
-                type="text"
                 value={value}
-                onChange={(e) => onChange(f.key, e.target.value)}
+                onValueChange={(v) => onChange(f.key, v)}
+                placeholder={showSuggestion ? suggestion : undefined}
                 aria-describedby={describedBy || undefined}
                 className={lowConf || needsAttention ? LOW_CONF_INPUT : inputClass}
               />
