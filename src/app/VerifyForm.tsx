@@ -38,7 +38,7 @@ import { downscaleForUpload } from "./imageDownscale";
 import { DropZone } from "./ui/DropZone";
 import { FieldHelp } from "./ui/FieldHelp";
 import { APP_FIELD_HELP, type AppInputKey } from "./ui/fieldHelpCopy";
-import { APP_INPUT_SPECS, appInputConfidence, appInputSuggestion } from "./ui/appInputs";
+import { APP_INPUT_SPECS, appInputConfidence, appInputSuggestion, countryOfOriginImportNote } from "./ui/appInputs";
 import { ErrorAlert } from "./ui/ErrorAlert";
 import { ResultSkeleton } from "./ui/ResultSkeleton";
 import { inputClass, linkClass, secondaryButtonClass } from "./ui/fieldStyles";
@@ -553,9 +553,18 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
             // The Tab-to-accept hint is wired to the input via aria-describedby so a screen-reader
             // user hears that Tab has a side effect here, not just sighted users.
             const showHint = f.value.trim() === "" && hasSuggestion && !editedInputs.has(f.id);
+            // The imports-only country input must SAY when an import was inferred but nothing is
+            // printed to transcribe: a silently blank field reads as "the AI missed it".
+            const importNote =
+              f.key === "countryOfOrigin" && extracted ? countryOfOriginImportNote(extracted) : undefined;
             const hintId = `${f.id}-hint`;
             const metaId = `${f.id}-meta`;
-            const describedBy = [showHint ? hintId : null, lowConf || accepted ? metaId : null]
+            const noteId = `${f.id}-import-note`;
+            const describedBy = [
+              showHint ? hintId : null,
+              lowConf || accepted ? metaId : null,
+              importNote ? noteId : null,
+            ]
               .filter(Boolean)
               .join(" ");
             return (
@@ -601,6 +610,11 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
                         from label
                       </span>
                     )}
+                  </span>
+                )}
+                {importNote && (
+                  <span id={noteId} className="mt-1 block break-words text-xs font-medium text-review-700">
+                    {importNote}
                   </span>
                 )}
                 {showHint && (

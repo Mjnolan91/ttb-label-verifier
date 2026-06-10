@@ -24,7 +24,7 @@ import { FIELD_REVIEW_CONFIDENCE } from "@/compare";
 import type { ApplicationValues } from "../batch/productVerdict";
 import type { ApplicationEdits } from "../batch/useWorklist";
 import { APP_FIELD_HELP, type AppInputKey } from "./fieldHelpCopy";
-import { APP_INPUT_SPECS, appInputConfidence, appInputSuggestion } from "./appInputs";
+import { APP_INPUT_SPECS, appInputConfidence, appInputSuggestion, countryOfOriginImportNote } from "./appInputs";
 import { FieldHelp } from "./FieldHelp";
 import { inputClass } from "./fieldStyles";
 import { IconPass } from "./icons";
@@ -138,9 +138,15 @@ export function ApplicationEditor({
                 ? "from CSV"
                 : null;
           const showSuggestion = hasSuggestion && value.trim() === "";
+          const importNote = f.key === "countryOfOrigin" ? countryOfOriginImportNote(extracted) : undefined;
           const hintId = `${id}-hint`;
           const metaId = `${id}-meta`;
-          const describedBy = [showSuggestion ? hintId : null, lowConf || provenance ? metaId : null]
+          const noteId = `${id}-import-note`;
+          const describedBy = [
+            showSuggestion ? hintId : null,
+            lowConf || provenance ? metaId : null,
+            importNote ? noteId : null,
+          ]
             .filter(Boolean)
             .join(" ");
           const needsAttention = Boolean(claimedNeeds) && (f.key === "brand" || f.key === "alcoholContent") && value.trim() === "";
@@ -177,6 +183,11 @@ export function ApplicationEditor({
                       {provenance}
                     </span>
                   )}
+                </span>
+              )}
+              {importNote && (
+                <span id={noteId} className="mt-1 block break-words text-xs font-medium text-review-700">
+                  {importNote}
                 </span>
               )}
               {showSuggestion && (

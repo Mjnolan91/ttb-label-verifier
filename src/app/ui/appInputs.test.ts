@@ -2,7 +2,13 @@
  * appInputs.test.ts — the shared application-input descriptor (one source for both screens).
  */
 import { describe, expect, it } from "vitest";
-import { APP_INPUT_ORDER, APP_INPUT_SPECS, appInputConfidence, appInputSuggestion } from "./appInputs";
+import {
+  APP_INPUT_ORDER,
+  APP_INPUT_SPECS,
+  appInputConfidence,
+  appInputSuggestion,
+  countryOfOriginImportNote,
+} from "./appInputs";
 import { APP_FIELD_HELP } from "./fieldHelpCopy";
 import type { ExtractedFields } from "@/domain";
 
@@ -47,5 +53,38 @@ describe("appInputSuggestion / appInputConfidence", () => {
     expect(appInputSuggestion(extracted, "countryOfOrigin")).toBeUndefined();
     const imported = { ...extracted, countryOfOrigin: "Product of Barbados" };
     expect(appInputSuggestion(imported, "countryOfOrigin")).toBe("Product of Barbados");
+  });
+});
+
+describe("countryOfOriginImportNote", () => {
+  const base: ExtractedFields = {
+    warningPrefixIsAllCaps: true,
+    warningPrefixIsBold: true,
+    confidence: {},
+  };
+
+  it("announces an inferred import with no printed statement, naming the evidence", () => {
+    // The Sailor Sally's case: a blank imports-only input read as "the AI missed Spain" even
+    // though the system had classified the label as an import and flagged the verdict.
+    const note = countryOfOriginImportNote({
+      ...base,
+      address: "Valencia, Spain",
+      importerStatement: "IMPORTED BY: SEA TRADER IMPORTS, MIAMI, FL.",
+    });
+    expect(note).toMatch(/Import detected/);
+    expect(note).toMatch(/importer statement/);
+    expect(note).toMatch(/Valencia, Spain/);
+    expect(note).toMatch(/Product of/);
+  });
+
+  it("stays silent for a domestic or unknown-origin label", () => {
+    expect(countryOfOriginImportNote({ ...base, address: "Baltimore, MD" })).toBeUndefined();
+    expect(countryOfOriginImportNote(base)).toBeUndefined();
+  });
+
+  it("stays silent when a printed origin statement WAS read (the suggestion covers it)", () => {
+    expect(
+      countryOfOriginImportNote({ ...base, countryOfOrigin: "Product of Spain", address: "Valencia, Spain" }),
+    ).toBeUndefined();
   });
 });

@@ -13,7 +13,7 @@
  * (src/app/batch/productVerdict.ts) and the CSV header aliases (src/batch/csv.ts).
  */
 import type { ExtractedFields } from "@/domain";
-import { suggestedCountryOfOrigin } from "@/compare";
+import { inferOrigin, isForeignAddress, suggestedCountryOfOrigin } from "@/compare";
 import type { AppInputKey } from "./fieldHelpCopy";
 
 export interface AppInputSpec {
@@ -67,4 +67,26 @@ export function appInputConfidence(extracted: ExtractedFields, key: AppInputKey)
   if (key === "classType") return extracted.confidence.classType ?? extracted.confidence.class;
   if (key === "alcoholContent") return extracted.confidence.alcoholContent;
   return extracted.confidence[key as keyof ExtractedFields["confidence"]] as number | undefined;
+}
+
+/**
+ * The note shown under the imports-only Country of origin input when the label shows import
+ * EVIDENCE but no printed origin statement. Without it the inference is invisible: the input
+ * correctly stays blank (there is nothing printed to transcribe), which reads as "the AI missed
+ * Spain" when the system has in fact classified the label as an import and flagged the missing
+ * statement in the verdict.
+ */
+export function countryOfOriginImportNote(extracted: ExtractedFields): string | undefined {
+  if ((extracted.countryOfOrigin ?? "").trim() !== "") return undefined;
+  if (inferOrigin(extracted) !== "imported") return undefined;
+  const address = (extracted.address ?? "").trim();
+  const evidence = [
+    (extracted.importerStatement ?? "").trim() !== "" ? "an importer statement" : null,
+    isForeignAddress(address) ? `a foreign producer address ("${address}")` : null,
+  ].filter(Boolean);
+  const what = evidence.length > 0 ? evidence.join(" and ") : "import evidence";
+  return (
+    `Import detected: the label shows ${what} but no printed "Product of ..." statement. ` +
+    "The verdict flags the missing country of origin."
+  );
 }
