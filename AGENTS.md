@@ -84,11 +84,15 @@ label-carries-every-required-element check (`src/compare/completeness.ts`). `com
 
 > **Scope note (2026-06-09):** the claimed-vs-application comparison was expanded from these three to a
 > **full field-by-field application match** — it ALSO compares net contents, class/type, producer
-> name, producer address, and country of origin, each only when the application supplies that value
+> name, producer address, country of origin, distinctive/fanciful name, and statement of
+> composition, each only when the application supplies that value
 > (`verifyLabel` returns an ordered `VerifyResult.fields` list). The three below remain the
 > CFR-grounded core; the added comparators bias uncertainty to `review` (producer name/address never
 > hard-fail) and class/type uses `resolveBeverageClass` so a broad application class matches the
-> label's specific standard of identity. On the single screen the application is now REQUIRED for a
+> label's specific standard of identity. `src/compare/origin.ts` infers domestic-vs-import
+> deterministically (importer line, foreign producer address, "Product of ..." phrase), so an
+> import with no printed country statement is flagged rather than slipping through. On the single
+> screen the application is now REQUIRED for a
 > verdict (no completeness-only headline).
 
 - **Brand name — fuzzy.** Normalize case, whitespace, punctuation, and smart quotes, then
@@ -121,7 +125,10 @@ label-carries-every-required-element check (`src/compare/completeness.ts`). `com
   deployment, no automatic upgrade). Measured (2026-06-10, 9 live reads per config): Flash
   extraction + Pro judge = 9/9 verdicts, p95 4.5s (the concurrent judge hides behind the
   extraction wall-clock); Pro extraction = p95 8.1s with quota failures — extraction
-  stays on Flash BY MEASUREMENT, not preference.
+  stays on Flash BY MEASUREMENT, not preference. The same split was measured on OpenAI
+  (gpt-4.1 extraction + gpt-5.5 judge = 6/6 at p50 2.8s; gpt-5.5 extraction doubled the
+  median), and the hosted demo runs that OpenAI split — the fast-model-extracts /
+  strongest-model-judges rule is vendor-neutral.
 
 ## Alcohol-content tolerance matrix (classType -> tolerance)
 The full beverage matrix below is the rule set the alcohol check selects from. `classType`

@@ -8,7 +8,8 @@ flags the rest for a human — it does not try to replace human judgment.
 
 The product is **verify-first**. The **primary** path is the claimed-vs-application comparison: a
 pure comparator matches the label field-by-field against the application (brand, class/type,
-alcohol content, net contents, producer name, producer address, country of origin, plus the
+alcohol content, net contents, producer name, producer address, country of origin, distinctive/
+fanciful name, statement of composition, plus the
 automatic statutory government warning) and returns an Approve / Needs review / Reject verdict; on
 the single screen the application's TTB-required fields for the beverage type are required before a
 verdict. Underneath, the AI always reads the label image(s) into the full TTB field set, a
@@ -52,7 +53,8 @@ high-confidence and routes disagreements to review. The **always-on** determinis
 **completeness** check: each mandatory element for the detected beverage class is flagged present /
 missing / malformed / unverifiable, with no application required. The comparator produces the
 pass/review/fail verdict field by field across the full application (the three CFR-core checks plus
-class/type, net contents, producer name/address, country of origin); on the single screen the
+class/type, net contents, producer name/address, country of origin, distinctive/fanciful name,
+statement of composition); on the single screen the
 application is required for a verdict, and the headline takes the worse of the comparison and the
 completeness check. Keeping every verdict in deterministic code (not the model) is what makes the
 result auditable — essential in a government compliance setting.
@@ -93,7 +95,8 @@ to review. We prove all of this with an evaluation harness, not assertions.
 - **MVP:** AI extraction of the full TTB field set, the TTB completeness check per beverage type,
   the deterministic claimed comparison over a required application (full field-by-field: the three
   CFR-core checks — brand fuzzy / ABV tolerance / strict government warning — plus class/type, net
-  contents, producer name/address, country of origin), an accessibility-first single-screen UI, and
+  contents, producer name/address, country of origin, distinctive/fanciful name, statement of
+  composition), an accessibility-first single-screen UI, and
   graceful handling of unreadable images (re-upload prompt, never a fabricated verdict).
 - **Differentiators:** real Azure-native providers (Azure OpenAI for `llm`, Azure AI Document
   Intelligence for `ocr`, plus OpenAI- and Gemini-direct paths for the hosted demo) behind the generic

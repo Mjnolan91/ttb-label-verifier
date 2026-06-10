@@ -5,7 +5,7 @@ deterministic code checks the label against the application's claimed values and
 labeling rules, and returns an at-a-glance verdict: **Approve / Needs review / Reject**.
 
 **Live demo:** https://ttb-label-verifier-matthew-nolan-s-projects.vercel.app
-(runs a real vision model, so it can read any label photo)
+(runs a real vision model, OpenAI gpt-4.1, so it can read any label photo)
 
 ![The verify screen: a bourbon label read by the AI, checked field by field against the application, with an Approve verdict](docs/screenshot.png)
 
@@ -40,7 +40,9 @@ For the batch workflow (the brief's importers dumping 200 to 300 applications at
 [/batch](https://ttb-label-verifier-matthew-nolan-s-projects.vercel.app/batch): drop many images,
 fronts and backs pair by filename, optionally attach a CSV of claimed values (the downloadable
 template ships ready-made rows for the three sample labels), and results stream into a reviewable
-worklist with CSV export.
+worklist with CSV export. The review drawer lets you supply or correct application values in
+place, so a batch without a CSV is still fully workable, and rows settle one by one, so a
+300-label dump is triaged continuously rather than waited on.
 
 ## Run it locally
 
@@ -76,7 +78,7 @@ image(s) ──> VisionProvider(s) ──> reconciler ──> completeness check
   makes the compliance verdict.
 - **Providers are swappable behind one interface.** `mock` (default, offline), `openai`,
   `gemini`, `llm` (Azure OpenAI), `ocr` (Azure AI Document Intelligence), and `ensemble`
-  (both Azure providers in parallel, disagreements routed to review). Adding Gemini was a ~200-line
+  (both Azure providers in parallel, disagreements routed to review). Adding Gemini was a ~300-line
   drop-in behind the [`VisionProvider`](src/extraction/VisionProvider.ts) interface.
 - **The real providers use current best practice.** Strict structured outputs
   (`response_format: json_schema` on the OpenAI-dialect providers, Gemini's `responseSchema`
@@ -88,10 +90,11 @@ image(s) ──> VisionProvider(s) ──> reconciler ──> completeness check
   of the same value) count as one reading, while a numeric difference never clusters — so noise
   doesn't dilute confidence but a real conflict still does. An ADAPTIVE second batch is available
   as an opt-in (`SELF_CONSISTENCY_ESCALATION`): when a verdict-relevant field lands just below the
-  review gate, up to 2 extra reads are drawn once and the vote re-runs — a single noisy sample out
+  review gate, extra reads are drawn once (the knob's value, capped at 3) and the vote re-runs — at
+  the recommended 2, a single noisy sample out
   of three recovers to 4/5 agreement instead of sending a correct field to review, while genuine
   splits stay flagged. (Off by default on the demo, by measurement: contested reads pay one extra
-  parallel batch, which pushed the live median toward the ~5s ceiling on free-tier quota.) A
+  parallel batch, which measurably pushed the live median toward the ~5s ceiling.) A
   dedicated second pass
   judges whether the "GOVERNMENT WARNING:" prefix is printed in bold; because the warning is the
   one check that can hard-fail a label, that judge can run on a stronger model than the bulk reads
@@ -137,25 +140,29 @@ ship.
 The offline latency it prints is sub-millisecond because the mock skips the model call; it measures
 the pipeline, not a vision model. Real-deployment latency is measured too:
 [`scripts/measure-live-latency.ts`](scripts/measure-live-latency.ts) posts the three sample labels
-to a deployed `/api/verify` end to end and checks each verdict. Against the live demo (Gemini on
-Vercel, Flash extraction + the Pro warning judge, 15 sequential reads, 2026-06-10): **p50 4.1s,
-p95 7.7s, 15/15 verdicts correct**. The median sits inside the ~5s budget; tail reads exceed it
-(the slowest read was the first request, which pays the serverless cold start) and are bounded by
-the ~8s per-call cap. The levers are
+to a deployed `/api/verify` end to end and checks each verdict. Against the live demo (OpenAI on
+Vercel, gpt-4.1 extraction + a gpt-5.5 warning judge, 15 sequential reads, 2026-06-10): **p50 4.9s,
+p95 7.5s, and every completed read (14/14) returned the correct verdict**. One read of the fifteen
+hit the ~8s per-call straggler cap and returned the explicit "timed out, please try again" path
+rather than a guessed verdict: the budget is enforced, not hoped for. The median sits at the ~5s
+budget and the tail is bounded by the cap. The levers are
 documented in [`.env.example`](.env.example): `SELF_CONSISTENCY_SAMPLES` (3 reads per image by
-default; 2 trades some confidence calibration for speed), `SELF_CONSISTENCY_ESCALATION` (opt-in
-extra reads on a contested verdict-relevant field; accuracy over tail latency), and the model
-choice. Uploads are downscaled in the browser to keep request sizes inside the budget.
+default; a measured 7-wide vote with a 5s straggler cap ran 10/10 correct verdicts at 2.9-5.0s),
+`SELF_CONSISTENCY_ESCALATION` (opt-in extra reads on a contested verdict-relevant field; accuracy
+over tail latency), and the model choice. Uploads are downscaled in the browser to keep request
+sizes inside the budget.
 
-The same split holds across providers: on OpenAI (local dev server, real API, 2026-06-10),
-gpt-4.1 extraction with a gpt-5.5 warning judge measured **6/6 verdicts at p50 2.8s, p95 3.0s**,
-while moving extraction itself to gpt-5.5 doubled the median (p50 6.5s) for identical verdicts —
+The deployed config was chosen by A/B measurement, not preference: on OpenAI (local dev server,
+real API, 2026-06-10), gpt-4.1 extraction with a gpt-5.5 warning judge measured **6/6 verdicts at
+p50 2.8s, p95 3.0s**, while moving extraction itself to gpt-5.5 doubled the median (p50 6.5s) for
+identical verdicts —
 so on either vendor, the fast model transcribes and the strongest model judges the one check that
 can hard-fail a label. (The gpt-5/o-series' chat params differ from the gpt-4 line; the provider
 adapts automatically — see `src/extraction/openaiTuning.ts`.)
 
-The Gemini model SPLIT was measured the same way (local dev server, real Gemini API, 9 sequential
-reads per config, 2026-06-10). Flash extraction with the Pro warning judge: **9/9 verdicts correct, p50
+The same split holds on Gemini, measured the same way (local dev server, real Gemini API, 9
+sequential reads per config, 2026-06-10); an earlier Gemini deployment of this demo measured
+p50 4.1s, p95 7.7s, 15/15 verdicts correct on the same script. Flash extraction with the Pro warning judge: **9/9 verdicts correct, p50
 3.3s, p95 4.5s** — inside the budget, because the judge runs concurrently with extraction and its
 ~2s hides behind the extraction wall-clock. Running extraction itself on the Pro model: p50 6.0s,
 p95 8.1s, and 4 of 9 requests failed outright on the preview model's 25-requests/minute quota
@@ -314,5 +321,5 @@ az containerapp up --name ttb-label-verifier --resource-group ttb-label-verifier
 | [`specs/PROJECT_SPEC.md`](specs/PROJECT_SPEC.md) | Requirements traced to the stakeholder interviews |
 
 **Stack:** Next.js 16 (App Router) + React 19 + TypeScript (strict) + Tailwind 4 + Vitest. No
-database, no other runtime dependencies. AI: Google Gemini / OpenAI (hosted demo) and Azure OpenAI
+database, no other runtime dependencies. AI: OpenAI (hosted demo) / Google Gemini, and Azure OpenAI
 / Azure AI Document Intelligence (in-tenant target), all behind one interface.

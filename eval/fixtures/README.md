@@ -57,8 +57,12 @@ placeholders are human-viewable documentation of each scenario; they are not con
 | `puffery-excluded-rum-approve` | `cayo-verde-superior-rum.svg` | pass | pass | pass | **approve** |
 | `producer-acronym-brand-approve` | `northgate-acronym-vodka.svg` | pass | pass | pass | **approve** |
 | `specialty-spiced-rum-approve` | `cayo-verde-spiced-specialty.svg` | pass | pass | pass | **approve** |
+| `sangria-import-no-country-review` | `sangria-import-no-country.svg` | pass | pass | pass | **review** |
 
-The last three are NEGATIVE-ALLOCATION fixtures — see "Per-field metrics and allocation fixtures" below.
+The sangria case is the origin-inference fixture: every claimed-vs-label comparison passes, but the
+label carries an importer line and a foreign producer address with NO "Product of Spain" statement,
+so the inferred import's missing country of origin routes the overall verdict to review.
+The `cayo-verde`/`northgate` trio are NEGATIVE-ALLOCATION fixtures — see "Per-field metrics and allocation fixtures" below.
 (The Brand/Alcohol/Warning columns are the three CFR-core checks; the eval also scores four more
 per-field metrics — `classType`, `netContents`, `fancifulName`, `statementOfComposition` — not shown
 here to keep the table narrow. Each case's full per-field expectation lives in its `expected.perField`

@@ -5,7 +5,7 @@ later. Nearly every `imageFilename` in [`../cases.json`](../cases.json) maps to 
 this directory (four later-added cases — `granite-peak-ipa-fuzzy.svg`, `cayo-verde-superior-rum.svg`,
 `northgate-acronym-vodka.svg`, `cayo-verde-spiced-specialty.svg` — still need a placeholder file +
 row here; the offline suite passes without them because the mock keys off the filename string, never
-the bytes). Rows #1–#7, #12–#14, and #15 are lightweight **`.svg` PLACEHOLDERS** that depict the
+the bytes). Rows #1–#7 and #12–#16 are lightweight **`.svg` PLACEHOLDERS** that depict the
 intended label so the suite is fully self-contained and needs no real image bytes; **row #8 is a real
 supplied image** (the ABC clean-pass demo case); **rows #9–#11 are REAL generated raster labels**
 (`.png`) linked from the README's "Try it in two minutes" walkthrough, so the live vision demo extracts genuine pixels —
@@ -14,7 +14,7 @@ regenerate them with `node scripts/generate-demo-labels.cjs`. To exercise a real
 path below.
 
 > **Dual role of these files.** The offline mock keys off the *filename* (pixels irrelevant), so the
-> suite stays hermetic; but on a deployed real-provider demo (Gemini on the live URL; Azure OpenAI
+> suite stays hermetic; but on a deployed real-provider demo (OpenAI on the live URL; Azure OpenAI
 > for the in-tenant target) the *same files' bytes* are sent to the model. The
 > `.svg` stubs (#1–#7) literally say "PLACEHOLDER" and aren't valid raster input for a vision model,
 > which is why the README's demo walkthrough points at the real `.png` rows #9–#11 (+ the real `.jpg` #8),
@@ -47,6 +47,7 @@ hermetic-keying explanation.
 | 13 | `oakmoor-port-over14-boundary.svg` | `eval/fixtures/images/oakmoor-port-over14-boundary.svg` | `wine-over14-boundary-reject` | Same as #12 | Brand **OAKMOOR**; class/type **Tawny Port** (Napa Valley, a >14% wine); label reads **14.0% Alc./Vol.** while the application claims 14.5%; net **750 mL**; full canonical warning, all-caps bold prefix. The 0.5 pp gap is inside the +/-1.0 pp band, but 14.0% crosses the 14% tax-class boundary (27 CFR 4.36(c)) — the sole defect. | **reject** |
 | 14 | `granite-peak-ipa-clean.svg` | `eval/fixtures/images/granite-peak-ipa-clean.svg` | `malt-beverage-approve` | Portrait label, ~600x800; clean | Brand **GRANITE PEAK**; class/type **India Pale Ale** (resolves to malt beverage); **6.7% Alc./Vol.**; net **12 FL OZ**; full canonical warning, ALL-CAPS **bold** `GOVERNMENT WARNING:` prefix. Application claims 6.5% — a 0.2 pp gap inside the malt +/-0.3 pp band. | **approve** |
 | 15 | `old-tom-no-net-contents.svg` | `eval/fixtures/images/old-tom-no-net-contents.svg` | `missing-net-contents-review` | Portrait label, ~600x800 | Identical to #1 EXCEPT **net contents is omitted**. Brand/class/alcohol/warning all correct; the missing mandatory field is the sole defect. | **review** |
+| 16 | `sangria-import-no-country.svg` | `eval/fixtures/images/sangria-import-no-country.svg` | `sangria-import-no-country-review` | Portrait label, ~600x800; clean | Brand **Sailor Sally's** (Sailor Sally's Cellars, Valencia, Spain); class/type **Sangria**; **8.5% ALC/VOL (17 PROOF)**; net **750 mL**; importer line **"IMPORTED BY: SEA TRADER IMPORTS, MIAMI, FL."**; full canonical warning, ALL-CAPS **bold** prefix. NO "Product of Spain" statement anywhere — the import is inferred (importer line + foreign producer address) and the missing country-of-origin statement is the sole defect. | **review** |
 
 > Dimensions note: ~600x800 is a guideline that matches the placeholder canvas. Real photos may be
 > larger or a different aspect ratio — that is fine. What matters is that the label is legible and

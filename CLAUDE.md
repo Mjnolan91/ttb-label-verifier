@@ -63,8 +63,9 @@ pipeline and the "why". As built, the load-bearing pieces are:
   back to the extraction model when that
   call fails; `WARNING_JUDGE_MODEL` pins/upgrades it per provider; an UNVERIFIABLE caps/bold
   prefix routes the warning to review in `compareWarning` — "verified" is never claimed on
-  missing evidence). Extraction stays on Flash by measurement (Pro extraction blew the ~5s
-  budget and its 25 req/min quota; see README "Measured, not claimed"). `runVerification()` adds the claimed comparison. `/api/verify`
+  missing evidence). On the Gemini provider, extraction stays on Flash by measurement (Pro
+  extraction blew the ~5s budget and its 25 req/min quota; see README "Measured, not claimed");
+  the same fast-extracts/strong-judges split holds on OpenAI (gpt-4.1 + gpt-5.5 judge). `runVerification()` adds the claimed comparison. `/api/verify`
   always extracts + runs the TTB **completeness** check (`src/compare/completeness.ts` over
   `src/domain/labelRequirements.ts`); it also returns a claimed-comparison verdict when
   `brand`+`alcoholContent` are posted. Batch pairs front/back by filename (`src/batch/pairing.ts`) and
@@ -95,7 +96,8 @@ pipeline and the "why". As built, the load-bearing pieces are:
   pipeline drives; `geminiTuning.ts`/`openaiTuning.ts` hold per-provider request tuning —
   the OpenAI side is FAMILY-AWARE (`chatParams`): gpt-5/o-series reasoning models reject
   `max_tokens` and non-default `temperature`, need `max_completion_tokens` with reasoning
-  headroom, and get `reasoning_effort: "low"` to stay in the latency budget.
+  headroom, and get a low reasoning effort to stay in the latency budget (env-tunable via
+  `OPENAI_REASONING_EFFORT`, default low).
 - **`src/compare/`** — pure, deterministic comparators + `verifyLabel` (claimed comparison) +
   `completeness.ts` (each TTB-required element present / missing / malformed / unverifiable, per
   beverage type) + `thresholds.ts`. Two DISTINCT thresholds, easy to confuse:
@@ -112,7 +114,10 @@ pipeline and the "why". As built, the load-bearing pieces are:
   `VerifyResult.fields` list (with `brand`/`alcohol`/`warning` named accessors kept for the eval/CSV).
   Each comparator biases uncertainty to `review`;
   class/type uses `resolveBeverageClass` so a broad application class ("distilled spirits") matches the
-  label's specific designation ("Kentucky Straight Bourbon Whiskey"). `toClaimedFields` (also in
+  label's specific designation ("Kentucky Straight Bourbon Whiskey"); `origin.ts` infers
+  domestic-vs-import deterministically (importer line, foreign producer address, "Product of ..."),
+  so an import with NO printed country statement is flagged instead of slipping through, and a
+  domestic label never demands one. `toClaimedFields` (also in
   `reviewVerdict.ts`) is the BATCH screen's "enough to compare?" rule (needs brand AND alcohol); the
   single screen instead gates on the per-type required-input set (`requiredInputKeysFor`,
   `src/compare/requiredInputs.ts`), and `combinedVerdict` keeps a brand-only safety net since alcohol
@@ -143,9 +148,10 @@ pipeline and the "why". As built, the load-bearing pieces are:
   a send-back, errored rows get a per-row Retry, no-CSV rows start as an honest completeness-only
   review whose missing elements are resolvable concern cards via `labelReview`/`ProductReview` — and
   the drawer's `ApplicationEditor` lets the reviewer SUPPLY or correct application values in place:
-  persisted edits OVERLAY the matched CSV row (an explicit "" clears a CSV value), ANY edit clears
-  ALL of that product's confirm/flag overrides (a stale "ok" must never force-pass a recomputed
-  comparison), and the verdict derives at render — NOT cached at analyze time — via
+  persisted edits OVERLAY the matched CSV row (an explicit "" clears a CSV value), ANY edit
+  invalidates the review — ALL confirm/flag overrides AND any recorded decision drop, the row
+  returns to Undecided (a stale "ok" or a stale "Approved" must never force-pass a recomputed
+  comparison) — and the verdict derives at render — NOT cached at analyze time — via
   `deriveProductVerdict` (`src/app/batch/productVerdict.ts`), the ONE derivation shared by the row
   badges/triage, the drawer, and both exports. The nine application-input descriptors (labels/hints/
   suggestion+confidence mapping) live ONCE in `src/app/ui/appInputs.ts`, consumed by BOTH VerifyForm
@@ -162,7 +168,8 @@ pipeline and the "why". As built, the load-bearing pieces are:
   from `eval/fixtures/cases.json` — so it only "reads" those fixture filenames, not arbitrary uploads.
   To read ANY uploaded image, set `VISION_PROVIDER` to a real provider — `openai`/`gemini` (simplest;
   one API key, no Azure resource) or `llm`/`ocr`/`ensemble` (Azure in-tenant). The hosted Vercel demo
-  runs a real provider (Gemini, via env vars); Azure is the documented in-tenant production target;
+  runs a real provider (OpenAI gpt-4.1 + gpt-5.5 warning judge, via env vars; switched from Gemini
+  2026-06-10); Azure is the documented in-tenant production target;
   the deployed URL runs a real provider. The verify screen offers the three demo labels as plain
   download links ("No label handy?") served from `public/samples/` — byte-copies of
   `eval/fixtures/images/demo-*.png` kept in lockstep by `scripts/generate-demo-labels.cjs` (writes
