@@ -121,10 +121,15 @@ a hard gate: if precision on "approve" drops below **0.98**, the run exits non-z
 ship.
 
 The offline latency it prints is sub-millisecond because the mock skips the model call; it measures
-the pipeline, not a vision model. In informal testing on the hosted demo, real reads return in
-roughly 1-4s, inside the ~5s budget (uploads are downscaled in the browser to keep them there);
-systematic real-provider p50/p95 should be captured from a keyed deployment and is noted as a
-limitation.
+the pipeline, not a vision model. Real-deployment latency is measured too:
+[`scripts/measure-live-latency.ts`](scripts/measure-live-latency.ts) posts the three sample labels
+to a deployed `/api/verify` end to end and checks each verdict. Against the live demo (Gemini on
+Vercel, 15 sequential reads, 2026-06-09): **p50 4.5s, p95 7.0s, 15/15 verdicts correct**. The
+median sits inside the ~5s budget; tail reads exceed it (one of the three samples consistently
+reads about 2s slower than the others) and are bounded by the ~8s per-call cap. The levers are
+documented in [`.env.example`](.env.example): `SELF_CONSISTENCY_SAMPLES` (3 reads per image by
+default; 2 trades some confidence calibration for speed) and the model choice. Uploads are
+downscaled in the browser to keep request sizes inside the budget.
 
 ## Assumptions and trade-offs
 
