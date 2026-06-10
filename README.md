@@ -129,9 +129,10 @@ The offline latency it prints is sub-millisecond because the mock skips the mode
 the pipeline, not a vision model. Real-deployment latency is measured too:
 [`scripts/measure-live-latency.ts`](scripts/measure-live-latency.ts) posts the three sample labels
 to a deployed `/api/verify` end to end and checks each verdict. Against the live demo (Gemini on
-Vercel, 15 sequential reads, 2026-06-09): **p50 4.5s, p95 7.0s, 15/15 verdicts correct**. The
-median sits inside the ~5s budget; tail reads exceed it (one of the three samples consistently
-reads about 2s slower than the others) and are bounded by the ~8s per-call cap. The levers are
+Vercel, Flash extraction + the Pro warning judge, 15 sequential reads, 2026-06-10): **p50 4.1s,
+p95 7.7s, 15/15 verdicts correct**. The median sits inside the ~5s budget; tail reads exceed it
+(the slowest read was the first request, which pays the serverless cold start) and are bounded by
+the ~8s per-call cap. The levers are
 documented in [`.env.example`](.env.example): `SELF_CONSISTENCY_SAMPLES` (3 reads per image by
 default; 2 trades some confidence calibration for speed) and the model choice. Uploads are
 downscaled in the browser to keep request sizes inside the budget.
