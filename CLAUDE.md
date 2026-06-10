@@ -12,10 +12,11 @@ thin pointer to it — don't copy architecture or CFR rules in here, or the two 
 
 The app is **verify-first**: the UI leads with the claimed-vs-application comparison
 (brand / alcohol content / government warning → Approve/Review/Reject) — the brief's core check —
-computed the moment application values are supplied. Underneath, the AI still extracts the **full**
-TTB field set and code runs the TTB **completeness** check per beverage type (the supporting layer
-that kills manual data entry); with no application values on hand, the completeness summary is the
-headline. Offline by default; no PII, no auth, no COLA.
+computed once the application's per-type required fields are supplied. Underneath, the AI still
+extracts the **full** TTB field set and code runs the TTB **completeness** check per beverage type
+(the supporting layer that kills manual data entry); with no application values on hand, the single
+screen prompts for the application and completeness stays a collapsed supporting check. Offline by
+default; no PII, no auth, no COLA.
 
 ## Commands
 - `npm run dev` — app at http://localhost:3000 (mock provider, no keys needed)
@@ -81,20 +82,27 @@ pipeline and the "why". As built, the load-bearing pieces are:
   → `review`; the warning keeps its hard fail). The **eval** AND the interactive single screen both read
   this combined verdict — same engine, no parallel UI verdict logic. `verifyLabel` compares the FULL
   application field-by-field — brand, class/type, alcohol, net contents, producer name, producer
-  address, country of origin (each compared ONLY when the application supplies it) plus the auto
-  government warning — and returns an ordered `VerifyResult.fields` list (with `brand`/`alcohol`/
-  `warning` named accessors kept for the eval/CSV). Each comparator biases uncertainty to `review`;
+  address, country of origin, distinctive/fanciful name, statement of composition (each compared ONLY
+  when the application supplies it) plus the auto government warning — and returns an ordered
+  `VerifyResult.fields` list (with `brand`/`alcohol`/`warning` named accessors kept for the eval/CSV).
+  Each comparator biases uncertainty to `review`;
   class/type uses `resolveBeverageClass` so a broad application class ("distilled spirits") matches the
   label's specific designation ("Kentucky Straight Bourbon Whiskey"). `toClaimedFields` (also in
-  `reviewVerdict.ts`) is the single "enough to compare?" rule (needs brand AND alcohol), shared by both
-  screens. (Historical note: a `confirmVerdict`/`ConfirmPanel` confirm-to-approve layer existed briefly
+  `reviewVerdict.ts`) is the BATCH screen's "enough to compare?" rule (needs brand AND alcohol); the
+  single screen instead gates on the per-type required-input set (`requiredInputKeysFor`,
+  `src/compare/requiredInputs.ts`), and `combinedVerdict` keeps a brand-only safety net since alcohol
+  is not mandatory for every class. (Historical note: a `confirmVerdict`/`ConfirmPanel` confirm-to-approve layer existed briefly
   and was removed 2026-06-09 when the screen was realigned to lead with the comparison — ignore older
   docs/plans that reference it.)
 - **`src/app/`** — verify-first single screen (`VerifyForm`: front/back upload + auto-read on upload,
-  plus the REQUIRED "The application" inputs — brand + alcohol (required) and class/net/name/address/
-  origin (compared when listed). Once brand+alcohol are entered the results LEAD with `ResultView` — the
+  plus "The application" inputs. The REQUIRED input set is DYNAMIC per beverage type
+  (`requiredInputKeysFor` over the CFR matrix: brand/class/net/producer name/address always; alcohol
+  only for spirits / wine >14% / unknown); country of origin, fanciful name, and statement of
+  composition are compared when listed. The AI's reading pre-fills each input as a grey suggestion
+  (Tab to accept, or the "Accept all AI suggestions" button), and a beverage-type selector re-derives
+  the required set. Once every required field is filled the results LEAD with `ResultView` — the
   field-by-field label-vs-application comparison (`combinedVerdict`) → Approve/Needs review/Reject;
-  until then the headline is an **"Enter the application to verify"** prompt (the label read is shown,
+  until then the headline is a **"Complete the application to verify"** prompt (the label read is shown,
   but completeness is a collapsed SUPPORTING check, NEVER the headline). The completeness breakdown +
   `ExtractedFieldsView` sit in collapsed disclosures. Thumbnails open the accessible `ImageLightbox`; a
   non-blocking `ForwardLookingNote` lists 2025 proposals) + `/api/verify` route + `/batch`; `src/app/ui/` holds
@@ -113,7 +121,10 @@ pipeline and the "why". As built, the load-bearing pieces are:
   one API key, no Azure resource) or `llm`/`ocr`/`ensemble` (Azure in-tenant). The hosted Vercel demo
   runs a real provider (Gemini, via env vars); Azure is the documented in-tenant production target;
   the deployed URL runs a real provider. (There is no bundled in-app sample picker — that earlier
-  `public/samples/` feature was never built and has been removed.)
+  `public/samples/` feature was never built and has been removed.) The three README "Try it" demo
+  PNGs (`eval/fixtures/images/demo-*.png`) ARE fixtures, so the mock reads them locally — rename one
+  and you must update its `imageFilename` in `eval/fixtures/cases.json` or the README walkthrough
+  silently breaks.
 - **Uploads are downscaled in the browser first.** `src/app/imageDownscale.ts` shrinks phone photos
   to ~2000px longest edge (JPEG) to fit the latency/token budget. It NEVER throws (falls back to the
   original) and PRESERVES the filename — so the filename-keyed mock still resolves. Don't rename the

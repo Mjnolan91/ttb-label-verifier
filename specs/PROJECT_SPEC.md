@@ -6,13 +6,15 @@ content, and government warning on the label match what the application claims? 
 share of that work is rote matching. This prototype automates the routine matching and
 flags the rest for a human — it does not try to replace human judgment.
 
-The product is **extraction-first**. The **primary** path reads a product's label image(s) into
-the full TTB field set with AI, then runs a deterministic **completeness** check against the
-mandatory-information requirements for the detected beverage type (each element flagged present /
-missing / malformed / unverifiable) and exports the result as JSON or CSV — no manual data entry.
-The **optional** secondary path is the three-check claimed comparison: when an agent supplies an
-application's brand and alcohol content (and optionally class/type), a pure comparator returns an
-Approve / Needs-review / Reject verdict over brand name, alcohol content, and the government warning.
+The product is **verify-first**. The **primary** path is the claimed-vs-application comparison: a
+pure comparator matches the label field-by-field against the application (brand, class/type,
+alcohol content, net contents, producer name, producer address, country of origin, plus the
+automatic statutory government warning) and returns an Approve / Needs review / Reject verdict; on
+the single screen the application's TTB-required fields for the beverage type are required before a
+verdict. Underneath, the AI always reads the label image(s) into the full TTB field set, a
+deterministic **completeness** check runs against the mandatory-information requirements for the
+detected beverage type (each element flagged present / missing / malformed / unverifiable), and the
+result exports as JSON or CSV — no manual data entry.
 
 ## Requirements distilled from the discovery interviews
 Each requirement below traces to a stakeholder, so the "why" stays visible:
@@ -43,23 +45,26 @@ Each requirement below traces to a stakeholder, so the "why" stays visible:
   prompts a re-upload instead of asserting a verdict.
 
 ## Architecture
-"AI extracts, code compares," and the flow is **extraction-first**. A multimodal model (and
-optionally a second OCR/model) extract structured fields from the image behind the `VisionProvider`
-interface. A reconciler marks fields where the extractors agree as high-confidence and routes
-disagreements to review. The **primary** deterministic step is the TTB **completeness** check:
-each mandatory element for the detected beverage class is flagged present / missing / malformed /
-unverifiable, always, with no application required. When an agent does supply claimed values, the
-**optional** comparator additionally produces the pass/review/fail verdict for each of the three
-checks. Keeping every verdict in deterministic code (not the model) is what makes the result
-auditable — essential in a government compliance setting.
+"AI extracts, code compares," and the flow is **extraction-always, verify-first in the UI**. A
+multimodal model (and optionally a second OCR/model) extract structured fields from the image behind
+the `VisionProvider` interface. A reconciler marks fields where the extractors agree as
+high-confidence and routes disagreements to review. The **always-on** deterministic step is the TTB
+**completeness** check: each mandatory element for the detected beverage class is flagged present /
+missing / malformed / unverifiable, with no application required. The comparator produces the
+pass/review/fail verdict field by field across the full application (the three CFR-core checks plus
+class/type, net contents, producer name/address, country of origin); on the single screen the
+application is required for a verdict, and the headline takes the worse of the comparison and the
+completeness check. Keeping every verdict in deterministic code (not the model) is what makes the
+result auditable — essential in a government compliance setting.
 
 **Extraction is Azure-native (in-tenant), mock by default.** The interface is generic, but
 the two reference providers are Azure so they survive Marcus's outbound firewall by running
 inside the tenant: `llm` → Azure OpenAI (multimodal), `ocr` → Azure AI Document Intelligence
 (OCR). The default `mock` provider keys off the fixture **filename** (not image bytes), so the
 app and the entire test suite run offline with no keys; real providers are opt-in via
-`VISION_PROVIDER` + Azure env vars only. When both run, they are reconciled in **parallel**
-with a per-call ~3s timeout to stay inside the 5s budget.
+`VISION_PROVIDER` + the matching provider env vars only (an OpenAI/Gemini key, or the Azure
+endpoint + key). When both Azure providers run, they are reconciled in **parallel** with a
+per-call timeout (~3s mock / ~8s real, `VISION_TIMEOUT_MS`) to stay inside the 5s budget.
 
 **The alcohol check is driven by a full CFR-verified beverage-tolerance matrix**, not a single
 constant: the beverage `classType` is an **input** that *selects* the tolerance rule — distilled
@@ -86,9 +91,10 @@ to review. We prove all of this with an evaluation harness, not assertions.
 
 ## Scope
 - **MVP:** AI extraction of the full TTB field set, the TTB completeness check per beverage type,
-  the three deterministic checks (brand fuzzy / ABV tolerance / strict government warning) over a
-  supplied application, an accessibility-first single-screen UI, and graceful handling of unreadable
-  images (re-upload prompt, never a fabricated verdict).
+  the deterministic claimed comparison over a required application (full field-by-field: the three
+  CFR-core checks — brand fuzzy / ABV tolerance / strict government warning — plus class/type, net
+  contents, producer name/address, country of origin), an accessibility-first single-screen UI, and
+  graceful handling of unreadable images (re-upload prompt, never a fabricated verdict).
 - **Differentiators:** real Azure-native providers (Azure OpenAI for `llm`, Azure AI Document
   Intelligence for `ocr`, plus OpenAI- and Gemini-direct paths for the hosted demo) behind the generic
   `VisionProvider` interface, a parallel reconciler that routes disagreements to review, asymmetric

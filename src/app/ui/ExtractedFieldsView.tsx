@@ -7,7 +7,7 @@ import { HEADLINE_FIELDS, DETAIL_FIELDS, type FieldDescriptor } from "@/extracti
  * each with the model's confidence, plus the raw JSON. The rows are DERIVED from FIELD_CATALOG (one
  * source of truth shared with the merge + CSV), split into the few headline fields shown at a glance
  * and the long tail behind a "show everything" disclosure to keep the screen calm for a 70+ agent.
- * Read-only and verdict-free (compliance pass/fail lives in the verdict headline / ConfirmPanel). The
+ * Read-only and verdict-free (compliance pass/fail lives in the verdict headline / DecisionPanel). The
  * form moves focus to this section's heading on completion, so focus is the single announcement
  * channel (no overlapping aria-live).
  */

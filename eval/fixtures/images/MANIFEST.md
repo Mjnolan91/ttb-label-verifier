@@ -1,18 +1,23 @@
 # Fixture Image MANIFEST — TTB Label Verifier
 
 This manifest is the contract between the hermetic test fixtures and any real label images supplied
-later. Every `imageFilename` in [`../cases.json`](../cases.json) maps to exactly one file in this
-directory. Rows #1–#7, #12–#14, and #15 are lightweight **`.svg` PLACEHOLDERS** that depict the
+later. Nearly every `imageFilename` in [`../cases.json`](../cases.json) maps to exactly one file in
+this directory (four later-added cases — `granite-peak-ipa-fuzzy.svg`, `cayo-verde-superior-rum.svg`,
+`northgate-acronym-vodka.svg`, `cayo-verde-spiced-specialty.svg` — still need a placeholder file +
+row here; the offline suite passes without them because the mock keys off the filename string, never
+the bytes). Rows #1–#7, #12–#14, and #15 are lightweight **`.svg` PLACEHOLDERS** that depict the
 intended label so the suite is fully self-contained and needs no real image bytes; **row #8 is a real
 supplied image** (the ABC clean-pass demo case); **rows #9–#11 are REAL generated raster labels**
-(`.png`) wired to the demo's sample buttons, so the live vision demo extracts genuine pixels —
+(`.png`) linked from the README's "Try it in two minutes" walkthrough, so the live vision demo extracts genuine pixels —
 regenerate them with `node scripts/generate-demo-labels.cjs`. To exercise a real provider
-(`openai` / `llm` / `ocr`) on the placeholder scenarios, drop a real raster at the exact path below.
+(`openai` / `gemini` / `llm` / `ocr`) on the placeholder scenarios, drop a real raster at the exact
+path below.
 
 > **Dual role of these files.** The offline mock keys off the *filename* (pixels irrelevant), so the
-> suite stays hermetic; but on the deployed `llm` demo the *same files' bytes* are sent to Azure. The
+> suite stays hermetic; but on a deployed real-provider demo (Gemini on the live URL; Azure OpenAI
+> for the in-tenant target) the *same files' bytes* are sent to the model. The
 > `.svg` stubs (#1–#7) literally say "PLACEHOLDER" and aren't valid raster input for a vision model,
-> which is why the demo sample buttons point at the real `.png` rows #9–#11 (+ the real `.jpg` #8),
+> which is why the README's demo walkthrough points at the real `.png` rows #9–#11 (+ the real `.jpg` #8),
 > whose authored text matches their `extracted` block so the offline verdict equals a correct read.
 
 ## How the keying works (why these can be placeholders)
@@ -35,9 +40,9 @@ hermetic-keying explanation.
 | 6 | `warning-missing.svg` | `eval/fixtures/images/warning-missing.svg` | `warning-missing-fail` | Same as #1 | Brand/class/alcohol/net all correct, but the government health warning block is **entirely absent** from the label. Product is 45% ABV (well above 0.5%), so the warning is mandatory. | **reject** |
 | 7 | `unreadable-blurry.svg` | `eval/fixtures/images/unreadable-blurry.svg` | `unreadable-low-confidence-review` | Portrait label, ~600x800, deliberately **illegible** (heavy blur + glare wash) so no field can be read | A label photo so blurry/glare-washed/skewed that **none** of the fields are legible. The point is the unreadable *capture*, not any specific text. Drives the low-confidence "re-upload a clearer photo" path; must never auto-approve. | **review** |
 | 8 | `abc-single-barrel-clean.jpg` | `eval/fixtures/images/abc-single-barrel-clean.jpg` | `abc-rye-clean-real-image` | **REAL IMAGE — already supplied** (front+back artwork, flat) | Brand **ABC** (ABC Distillery, "Single Barrel"); class/type "Straight Rye Whisky"; **45% ALC/VOL** (no proof printed — proof is optional); net **750 mL**; the full canonical government warning with an ALL-CAPS **bold** `GOVERNMENT WARNING:` prefix. Everything correct. | **approve** |
-| 9 | `demo-old-tom-clean.png` | `eval/fixtures/images/demo-old-tom-clean.png` | `demo-clean-approve` | **REAL generated raster** (720×820), wired to a demo sample button | Brand **OLD TOM DISTILLERY**; "Kentucky Straight Bourbon Whiskey"; **45% Alc./Vol. (90 Proof)**; **750 mL**; full canonical warning, ALL-CAPS **bold** `GOVERNMENT WARNING:` prefix. Everything correct. | **approve** |
-| 10 | `demo-warning-title-case.png` | `eval/fixtures/images/demo-warning-title-case.png` | `demo-warning-title-case-reject` | **REAL generated raster** (720×820), demo sample button | Identical to #9 EXCEPT the warning prefix is rendered title-case **`Government Warning:`**. Sole defect. | **reject** |
-| 11 | `demo-brand-typo.png` | `eval/fixtures/images/demo-brand-typo.png` | `demo-brand-typo-review` | **REAL generated raster** (720×820), demo sample button | Brand printed **`Old Tomm Distillery`** (one extra "m") vs claimed `Old Tom Distillery`. Sole near-miss; alcohol and warning correct. | **review** |
+| 9 | `demo-old-tom-clean.png` | `eval/fixtures/images/demo-old-tom-clean.png` | `demo-clean-approve` | **REAL generated raster** (720×820), linked from the README walkthrough | Brand **OLD TOM DISTILLERY**; "Kentucky Straight Bourbon Whiskey"; **45% Alc./Vol. (90 Proof)**; **750 mL**; full canonical warning, ALL-CAPS **bold** `GOVERNMENT WARNING:` prefix. Everything correct. | **approve** |
+| 10 | `demo-warning-title-case.png` | `eval/fixtures/images/demo-warning-title-case.png` | `demo-warning-title-case-reject` | **REAL generated raster** (720×820), README walkthrough | Identical to #9 EXCEPT the warning prefix is rendered title-case **`Government Warning:`**. Sole defect. | **reject** |
+| 11 | `demo-brand-typo.png` | `eval/fixtures/images/demo-brand-typo.png` | `demo-brand-typo-review` | **REAL generated raster** (720×820), README walkthrough | Brand printed **`Old Tomm Distillery`** (one extra "m") vs claimed `Old Tom Distillery`. Sole near-miss; alcohol and warning correct. | **review** |
 | 12 | `marisol-table-wine-clean.svg` | `eval/fixtures/images/marisol-table-wine-clean.svg` | `wine-under14-approve` | Portrait label, ~600x800; clean | Brand **MARISOL**; class/type **Table Wine** (Sonoma County); **13.5% Alc./Vol.**; net **750 mL**; "Contains Sulfites"; full canonical warning, ALL-CAPS **bold** `GOVERNMENT WARNING:` prefix. Application claims 12.5% — a 1.0 pp gap that is inside the wine ≤14% +/-1.5 pp band but outside the spirits band. | **approve** |
 | 13 | `oakmoor-port-over14-boundary.svg` | `eval/fixtures/images/oakmoor-port-over14-boundary.svg` | `wine-over14-boundary-reject` | Same as #12 | Brand **OAKMOOR**; class/type **Tawny Port** (Napa Valley, a >14% wine); label reads **14.0% Alc./Vol.** while the application claims 14.5%; net **750 mL**; full canonical warning, all-caps bold prefix. The 0.5 pp gap is inside the +/-1.0 pp band, but 14.0% crosses the 14% tax-class boundary (27 CFR 4.36(c)) — the sole defect. | **reject** |
 | 14 | `granite-peak-ipa-clean.svg` | `eval/fixtures/images/granite-peak-ipa-clean.svg` | `malt-beverage-approve` | Portrait label, ~600x800; clean | Brand **GRANITE PEAK**; class/type **India Pale Ale** (resolves to malt beverage); **6.7% Alc./Vol.**; net **12 FL OZ**; full canonical warning, ALL-CAPS **bold** `GOVERNMENT WARNING:` prefix. Application claims 6.5% — a 0.2 pp gap inside the malt +/-0.3 pp band. | **approve** |
@@ -55,9 +60,9 @@ hermetic-keying explanation.
 The `.svg` rows above (#1–#7) are **hermetic placeholders**: the mock provider keys off the
 filename, so the entire offline suite (unit tests, the `/api/verify` integration test, and
 `npm run eval`) passes without any real image bytes. Real rasters are needed only to exercise a live
-extraction provider (`VISION_PROVIDER=openai`/`llm`/`ocr`) or to capture a demo screenshot — and even
-then only for whichever scenario you want to run live (row #8 is already a real image, and the demo
-sample buttons already point at the real `.png` rows #9–#11).
+extraction provider (`VISION_PROVIDER=openai`/`gemini`/`llm`/`ocr`) or to capture a demo screenshot — and even
+then only for whichever scenario you want to run live (row #8 is already a real image, and the
+README's demo walkthrough already points at the real `.png` rows #9–#11).
 
 To drop in your own:
 

@@ -99,7 +99,8 @@ in `cases.json`.)
   (`abc-single-barrel-clean.jpg`): brand ABC, **45% Alc./Vol. with no proof printed** (proof is
   optional — the comparator must not require the proof = 2x ABV cross-check when it is absent), and
   the canonical warning with a bold all-caps prefix. All fields pass -> approve. This is the label a
-  reviewer can actually upload at the live demo and see verified end to end in mock mode.
+  reviewer can actually upload at the live demo (which runs a real provider) and see verified end to
+  end; the same case also passes offline in mock mode (filename-keyed).
 - **Wine ≤14% -> approve** — `Table Wine`, claimed 12.5% vs label 13.5% = **1.0 pp**. Outside the
   spirits **+/-0.3 pp** band but inside the wine ≤14% **+/-1.5 pp** band (27 CFR 4.36(b)(1)), so the
   verdict turns on the class selecting the right tolerance row. 13.5% stays under the 14% boundary,
@@ -200,13 +201,14 @@ out of scope for the hermetic eval.
 
 The tests and eval do **not** need real images. Real label images are supplied by a human **later**,
 at the exact paths and to the exact specs in [`images/MANIFEST.md`](./images/MANIFEST.md), and are
-only required once a story exercises a real extraction provider (`VISION_PROVIDER=llm` / `ocr`) or a
-live demo. Until then, the `.svg` placeholders keep the whole offline suite green. If you replace an
+only required once a story exercises a real extraction provider (`VISION_PROVIDER=openai` /
+`gemini` / `llm` / `ocr`) or a live demo. Until then, the `.svg` placeholders keep the whole offline suite green. If you replace an
 `.svg` with a raster image, keep the `imageFilename` in `cases.json` and the path in the MANIFEST in
 lockstep — the filename is the only key the mock uses. (One real image is already wired in:
 `abc-single-barrel-clean.jpg`, the ABC clean-pass demo case, plus three generated demo rasters
-(`demo-*.png`); the rest are `.svg` placeholders. The three negative-allocation fixtures
-(`cayo-verde-superior-rum.svg`, `northgate-acronym-vodka.svg`, `cayo-verde-spiced-specialty.svg`)
+(`demo-*.png`); the rest are `.svg` placeholders. Four fixtures — `granite-peak-ipa-fuzzy.svg` plus
+the three negative-allocation fixtures
+(`cayo-verde-superior-rum.svg`, `northgate-acronym-vodka.svg`, `cayo-verde-spiced-specialty.svg`) —
 still need their placeholder `.svg` + `MANIFEST.md` rows added — the eval and tests pass without them
 because the mock keys off the filename string, never the bytes.)
 
