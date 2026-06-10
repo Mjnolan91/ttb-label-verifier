@@ -20,7 +20,7 @@ import {
 } from "./extractedShape";
 import { FIELD_CATALOG } from "./fieldCatalog";
 import { defaultFetch, fetchWithRetry, withHardTimeout, type FetchLike } from "./http";
-import { resolveSelfConsistencyTemperature, resolveWarningJudgeModel } from "./config";
+import { resolveOpenAIReasoningEffort, resolveSelfConsistencyTemperature, resolveWarningJudgeModel } from "./config";
 import { chatParams } from "./openaiTuning";
 import { FIELD_REVIEW_CONFIDENCE, MIN_READABLE_CONFIDENCE } from "@/compare";
 
@@ -305,7 +305,10 @@ export function buildExtractionBody(
         ],
       },
     ],
-    ...chatParams(extra?.model as string | undefined, MAX_OUTPUT_TOKENS, temperature),
+    // EXTRACTION reads honor the env effort knob (gpt-5/o-series only; default "low"). The judge
+    // below deliberately stays on "low": a 50-token binary stroke-weight answer gains nothing from
+    // a long think, and the judge already runs on the strongest model.
+    ...chatParams(extra?.model as string | undefined, MAX_OUTPUT_TOKENS, temperature, resolveOpenAIReasoningEffort()),
     response_format: EXTRACTION_RESPONSE_FORMAT,
   };
 }

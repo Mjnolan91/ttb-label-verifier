@@ -49,6 +49,25 @@ export function resolveSelfConsistencyEscalation(
   return Number.isFinite(n) && n >= 0 ? Math.min(3, Math.floor(n)) : 0;
 }
 
+/** Reasoning effort for gpt-5/o-series EXTRACTION reads (the classic gpt-4 line ignores it). */
+export type ReasoningEffort = "low" | "medium" | "high";
+
+/**
+ * Reasoning effort for the gpt-5/o-series extraction calls. DEFAULT "low": verbatim transcription
+ * needs no deep reasoning, and "low" is what keeps the reasoning family anywhere near the ~5s
+ * budget. "medium"/"high" spend (many) hidden reasoning tokens per call — the request headroom
+ * scales with the level (see openaiTuning.chatParams) so a long think cannot starve the visible
+ * JSON, but latency and cost grow with it; treat any non-low setting as UNMEASURED until
+ * scripts/test-sangria-live.ts or measure-live-latency proves it. Read from
+ * OPENAI_REASONING_EFFORT; invalid/unset values fall back to "low".
+ */
+export function resolveOpenAIReasoningEffort(
+  env: Record<string, string | undefined> = process.env,
+): ReasoningEffort {
+  const raw = env.OPENAI_REASONING_EFFORT?.trim().toLowerCase();
+  return raw === "medium" || raw === "high" ? raw : "low";
+}
+
 /**
  * Optional model override for the DEDICATED government-warning judge pass (the bold/format
  * verification). The warning is the one check that can hard-fail a label, so it can justify a

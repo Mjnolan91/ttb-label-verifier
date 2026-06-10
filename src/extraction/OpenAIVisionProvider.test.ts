@@ -170,6 +170,40 @@ describe("OpenAIVisionProvider — gpt-5/o-series param adaptation (HTTP mocked)
     expect(body).not.toHaveProperty("temperature");
     expect(body.max_completion_tokens).toBeGreaterThan(50);
   });
+
+  it("OPENAI_REASONING_EFFORT raises EXTRACTION effort + headroom; the judge stays on low", async () => {
+    const prev = process.env.OPENAI_REASONING_EFFORT;
+    process.env.OPENAI_REASONING_EFFORT = "high";
+    try {
+      const { fetchImpl, bodies } = capture();
+      const provider = new OpenAIVisionProvider({ config: { apiKey: "k", model: "gpt-5.5" }, fetchImpl });
+      await provider.extract(img).catch(() => {});
+      const extraction = bodies[0];
+      expect(extraction.reasoning_effort).toBe("high");
+      // A high think burns many hidden tokens; the cap must scale or the visible JSON gets starved.
+      expect(extraction.max_completion_tokens as number).toBeGreaterThanOrEqual(1500 + 25000);
+      await provider.judgeWarningBold!(img);
+      const judge = bodies[1];
+      // The judge is a 50-token binary answer on the strongest model — a long think buys nothing.
+      expect(judge.reasoning_effort).toBe("low");
+    } finally {
+      if (prev === undefined) delete process.env.OPENAI_REASONING_EFFORT;
+      else process.env.OPENAI_REASONING_EFFORT = prev;
+    }
+  });
+
+  it("an invalid OPENAI_REASONING_EFFORT falls back to low", async () => {
+    const prev = process.env.OPENAI_REASONING_EFFORT;
+    process.env.OPENAI_REASONING_EFFORT = "maximum";
+    try {
+      const { fetchImpl, bodies } = capture();
+      await new OpenAIVisionProvider({ config: { apiKey: "k", model: "gpt-5.5" }, fetchImpl }).extract(img).catch(() => {});
+      expect(bodies[0].reasoning_effort).toBe("low");
+    } finally {
+      if (prev === undefined) delete process.env.OPENAI_REASONING_EFFORT;
+      else process.env.OPENAI_REASONING_EFFORT = prev;
+    }
+  });
 });
 
 describe("OpenAIVisionProvider.judgeWarningBold — bold judgment via chat (HTTP mocked)", () => {

@@ -29,6 +29,22 @@ export const defaultFetch: FetchLike = (url, init) => fetch(url, init);
 /** A self-limiting cap so a real request can never hang indefinitely, independent of the caller. */
 export const PROVIDER_HARD_TIMEOUT_MS = 30_000;
 
+/**
+ * The effective hard cap: PROVIDER_HARD_TIMEOUT_MS env override, clamped to [1s, 300s], else the
+ * 30s default. Exists for measured experiments with slow configurations (e.g. gpt-5/o-series at
+ * non-low reasoning effort, whose single read can legitimately exceed 30s) — the cap stays a cap;
+ * only its size is tunable. Resolved per call so tests and env changes apply without reload.
+ */
+export function resolveProviderHardTimeoutMs(
+  env: Record<string, string | undefined> = process.env,
+): number {
+  const raw = env.PROVIDER_HARD_TIMEOUT_MS;
+  if (raw === undefined || raw.trim() === "") return PROVIDER_HARD_TIMEOUT_MS;
+  const ms = Number(raw);
+  if (!Number.isFinite(ms)) return PROVIDER_HARD_TIMEOUT_MS;
+  return Math.min(300_000, Math.max(1_000, Math.floor(ms)));
+}
+
 /** Transient HTTP statuses worth retrying (idempotent reads only): throttling + server hiccups. */
 const RETRYABLE_STATUS = new Set([408, 409, 429, 500, 502, 503, 504]);
 
@@ -74,7 +90,7 @@ function backoffMs(attempt: number, baseDelayMs: number): number {
  */
 export function withHardTimeout(
   signal: AbortSignal | undefined,
-  ms: number = PROVIDER_HARD_TIMEOUT_MS,
+  ms: number = resolveProviderHardTimeoutMs(),
 ): AbortSignal {
   const timeout = AbortSignal.timeout(ms);
   return signal ? AbortSignal.any([signal, timeout]) : timeout;
