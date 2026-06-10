@@ -57,4 +57,35 @@ describe("useWorklist — persistence + resume", () => {
     window.localStorage.setItem("ttb-worklist-v1", "{not json");
     expect(loadWorklist()).toEqual({});
   });
+
+  it("setApplication MERGES per key — several writes in one event accumulate (Accept all)", () => {
+    const { result } = renderHook(() => useWorklist());
+    // Fired back-to-back in ONE act, the way an "Accept all" click writes several fields: each call
+    // must merge against the latest state, not last-write-wins over a stale snapshot.
+    act(() => {
+      result.current.setApplication("acme", { brand: "Acme" });
+      result.current.setApplication("acme", { alcoholContent: "40% Alc./Vol." });
+    });
+    expect(loadWorklist().acme.application).toEqual({ brand: "Acme", alcoholContent: "40% Alc./Vol." });
+    // An explicit empty string persists (it CLEARS a CSV value, distinct from "no edit").
+    act(() => result.current.setApplication("acme", { brand: "" }));
+    expect(loadWorklist().acme.application).toEqual({ brand: "", alcoholContent: "40% Alc./Vol." });
+  });
+
+  it("clearOverrides empties ALL of a product's flags but keeps its notes and decision", () => {
+    const { result } = renderHook(() => useWorklist());
+    act(() => {
+      result.current.setOverrides("acme", { brand: "ok", warning: "issue" });
+      result.current.setNotes("acme", { warning: "prefix looks light" });
+      result.current.recordDecision("acme", "reject", "send back");
+    });
+    act(() => result.current.clearOverrides("acme"));
+    const rec = loadWorklist().acme;
+    expect(rec.overrides).toEqual({});
+    expect(rec.notes?.warning).toBe("prefix looks light"); // commentary survives
+    expect(rec.decision).toBe("reject");
+    // Clearing a product with no record is a no-op, never a phantom record.
+    act(() => result.current.clearOverrides("ghost"));
+    expect(loadWorklist().ghost).toBeUndefined();
+  });
 });

@@ -212,7 +212,12 @@ describe("BatchVerify — verify against an application CSV", () => {
     expect(await q.findByText("Needs review")).toBeTruthy(); // gated in the table
     fireEvent.click(q.getByRole("button", { name: /^Review$/i }));
     const dialog = within(await screen.findByRole("dialog"));
-    const netCard = dialog.getAllByText("Net contents")[0].closest("li") as HTMLElement;
+    // "Net contents" now ALSO labels the drawer's application-editor input; the comparison CARD is
+    // the occurrence inside the result list (<li>).
+    const netCard = dialog
+      .getAllByText("Net contents")
+      .map((el) => el.closest("li"))
+      .find(Boolean) as HTMLElement;
     fireEvent.click(within(netCard).getByRole("button", { name: /Looks correct/i }));
     // Clearing a hard CFR violation takes the deliberate confirm step, then the verdict settles.
     fireEvent.click(within(netCard).getByRole("button", { name: /Yes, mark correct/i }));
@@ -287,13 +292,17 @@ describe("BatchVerify — verify against an application CSV", () => {
     });
     fireEvent.click(q.getByRole("button", { name: /Read all labels/i }));
     expect(await q.findByText("Incomplete label")).toBeTruthy(); // attention, not a green wall
-    expect(await q.findByText(/not compared to an application/i)).toBeTruthy();
+    // The no-application hint is now an INVITATION (the drawer can add values), not a dead end.
+    expect(await q.findByText(/add application values in Review/i)).toBeTruthy();
     fireEvent.click(q.getByRole("button", { name: /^Review$/i }));
     const dialog = within(await screen.findByRole("dialog"));
     // Honest heading (never "Label vs. application") + a resolvable synthesized concern card.
     expect(dialog.getByText(/Label completeness \(no application values\)/i)).toBeTruthy();
     expect(screen.queryByText(/Label vs\. application/)).toBeNull();
-    const netCard = dialog.getAllByText("Net contents")[0].closest("li") as HTMLElement;
+    const netCard = dialog
+      .getAllByText("Net contents")
+      .map((el) => el.closest("li"))
+      .find(Boolean) as HTMLElement;
     fireEvent.click(within(netCard).getByRole("button", { name: /Looks correct/i }));
     fireEvent.click(within(netCard).getByRole("button", { name: /Yes, mark correct/i }));
     // Resolving the only concern flips the suggested verdict to Approve.
@@ -313,6 +322,94 @@ describe("BatchVerify — verify against an application CSV", () => {
     expect(within(region).queryByText("Complete")).toBeNull();
     // An undecided settled row says so explicitly instead of a silent dash.
     expect(within(region).getByText("Undecided")).toBeTruthy();
+  });
+
+  it("a NO-CSV product can be given application values IN THE DRAWER and verdicts live (parity)", { retry: 2 }, async () => {
+    // The dead end this feature removes: without a CSV there was no way to supply the application,
+    // so the drawer could never produce a comparison verdict. Now: open Review, accept the AI's
+    // suggestions as the application values, and the full Label vs. application verdict appears —
+    // in the drawer, on the row badge, and persisted to the worklist.
+    globalThis.fetch = vi.fn(async () => ({ ok: true, json: async () => RESPONSE })) as unknown as typeof fetch;
+    const { container } = render(<BatchVerify />);
+    const q = within(container);
+    fireEvent.change(container.querySelector('input[accept="image/*"]') as HTMLInputElement, {
+      target: { files: [new File(["x"], "acme-front.png", { type: "image/png" })] },
+    });
+    fireEvent.click(q.getByRole("button", { name: /Read all labels/i }));
+    expect(await q.findByText(/add application values in Review/i)).toBeTruthy();
+    fireEvent.click(q.getByRole("button", { name: /^Review$/i }));
+    const dialog = within(await screen.findByRole("dialog"));
+    // The application section is open (no verdict yet) and offers the AI's reading.
+    fireEvent.click(dialog.getByRole("button", { name: /Accept all AI suggestions/i }));
+    // The comparison verdict computes live: honest heading + Approve, no page round-trip.
+    expect(dialog.getByText(/Label vs\. application/)).toBeTruthy();
+    expect(dialog.getByText("Approve")).toBeTruthy();
+    // The typed application persists (worklist record), so a refresh resumes it.
+    const stored = JSON.parse(window.localStorage.getItem("ttb-worklist-v1") ?? "{}") as Record<
+      string,
+      { application?: Record<string, string> }
+    >;
+    expect(Object.values(stored)[0]?.application?.brand).toBe("Acme");
+  });
+
+  it("editing an application value clears ALL the reviewer's stale confirm/flags (not just that field's)", { retry: 2 }, async () => {
+    // Every confirm/flag was recorded against the OLD application, and comparison cards depend on
+    // OTHER inputs too (the claimed class/type SELECTS the alcohol tolerance band) — a stale "ok"
+    // surviving any edit could force-pass a comparison the reviewer never saw (false approval).
+    const q = await run("filename,brand,alcohol\nacme-front.png,Acme,40% Alc./Vol.");
+    expect(await q.findByText("Approve")).toBeTruthy();
+    fireEvent.click(q.getByRole("button", { name: /^Review$/i }));
+    const dialog = within(await screen.findByRole("dialog"));
+    // Flag the (clean) brand card AND the warning card — a cross-field pair.
+    const cardOf = (label: string) =>
+      dialog
+        .getAllByText(label)
+        .map((el) => el.closest("li"))
+        .find(Boolean) as HTMLElement;
+    fireEvent.click(within(cardOf("Brand name")).getByRole("button", { name: /Flag a problem/i }));
+    fireEvent.click(within(cardOf("Government warning")).getByRole("button", { name: /Flag a problem/i }));
+    const storedAfterFlag = JSON.parse(window.localStorage.getItem("ttb-worklist-v1") ?? "{}") as Record<
+      string,
+      { overrides?: Record<string, string> }
+    >;
+    expect(Object.values(storedAfterFlag)[0]?.overrides).toEqual({ brand: "issue", warning: "issue" });
+    // Edit ONE application value in the drawer: BOTH stale flags must clear.
+    const summary = dialog.getByText("The application");
+    fireEvent.click(summary); // expand the collapsed section (a verdict exists)
+    const brandInput = dialog.getByLabelText(/^Brand name$/) as HTMLInputElement;
+    fireEvent.change(brandInput, { target: { value: "Acme Reserve" } });
+    const storedAfterEdit = JSON.parse(window.localStorage.getItem("ttb-worklist-v1") ?? "{}") as Record<
+      string,
+      { overrides?: Record<string, string>; application?: Record<string, string> }
+    >;
+    expect(Object.values(storedAfterEdit)[0]?.overrides).toEqual({});
+    expect(Object.values(storedAfterEdit)[0]?.application?.brand).toBe("Acme Reserve");
+  });
+
+  it("the application section does NOT force-collapse on the keystroke that first completes the gate", { retry: 2 }, async () => {
+    // A live-controlled <details open> would collapse around the focused input the moment the first
+    // verdict computes (hiding it inside the Drawer's focus trap, mid-word). The open state is seeded
+    // once per drawer open instead. Assert the DOM property directly: testing-library queries can see
+    // inside a closed details, so a text query would not catch the regression.
+    globalThis.fetch = vi.fn(async () => ({ ok: true, json: async () => RESPONSE })) as unknown as typeof fetch;
+    const { container } = render(<BatchVerify />);
+    const q = within(container);
+    fireEvent.change(container.querySelector('input[accept="image/*"]') as HTMLInputElement, {
+      target: { files: [new File(["x"], "acme-front.png", { type: "image/png" })] },
+    });
+    fireEvent.click(q.getByRole("button", { name: /Read all labels/i }));
+    await q.findByText(/add application values in Review/i);
+    fireEvent.click(q.getByRole("button", { name: /^Review$/i }));
+    const dialogEl = await screen.findByRole("dialog");
+    const dialog = within(dialogEl);
+    const details = dialogEl.querySelector("details") as HTMLDetailsElement;
+    expect(details.open).toBe(true); // no values yet -> open
+    // Filling the gate (brand + alcohol for this spirits label) computes the first verdict…
+    fireEvent.change(dialog.getByLabelText(/^Brand name$/), { target: { value: "Acme" } });
+    fireEvent.change(dialog.getByLabelText(/^Alcohol content$/), { target: { value: "40% Alc./Vol." } });
+    expect(dialog.getByText("Approve")).toBeTruthy();
+    // …and the section the reviewer is typing in stays open.
+    expect(details.open).toBe(true);
   });
 
   it("the triage chips filter the list (Needs attention shows only attention rows)", { retry: 2 }, async () => {

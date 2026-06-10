@@ -12,12 +12,12 @@
  */
 import { useId, useMemo, useState } from "react";
 import type { ExtractedFields } from "@/domain";
-import type { CompletenessResult, CombinedVerdict } from "@/compare";
+import type { CompletenessResult } from "@/compare";
 import type { LabelPosition } from "@/extraction";
 import { groupImagesByProduct } from "@/batch/pairing";
 import { analysisToCsv, parseClaimedCsv, type ClaimedRow } from "@/batch/csv";
 import { resolveClaimedFor } from "@/batch/claimedMatch";
-import { combinedVerdict, resolveCompletenessOverall, toClaimedFields, type VerifyResult } from "@/compare";
+import { resolveCompletenessOverall, type VerifyResult } from "@/compare";
 import type { VerifyApiResponse, VerifyApiError } from "../api/verify/contract";
 import { downscaleForUpload } from "../imageDownscale";
 import { ErrorAlert } from "../ui/ErrorAlert";
@@ -31,6 +31,8 @@ import { ImageLightbox } from "../ui/ImageLightbox";
 import { Drawer } from "../ui/Drawer";
 import { ProductReview } from "../ui/ProductReview";
 import { deriveLabelReview, toggleOverride, setFieldNote } from "../ui/labelReview";
+import type { AppInputKey } from "../ui/fieldHelpCopy";
+import { applicationFromCsv, deriveProductVerdict, mergeApplication, type ProductVerdict } from "./productVerdict";
 import { useWorklist } from "./useWorklist";
 import { IconZoom } from "../ui/icons";
 
@@ -46,22 +48,14 @@ interface BatchRow {
   status: "pending" | "done" | "error";
   extracted?: ExtractedFields;
   completeness?: CompletenessResult;
-  /** The full combined verdict (verify + completeness), the source the worklist review re-derives from. */
-  combined?: CombinedVerdict | null;
   /** The product's label image previews, for the review drawer. */
   images?: { src: string; alt: string }[];
-  /** Application-match verdict, when an application-values CSV row matched this product. */
-  result?: VerifyResult | null;
-  /** Headline verdict after gating on completeness. */
-  overall?: VerifyResult["overall"] | null;
-  /** True when an application-values CSV row matched this product — even if the label was unreadable
-   *  (so a matched-but-unreadable scan isn't mislabeled "no application row"). */
-  matchedClaim?: boolean;
+  /** The matched application CSV row (null when none) — the BASE the reviewer's drawer edits
+   *  overlay. The verdict itself is NOT cached here: it derives at render (deriveProductVerdict)
+   *  from this row + the worklist edits, so the table, the drawer, and the exports can't diverge. */
+  claimedRow?: ClaimedRow | null;
   /** Whether the label itself was readable (drives the re-scan vs. add-claim-value prompts). */
   readable?: boolean;
-  /** When a row matched but its claim lacks a value the verdict needs (brand AND alcohol), the
-   *  human-readable list of what to add — so a brand-only row prompts instead of rendering blank. */
-  claimedNeeds?: string;
   note?: string;
 }
 
@@ -90,49 +84,21 @@ async function analyzeProduct(
     const json: VerifyApiResponse | VerifyApiError = await res.json();
     if (!res.ok) return { ...base, note: (json as VerifyApiError).error };
     const r = json as VerifyApiResponse;
-    // If the application-values CSV has a row for this product (by image filename or product stem),
-    // run the same deterministic verifyLabel comparison used on the single screen.
-    const claimedRow = resolveClaimedFor(
-      { product: group.product, images: group.images.map((im) => ({ filename: im.file.name, position: im.position })) },
-      claimedMap,
-    );
-    // The batch "enough to compare?" gate (toClaimedFields): brand always, alcohol only where the
-    // law requires it for the resolved beverage class — so a legal malt/table-wine row without an
-    // ABV still gets a verdict. (The single screen gates interactively on its full per-type input
-    // set instead; same requiredInputKeysFor matrix, different gate.) `missing` drives the prompt.
-    const gate = claimedRow
-      ? toClaimedFields(
-          {
-            brand: claimedRow.brand,
-            alcoholContentText: claimedRow.alcoholContent,
-            classType: claimedRow.classType,
-            netContents: claimedRow.netContents,
-            name: claimedRow.name,
-            address: claimedRow.address,
-            countryOfOrigin: claimedRow.countryOfOrigin,
-            fancifulName: claimedRow.fancifulName,
-            statementOfComposition: claimedRow.statementOfComposition,
-          },
-          r.extracted,
-        )
-      : null;
-    const claimedFields = gate?.claimed ?? null;
-    const NEED_PHRASE: Partial<Record<string, string>> = { brand: "a brand", alcoholContent: "alcohol content" };
-    const needs = (gate?.missing ?? []).map((k) => NEED_PHRASE[k] ?? k).join(" + ");
-    // Every readable product gets a combined verdict (completeness-only when no application row matched),
-    // so it can be reviewed in the worklist — not just the ones with a matched claim.
-    const combined = r.readable ? combinedVerdict(claimedFields, r.extracted) : null;
+    // Attach the matched application CSV row (by image filename or product stem). The verdict is NOT
+    // computed here: it derives at render from this row + the reviewer's drawer edits (one shared
+    // derivation — deriveProductVerdict — for the table, the drawer, and the exports).
+    const claimedRow =
+      resolveClaimedFor(
+        { product: group.product, images: group.images.map((im) => ({ filename: im.file.name, position: im.position })) },
+        claimedMap,
+      ) ?? null;
     return {
       ...base,
       status: "done",
       extracted: r.extracted,
       completeness: r.completeness,
-      combined,
-      result: combined?.verify ?? null,
-      overall: combined?.overall ?? null,
-      matchedClaim: Boolean(claimedRow),
+      claimedRow,
       readable: r.readable,
-      claimedNeeds: claimedRow && !claimedFields ? needs : undefined,
       note: r.readable ? undefined : r.message,
     };
   } catch {
@@ -171,18 +137,25 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
   const previewByName = useMemo(() => new Map(images.map((im) => [im.file.name, im.preview])), [images]);
 
   /** Everything the table derives per row, override-aware (parity with the single screen): the
-   *  effective verdict, the override-resolved completeness (for completeness-only rows), the recorded
-   *  decision, and the triage category. */
+   *  effective application + verdict (CSV row overlaid with drawer edits — deriveProductVerdict, the
+   *  ONE derivation the drawer and exports also read), the override-resolved completeness, the
+   *  recorded decision, and the triage category. */
   function derivedOf(r: BatchRow): {
     verdict: VerifyResult["overall"] | null;
     resolvedCompleteness: CompletenessResult["overall"] | null;
     decision: "approve" | "reject" | undefined;
     category: RowCategory;
+    pv: ProductVerdict;
+    matchedClaim: boolean;
   } {
     const rec = worklist.worklist[r.product];
-    const review = r.combined ? deriveLabelReview(r.combined, rec?.overrides ?? {}) : null;
-    const resolvedCompleteness = r.combined
-      ? resolveCompletenessOverall(r.combined.completeness, review?.completenessOverrides ?? {})
+    const pv =
+      r.status === "done"
+        ? deriveProductVerdict(mergeApplication(r.claimedRow, rec?.application), r.extracted, r.readable ?? false)
+        : { combined: null, application: null };
+    const review = pv.combined ? deriveLabelReview(pv.combined, rec?.overrides ?? {}) : null;
+    const resolvedCompleteness = pv.combined
+      ? resolveCompletenessOverall(pv.combined.completeness, review?.completenessOverrides ?? {})
       : null;
     const verdict = review?.effectiveOverall ?? null;
     const decision = rec?.decision;
@@ -191,16 +164,28 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
         ? "pending"
         : decision
           ? "decided"
-          : r.status === "error" || r.readable === false || verdict === "review" || verdict === "reject" || r.claimedNeeds
+          : r.status === "error" || r.readable === false || verdict === "review" || verdict === "reject" || pv.claimedNeeds
             ? "attention"
             : verdict === "approve"
               ? "approve"
               : resolvedCompleteness !== null && resolvedCompleteness !== "complete"
                 ? "attention"
                 : "notVerified";
-    return { verdict, resolvedCompleteness, decision, category };
+    return { verdict, resolvedCompleteness, decision, category, pv, matchedClaim: Boolean(r.claimedRow) };
   }
-  const effectiveVerdictOf = (r: BatchRow) => derivedOf(r).verdict;
+
+  /** Record one application-value edit from the drawer. The edit overlays the CSV row (an explicit ""
+   *  clears a wrong CSV value), and it INVALIDATES ALL of the reviewer's prior confirm/flag calls on
+   *  this product — not just the edited field's: comparison cards depend on OTHER inputs (the claimed
+   *  class/type SELECTS the alcohol tolerance band; a completeness-only "ok" maps onto the comparison
+   *  card once the gate first passes), so a stale "ok" can force-pass a comparison the reviewer never
+   *  saw — a false approval. The single screen's fresh-read-drops-overrides principle, applied here. */
+  function applyApplicationEdit(product: string, key: AppInputKey, value: string) {
+    // Both mutators are FUNCTIONAL (merge / replace against the latest state), so the several calls
+    // one "Accept all" click fires accumulate instead of last-write-wins on a stale snapshot.
+    worklist.setApplication(product, { [key]: value });
+    worklist.clearOverrides(product);
+  }
 
   /** Re-read ONE failed product without re-running the whole batch. */
   async function retryRow(index: number) {
@@ -261,20 +246,25 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
   const completedRows = rows.filter((r) => r.status === "done" && r.extracted);
   // An application CSV was loaded but matched no product — almost always a filename-column mismatch.
   // Surface it instead of silently showing "no application row" on every row.
-  const noneMatched =
-    !running && rows.length > 0 && claimed.size > 0 && rows.every((r) => !r.result && !r.matchedClaim);
+  const noneMatched = !running && rows.length > 0 && claimed.size > 0 && rows.every((r) => !r.claimedRow);
   function exportJson() {
     downloadJson(
       "ttb-extractions.json",
       completedRows.map((r) => {
         const rec = worklist.worklist[r.product];
-        const overall = effectiveVerdictOf(r) ?? r.overall ?? null;
+        const d = derivedOf(r);
+        const result = d.pv.combined?.verify ?? null;
+        const overall = d.verdict ?? null;
         return {
           product: r.product,
           extracted: r.extracted,
           completeness: r.completeness,
+          // The application of record the verdict used (CSV row overlaid with the reviewer's edits),
+          // plus the raw edits separately — so "why was this rejected?" stays reproducible.
+          ...(d.pv.application ? { claimed: d.pv.application } : {}),
+          ...(rec?.application && Object.keys(rec.application).length ? { applicationEdits: rec.application } : {}),
           // Mirror the single-screen JSON: carry the (override-aware) verdict so JSON and CSV agree.
-          ...(r.result ? { result: r.result } : {}),
+          ...(result ? { result } : {}),
           ...(overall ? { overall } : {}),
           // The worklist lifecycle: the reviewer's recorded decision, distinct from the AI verdict.
           ...(rec?.decision ? { decision: rec.decision, note: rec.note ?? "" } : {}),
@@ -289,12 +279,13 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
       analysisToCsv(
         completedRows.map((r) => {
           const rec = worklist.worklist[r.product];
+          const d = derivedOf(r);
           return {
             filename: r.product,
             extracted: r.extracted as ExtractedFields,
             completeness: r.completeness,
-            result: r.result,
-            overall: effectiveVerdictOf(r) ?? r.overall,
+            result: d.pv.combined?.verify ?? null,
+            overall: d.verdict ?? undefined,
             decision: rec?.decision,
             note: rec?.note,
           };
@@ -331,7 +322,10 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
   ];
 
   function clearWorklist() {
-    if (typeof window !== "undefined" && !window.confirm("Clear all recorded decisions and resolved flags? This can't be undone.")) {
+    if (
+      typeof window !== "undefined" &&
+      !window.confirm("Clear all recorded decisions, resolved flags, and typed application values? This can't be undone.")
+    ) {
       return;
     }
     worklist.clearAll();
@@ -348,8 +342,9 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
       <p className="mt-1 text-ink-muted">
         Upload many label images. They&apos;re grouped into products and read into a table. Open any
         product to <strong className="font-semibold text-ink">Review</strong> it like the single screen:
-        resolve flagged fields, record an Approve or send-back, and draft the applicant email. Your
-        decisions are saved in this browser and included in the export. Pair a front and back by naming
+        add or correct the application&apos;s values (the CSV is optional), resolve flagged fields,
+        record an Approve or send-back, and draft the applicant email. Your decisions and typed values
+        are saved in this browser and included in the export. Pair a front and back by naming
         them alike with a suffix, e.g. <code>acme-ipa-front.jpg</code> + <code>acme-ipa-back.jpg</code>;
         a file with no suffix is its own single-label product.
       </p>
@@ -543,7 +538,8 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
             </button>
           )}
           <span className="w-full text-xs text-ink-muted">
-            Sorted needs-attention first. Decisions are saved in this browser only and never transmitted.
+            Sorted needs-attention first. Decisions and typed application values are saved in this
+            browser only and never transmitted.
           </span>
         </div>
       )}
@@ -570,7 +566,7 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
               <li className="px-3 py-4 text-ink-muted">No products in this view. Pick another chip above.</li>
             )}
             {visibleRows.map(({ r, i, d }) => {
-              const { verdict, resolvedCompleteness, decision, category } = d;
+              const { verdict, resolvedCompleteness, decision, category, pv, matchedClaim } = d;
               const settled = r.status !== "pending";
               // Attention rows get a left accent + soft tint (red for hard failures, amber for the
               // rest); decided rows dim so the open remainder pops. State is never color-only: every
@@ -612,7 +608,7 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
                     ) : r.readable === false ? (
                       <>
                         <StatusBadge tone="review" label="Couldn't read" />
-                        {r.matchedClaim && (
+                        {matchedClaim && (
                           <span className="mt-1 block text-xs text-review-700">
                             Matched, couldn&apos;t read label; re-scan
                           </span>
@@ -620,11 +616,11 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
                       </>
                     ) : verdict ? (
                       <StatusBadge tone={toneForStatus(verdict)} label={VERDICT_LABEL[verdict]} />
-                    ) : r.matchedClaim && r.claimedNeeds ? (
+                    ) : pv.claimedNeeds ? (
                       <>
                         <StatusBadge tone="review" label="Add application values" />
                         <span className="mt-1 block text-xs text-review-700">
-                          Matched, add {r.claimedNeeds} to compare
+                          Add {pv.claimedNeeds} in Review to compare
                         </span>
                       </>
                     ) : (
@@ -638,7 +634,7 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
                           />
                         )}
                         <span className="mt-1 block text-xs text-ink-muted">
-                          {claimed.size > 0 ? "no application row" : "not compared to an application"}
+                          {claimed.size > 0 ? "no application row; add values in Review" : "add application values in Review to compare"}
                         </span>
                       </>
                     )}
@@ -690,14 +686,21 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
         (() => {
           const r = rows[reviewIndex];
           const rec = worklist.worklist[r.product];
+          const d = derivedOf(r);
           return (
             <Drawer open onClose={() => setReviewIndex(null)} title={`Review · ${r.product}`}>
               <ProductReview
                 brand={r.extracted?.brand ?? r.product}
                 images={r.images ?? []}
-                combined={r.combined ?? null}
+                combined={d.pv.combined}
                 readable={r.readable ?? false}
                 unreadableMessage={r.note}
+                extracted={r.extracted}
+                application={d.pv.application}
+                csvValues={r.claimedRow ? applicationFromCsv(r.claimedRow) : null}
+                edits={rec?.application ?? {}}
+                onApplicationChange={(key, value) => applyApplicationEdit(r.product, key, value)}
+                claimedNeeds={d.pv.claimedNeeds}
                 overrides={rec?.overrides ?? {}}
                 onOverride={(key, value) =>
                   worklist.setOverrides(r.product, toggleOverride(rec?.overrides ?? {}, key, value))

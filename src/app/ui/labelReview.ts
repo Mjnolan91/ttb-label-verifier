@@ -43,6 +43,7 @@ export const REQUIREMENT_TO_FIELD: Partial<Record<RequirementKey, VerifyFieldKey
   (Object.entries(FIELD_TO_REQUIREMENT) as [VerifyFieldKey, RequirementKey][]).map(([f, r]) => [r, f]),
 );
 
+
 export interface LabelReviewState {
   /** Headline verdict after the reviewer's overrides (null when no application values were supplied). */
   effectiveOverall: CombinedVerdict["overall"];

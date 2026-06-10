@@ -17,14 +17,21 @@
  * performable without leaving the drawer.
  */
 import { useState } from "react";
+import type { ExtractedFields } from "@/domain";
 import { deriveLabelReview, type FieldNotes, type FieldOverrides, type ReviewDecision } from "./labelReview";
 import { resolveCompletenessOverall } from "@/compare";
 import type { CombinedVerdict, FieldResult, VerifyFieldKey, VerifyResult } from "@/compare";
 import type { FieldOverride } from "./ResultView";
+import type { ApplicationValues } from "../batch/productVerdict";
+import type { ApplicationEdits } from "../batch/useWorklist";
+import type { AppInputKey } from "./fieldHelpCopy";
+import { ApplicationEditor } from "./ApplicationEditor";
+import { ExtractedFieldsView } from "./ExtractedFieldsView";
 import { ResultView } from "./ResultView";
 import { CompletenessView } from "./CompletenessView";
 import { DecisionPanel } from "./DecisionPanel";
 import { ImageLightbox } from "./ImageLightbox";
+import { VERDICT_LABEL } from "./status";
 import { IconReview, IconZoom } from "./icons";
 
 /** Placeholder accessor for the synthesized completeness-only result: ResultView reads only
@@ -47,6 +54,12 @@ export function ProductReview({
   combined,
   readable,
   unreadableMessage,
+  extracted,
+  application,
+  csvValues,
+  edits,
+  onApplicationChange,
+  claimedNeeds,
   overrides,
   onOverride,
   notes,
@@ -60,6 +73,18 @@ export function ProductReview({
   combined: CombinedVerdict | null;
   readable: boolean;
   unreadableMessage?: string;
+  /** The merged label reading — drives the application editor's suggestions + the extracted table. */
+  extracted?: ExtractedFields;
+  /** The effective application values (CSV row overlaid with the reviewer's edits). */
+  application?: ApplicationValues | null;
+  /** The matched CSV row's values, for provenance + "Reset to CSV" (null when no row matched). */
+  csvValues?: ApplicationValues | null;
+  /** The reviewer's persisted application edits. */
+  edits?: ApplicationEdits;
+  /** Records one application-value edit (parity with the single screen's typed application). */
+  onApplicationChange?: (key: AppInputKey, value: string) => void;
+  /** When application values exist but the gate needs more, the human list of what to add. */
+  claimedNeeds?: string;
   overrides: FieldOverrides;
   onOverride: (key: VerifyFieldKey, value: FieldOverride | undefined) => void;
   notes: FieldNotes;
@@ -86,8 +111,23 @@ export function ProductReview({
       ? "Every element TTB requires for this beverage type was found on the label. No application values were provided to compare, so record your decision from the label alone."
       : "No application values were provided to compare; this is the label-only completeness review. Confirm or flag each highlighted element below, then record your decision.";
 
+  // Announce the verdict to screen-reader users when an application edit flips it (the visual bubble
+  // recolors below). A polite region announces only when this TEXT changes — no per-keystroke noise —
+  // and focus never moves on a recompute (the single screen's announce/focus split). When an edit
+  // WITHDRAWS the verdict (clearing a gate value), say so: a silent region would leave a screen-reader
+  // user believing the prior verdict still stands.
+  const verdictAnnouncement =
+    readable && combined?.verify && review
+      ? `Verdict: ${VERDICT_LABEL[review.effectiveOverall ?? "review"]}.`
+      : readable && claimedNeeds
+        ? `Verdict cleared. Add ${claimedNeeds} to verify.`
+        : "";
+
   return (
     <div className="flex flex-col gap-4">
+      <p role="status" aria-live="polite" className="sr-only">
+        {verdictAnnouncement}
+      </p>
       {images.length > 0 && (
         <ul className="flex flex-wrap gap-3">
           {images.map((im, i) => (
@@ -108,6 +148,21 @@ export function ProductReview({
             </li>
           ))}
         </ul>
+      )}
+
+      {/* The application: supply or correct the values this label is verified against — the parity
+          piece that makes a no-CSV or partial-CSV row workable instead of a dead end. Hidden for an
+          unreadable label (no extraction -> nothing to compare; the re-scan path below handles it). */}
+      {readable && extracted && onApplicationChange && (
+        <ApplicationEditor
+          extracted={extracted}
+          values={application ?? null}
+          csvValues={csvValues ?? null}
+          edits={edits ?? {}}
+          onChange={onApplicationChange}
+          claimedNeeds={claimedNeeds}
+          hasVerdict={Boolean(combined?.verify)}
+        />
       )}
 
       {!readable ? (
@@ -168,6 +223,16 @@ export function ProductReview({
             </details>
           </>
         )
+      )}
+
+      {/* Parity with the single screen: the full AI reading is inspectable without leaving the drawer. */}
+      {readable && extracted && (
+        <details className="rounded-card border border-border bg-surface-muted p-4">
+          <summary className="min-h-[44px] cursor-pointer py-2 text-sm font-semibold text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2">
+            What the AI read off the label
+          </summary>
+          <ExtractedFieldsView extracted={extracted} />
+        </details>
       )}
 
       <DecisionPanel

@@ -38,6 +38,7 @@ import { downscaleForUpload } from "./imageDownscale";
 import { DropZone } from "./ui/DropZone";
 import { FieldHelp } from "./ui/FieldHelp";
 import { APP_FIELD_HELP, type AppInputKey } from "./ui/fieldHelpCopy";
+import { APP_INPUT_SPECS, appInputConfidence, appInputSuggestion } from "./ui/appInputs";
 import { ErrorAlert } from "./ui/ErrorAlert";
 import { ResultSkeleton } from "./ui/ResultSkeleton";
 import { inputClass, linkClass, secondaryButtonClass } from "./ui/fieldStyles";
@@ -171,32 +172,34 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
   const readable = state === "done" && Boolean(response?.readable);
   const extracted = readable && response ? response.extracted : undefined;
 
-  // The AI's per-field suggestion + confidence, and which application input it maps to. The required
-  // set is dynamic (below), so each input is rendered uniformly and marked required per the resolved type.
-  const appInputs: {
-    key: AppInputKey;
-    id: string;
-    label: string;
-    value: string;
-    set: (v: string) => void;
-    suggestion?: string;
-    confidence?: number;
-    hint?: string;
-  }[] = [
-    { key: "brand", id: ids.appBrand, label: "Brand name", value: claimBrand, set: setClaimBrand, suggestion: extracted?.brand, confidence: extracted?.confidence.brand },
-    { key: "classType", id: ids.appClass, label: "Class / type", value: claimClass, set: setClaimClass, suggestion: extracted?.classType?.trim() ? extracted.classType : extracted?.class, confidence: extracted?.confidence.classType ?? extracted?.confidence.class },
-    { key: "alcoholContent", id: ids.appAlcohol, label: "Alcohol content", value: claimAlcohol, set: setClaimAlcohol, suggestion: extracted?.alcoholContentText, confidence: extracted?.confidence.alcoholContent },
-    { key: "netContents", id: ids.appNet, label: "Net contents", value: claimNet, set: setClaimNet, suggestion: extracted?.netContents, confidence: extracted?.confidence.netContents },
-    { key: "name", id: ids.appName, label: "Producer / bottler name", value: claimName, set: setClaimName, suggestion: extracted?.name, confidence: extracted?.confidence.name },
-    { key: "address", id: ids.appAddress, label: "Producer / bottler address", value: claimAddress, set: setClaimAddress, suggestion: extracted?.address, confidence: extracted?.confidence.address },
-    { key: "countryOfOrigin", id: ids.appCountry, label: "Country of origin", value: claimCountry, set: setClaimCountry, suggestion: extracted?.countryOfOrigin, confidence: extracted?.confidence.countryOfOrigin, hint: "imports only" },
-    { key: "fancifulName", id: ids.appFanciful, label: "Distinctive / fanciful name", value: claimFanciful, set: setClaimFanciful, suggestion: extracted?.fancifulName, confidence: extracted?.confidence.fancifulName, hint: "if any" },
-    { key: "statementOfComposition", id: ids.appSoc, label: "Statement of composition", value: claimSoc, set: setClaimSoc, suggestion: extracted?.statementOfComposition, confidence: extracted?.confidence.statementOfComposition, hint: "specialties" },
-  ];
+  // This screen's per-input state, keyed so a new AppInputKey without wiring is a compile error.
+  const fieldState: Record<AppInputKey, { id: string; value: string; set: (v: string) => void }> = {
+    brand: { id: ids.appBrand, value: claimBrand, set: setClaimBrand },
+    classType: { id: ids.appClass, value: claimClass, set: setClaimClass },
+    alcoholContent: { id: ids.appAlcohol, value: claimAlcohol, set: setClaimAlcohol },
+    netContents: { id: ids.appNet, value: claimNet, set: setClaimNet },
+    name: { id: ids.appName, value: claimName, set: setClaimName },
+    address: { id: ids.appAddress, value: claimAddress, set: setClaimAddress },
+    countryOfOrigin: { id: ids.appCountry, value: claimCountry, set: setClaimCountry },
+    fancifulName: { id: ids.appFanciful, value: claimFanciful, set: setClaimFanciful },
+    statementOfComposition: { id: ids.appSoc, value: claimSoc, set: setClaimSoc },
+  };
+
+  // The inputs themselves derive from the SHARED descriptor (labels, hints, suggestion + confidence
+  // mapping — src/app/ui/appInputs.ts, also consumed by the batch drawer's editor), plus this
+  // screen's state wiring. The required set is dynamic (below), so each input renders uniformly and
+  // is marked required per the resolved type. Country of origin is suggested only for an IMPORT: a
+  // vision model sometimes infers "USA" from the producer address, and the input is imports-only.
+  const appInputs = APP_INPUT_SPECS.map((spec) => ({
+    ...spec,
+    ...fieldState[spec.key],
+    suggestion: extracted ? appInputSuggestion(extracted, spec.key) : undefined,
+    confidence: extracted ? appInputConfidence(extracted, spec.key) : undefined,
+  }));
 
   // Resolve the beverage class that DRIVES the required set: the agent's override wins, else the AI's
   // reading; the wine ≤14/>14 split uses the ABV (typed value preferred, else the label's).
-  const aiClassText = extracted ? (extracted.classType?.trim() ? extracted.classType : extracted.class) : undefined;
+  const aiClassText = extracted ? appInputSuggestion(extracted, "classType") : undefined;
   const effectiveAbv = parseAlcoholText(claimAlcohol).abv ?? parseAlcoholText(extracted?.alcoholContentText).abv;
   const beverageClass: BeverageClass = resolveBeverageClass(classChoice ?? aiClassText, effectiveAbv);
   const selectorChoice: ClassChoice = classChoice ?? classChoiceFor(beverageClass);
@@ -258,6 +261,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
     }
   }
   const hasUnacceptedSuggestions = appInputs.some((f) => f.value.trim() === "" && f.suggestion?.trim());
+  const hasAnySuggestion = appInputs.some((f) => f.suggestion?.trim());
 
   async function read(imgs: LabelImage[]) {
     if (imgs.length === 0) return;
@@ -486,13 +490,17 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
       <div className="mt-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h3 className="font-medium text-ink">Step 2 · The application</h3>
-          {extracted && hasUnacceptedSuggestions && (
+          {/* Stays MOUNTED (disabled) once all suggestions are accepted: unmounting the focused
+              button on click strands keyboard focus on <body>. */}
+          {extracted && hasAnySuggestion && (
             <button
               type="button"
               onClick={acceptAllSuggestions}
-              className="inline-flex min-h-[40px] items-center gap-1.5 rounded-field bg-brand-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2"
+              disabled={!hasUnacceptedSuggestions}
+              className="inline-flex min-h-[40px] items-center gap-1.5 rounded-field bg-brand-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <IconPass className="h-4 w-4" /> Accept all AI suggestions
+              <IconPass className="h-4 w-4" />
+              {hasUnacceptedSuggestions ? "Accept all AI suggestions" : "All suggestions accepted"}
             </button>
           )}
         </div>
