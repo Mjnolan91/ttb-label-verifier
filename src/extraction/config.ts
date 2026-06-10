@@ -30,6 +30,20 @@ export function resolveSelfConsistencyTemperature(
 }
 
 /**
+ * Extra self-consistency samples drawn ONCE when a field lands in the borderline band (present but
+ * below the 0.7 review gate) after the base reads — adaptive sampling, so a single noisy read out
+ * of 3 cannot doom a good field to review (2/3 -> 4/5 when the extra reads agree), while genuine
+ * splits still land below the gate. 0 disables; clamped to [0, 3] (one bounded extra batch, never
+ * a loop). Read from SELF_CONSISTENCY_ESCALATION.
+ */
+export function resolveSelfConsistencyEscalation(
+  env: Record<string, string | undefined> = process.env,
+): number {
+  const n = Number(env.SELF_CONSISTENCY_ESCALATION ?? "2");
+  return Number.isFinite(n) && n >= 0 ? Math.min(3, Math.floor(n)) : 2;
+}
+
+/**
  * Optional model override for the DEDICATED government-warning judge pass (the bold/format
  * verification). The warning is the one check that can hard-fail a label, so it can justify a
  * stronger (slower) model than the bulk extraction reads: for the gemini/openai providers this is a

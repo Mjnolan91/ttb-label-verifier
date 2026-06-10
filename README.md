@@ -83,7 +83,13 @@ image(s) ──> VisionProvider(s) ──> reconciler ──> completeness check
   equivalent) so the model is constrained to the exact field shape; bounded retry on 429/5xx and a
   self-limiting per-call timeout on every real provider. Each image is read N times in parallel
   (self-consistency, default 3) and per-field confidence is the agreement fraction across reads,
-  which is better calibrated than a model's self-reported confidence. A dedicated second pass
+  which is better calibrated than a model's self-reported confidence. The vote is CLUSTERED, not
+  literal: reads that differ only cosmetically (a dropped cedilla or comma, a less complete variant
+  of the same value) count as one reading, while a numeric difference never clusters — so noise
+  doesn't dilute confidence but a real conflict still does. And the sampling is ADAPTIVE: when a
+  field lands just below the review gate, one bounded extra batch of reads (default 2) is drawn and
+  the vote re-runs — a single noisy sample out of three recovers to 4/5 agreement instead of
+  sending a correct field to review, while genuine splits stay flagged. A dedicated second pass
   judges whether the "GOVERNMENT WARNING:" prefix is printed in bold; because the warning is the
   one check that can hard-fail a label, that judge can run on a stronger model than the bulk reads
   (`WARNING_JUDGE_MODEL`), and "verified" means verified: when neither the extraction nor the judge
@@ -134,8 +140,9 @@ p95 7.7s, 15/15 verdicts correct**. The median sits inside the ~5s budget; tail 
 (the slowest read was the first request, which pays the serverless cold start) and are bounded by
 the ~8s per-call cap. The levers are
 documented in [`.env.example`](.env.example): `SELF_CONSISTENCY_SAMPLES` (3 reads per image by
-default; 2 trades some confidence calibration for speed) and the model choice. Uploads are
-downscaled in the browser to keep request sizes inside the budget.
+default; 2 trades some confidence calibration for speed), `SELF_CONSISTENCY_ESCALATION` (extra
+reads drawn once on a borderline field; adds one parallel batch only to contested reads), and the
+model choice. Uploads are downscaled in the browser to keep request sizes inside the budget.
 
 The model SPLIT was measured the same way (local dev server, real Gemini API, 9 sequential reads
 per config, 2026-06-10). Flash extraction with the Pro warning judge: **9/9 verdicts correct, p50

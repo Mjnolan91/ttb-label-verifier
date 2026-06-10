@@ -94,8 +94,9 @@ function norm(s: string | undefined): string {
 }
 
 /** Strip case + every non-alphanumeric, so "750 mL" and "750ml" (or "ABC Co, MD" and "ABC Co MD")
- *  compare equal — formatting differences are not disagreements. */
-function canonical(s: string | undefined): string {
+ *  compare equal — formatting differences are not disagreements. Exported for the self-consistency
+ *  vote's "most complete representative" tie-break. */
+export function canonical(s: string | undefined): string {
   return (s ?? "").toLowerCase().replace(/[^a-z0-9]+/g, "");
 }
 
@@ -152,8 +153,12 @@ function numbersCompatible(a: string, b: string): boolean {
  * "OLD TOM" ⊂ "OLD TOM DISTILLERY"), or a high normalized-similarity read (a one-character OCR slip).
  * This keeps the ensemble/front-back merge from over-routing benign noise to review while still
  * flagging genuine divergence.
+ *
+ * Exported as THE field-equivalence relation: the self-consistency vote clusters its N samples with
+ * the same tolerance, so a cosmetic variant (a dropped cedilla, a missing comma) dilutes neither
+ * path's confidence while a numeric difference is never bridged by either.
  */
-function valuesAgree(a: string, b: string): boolean {
+export function valuesAgree(a: string, b: string): boolean {
   if (norm(a) === norm(b)) return true;
   const ca = canonical(a);
   if (ca !== "" && ca === canonical(b)) return true;

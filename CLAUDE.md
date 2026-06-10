@@ -43,9 +43,12 @@ pipeline and the "why". As built, the load-bearing pieces are:
 - **`src/pipeline.ts`** — `runExtraction()` reads EACH of a product's images (front/back/neck) and
   MERGES them (`mergeExtracted`) → readability gate; the PRIMARY path. Each image is read N times
   (self-consistency, `selfConsistentExtract`); per-field confidence becomes the AGREEMENT fraction
-  across samples — better calibrated than the model's self-reported confidence. `SELF_CONSISTENCY_SAMPLES`
+  across samples — better calibrated than the model's self-reported confidence. The vote CLUSTERS
+  samples by the merge's tolerant equivalence (`valuesAgree`: cosmetic variance is one reading,
+  numeric differences never cluster), and on a borderline field (below the 0.7 gate) draws ONE
+  extra batch (`SELF_CONSISTENCY_ESCALATION`, default 2) and re-votes. `SELF_CONSISTENCY_SAMPLES`
   (default 3; `src/extraction/config.ts`) sets N; the mock provider is forced to 1 so the offline
-  suite/eval stay deterministic. When a warning is read, a dedicated `judgeWarningBold` pass over the
+  suite/eval stay deterministic (and never escalates). When a warning is read, a dedicated `judgeWarningBold` pass over the
   images sets `warningPrefixIsBold` (on gemini the judge DEFAULTS to the strongest model,
   `GeminiVisionProvider.DEFAULT_JUDGE_MODEL`, falling back to the extraction model when that
   call fails; `WARNING_JUDGE_MODEL` pins/upgrades it per provider; an UNVERIFIABLE caps/bold

@@ -20,8 +20,9 @@
  */
 import type { ExtractedFields, FieldConfidence } from "@/domain";
 import { FIELD_CATALOG } from "./fieldCatalog";
-import { normalizeText, parseAlcoholText } from "@/compare";
-import { DISAGREEMENT_CONFIDENCE, reconcileExtract } from "./reconcile";
+import { FIELD_REVIEW_CONFIDENCE, isExtractionReadable, normalizeText, parseAlcoholText } from "@/compare";
+import { DISAGREEMENT_CONFIDENCE, canonical, reconcileExtract, valuesAgree } from "./reconcile";
+import { resolveSelfConsistencyEscalation } from "./config";
 import type { ImageInput, VisionProvider } from "./VisionProvider";
 
 type ValueKey = (typeof FIELD_CATALOG)[number]["key"];
@@ -38,33 +39,63 @@ function isPresent(v: string | undefined): boolean {
  *    When it is UNSTABLE (split present/absent), the majority value/absence must NOT be asserted at high
  *    confidence: a minority dropout/hallucination can otherwise read as a confident clean absence.
  */
+/**
+ * The representative reading of one cluster: the most frequent normalized form wins; a tie goes to
+ * the more COMPLETE raw value (longest canonical), mirroring the merge's keep-the-fuller-read rule.
+ */
+function representative(members: string[]): string {
+  const counts = new Map<string, { raw: string; n: number }>();
+  for (const m of members) {
+    const key = normalizeText(m);
+    const cur = counts.get(key) ?? { raw: m, n: 0 };
+    cur.n += 1;
+    counts.set(key, cur);
+  }
+  let best: { raw: string; n: number } | undefined;
+  for (const c of counts.values()) {
+    if (!best || c.n > best.n || (c.n === best.n && canonical(c.raw).length > canonical(best.raw).length)) {
+      best = c;
+    }
+  }
+  return (best as { raw: string }).raw;
+}
+
 function vote(values: (string | undefined)[]): {
   value: string | undefined;
   agreement: number;
   presenceStable: boolean;
 } {
-  const counts = new Map<string, { raw: string | undefined; n: number }>();
-  for (const v of values) {
-    const key = normalizeText(v ?? "");
-    const cur = counts.get(key) ?? { raw: v, n: 0 };
-    cur.n += 1;
-    counts.set(key, cur);
+  // CLUSTERED (semantic) voting: samples that agree under the SAME tolerant field-equivalence the
+  // provider merge uses (valuesAgree: punctuation/diacritic noise, containment, a one-character
+  // slip — but NEVER a numeric difference) count as one reading. Exact-key voting read "Gonçalves"
+  // vs "Goncalves" as disagreement and diluted a correct field to 2/3 confidence — cosmetic
+  // transcription variance is not evidence of a misread. Clusters anchor on their first member;
+  // at N <= ~6 samples chain-drift is not a concern.
+  const present = values.filter(isPresent) as string[];
+  const absentCount = values.length - present.length;
+  const clusters: string[][] = [];
+  for (const v of present) {
+    const home = clusters.find((c) => valuesAgree(c[0], v));
+    if (home) home.push(v);
+    else clusters.push([v]);
   }
-  let best = { raw: values[0], n: 0 };
-  for (const c of counts.values()) if (c.n > best.n) best = c;
+  let bestCluster: string[] | undefined;
+  for (const c of clusters) if (!bestCluster || c.length > bestCluster.length) bestCluster = c;
+  const bestPresent = bestCluster?.length ?? 0;
 
-  const presentCount = values.filter(isPresent).length;
-  const presenceStable = presentCount === 0 || presentCount === values.length;
-
-  // When presence is unstable, prefer the majority value AMONG THE PRESENT samples (so we surface the
-  // value a human can confirm, rather than asserting an absence the minority contradicts).
-  let value = best.raw;
-  if (!presenceStable) {
-    const presentValues = values.filter(isPresent);
-    const v = vote(presentValues);
-    value = v.value;
+  const presenceStable = absentCount === 0 || present.length === 0;
+  // Absence wins only a strict majority over the best value cluster; a tie surfaces the VALUE (a
+  // human can confirm a value; a silently-asserted absence they cannot). Either way an unstable
+  // presence is capped to review by the caller.
+  const absentWins = absentCount > bestPresent;
+  const value = absentWins || !bestCluster ? undefined : representative(bestCluster);
+  const agreement = (absentWins ? absentCount : bestPresent) / values.length;
+  // When presence is unstable, still surface the best PRESENT reading (mirrors the old behavior of
+  // preferring the majority among present samples).
+  if (!presenceStable && bestCluster) {
+    return { value: representative(bestCluster), agreement, presenceStable };
   }
-  return { value, agreement: best.n / values.length, presenceStable };
+  return { value, agreement, presenceStable };
 }
 
 /**
@@ -149,9 +180,43 @@ export function aggregateSamples(samples: ExtractedFields[]): ExtractedFields {
   return out;
 }
 
+/** Draw `n` sampled reads in parallel; returns the ones that succeeded (possibly empty). */
+async function drawSamples(
+  providers: VisionProvider[],
+  image: ImageInput,
+  timeoutMs: number | undefined,
+  n: number,
+): Promise<{ reads: ExtractedFields[]; firstError: unknown }> {
+  const settled = await Promise.allSettled(
+    Array.from({ length: n }, () => reconcileExtract(providers, image, timeoutMs, { sample: true })),
+  );
+  const reads = settled
+    .filter((s): s is PromiseFulfilledResult<ExtractedFields> => s.status === "fulfilled")
+    .map((s) => s.value);
+  const rejected = settled.find((s): s is PromiseRejectedResult => s.status === "rejected");
+  return { reads, firstError: rejected?.reason };
+}
+
+/** Whether any read field sits in the borderline band: present-but-below the review gate. This is
+ *  the "one noisy sample dragged a good read to 2/3" signature that more evidence can resolve;
+ *  fields at exactly 0 or absent are not borderline (more samples won't conjure missing text). */
+function hasBorderlineField(e: ExtractedFields): boolean {
+  return Object.values(e.confidence).some(
+    (c) => typeof c === "number" && c > 0 && c < FIELD_REVIEW_CONFIDENCE,
+  );
+}
+
 /** Read the image `samples` times in PARALLEL (sampling mode) through the reconciler, then aggregate
  *  to agreement-based confidence. samples<=1 is a single normal read (preserves provider confidence).
- *  Partial failures are tolerated: aggregates the samples that succeed; throws only if all fail. */
+ *  Partial failures are tolerated: aggregates the samples that succeed; throws only if all fail.
+ *
+ *  ADAPTIVE ESCALATION (sample-until-confident, bounded): when the aggregate is readable but some
+ *  field landed in the borderline band (0 < confidence < the 0.7 review gate), ONE extra batch of
+ *  up to SELF_CONSISTENCY_ESCALATION samples (default 2) is drawn and the vote re-runs over all
+ *  reads. A single noisy sample out of 3 (2/3 = 0.67, just under the gate) becomes 4/5 = 0.8 when
+ *  the extra reads agree — while a genuine split stays below the gate and still routes to review.
+ *  Cost is bounded: at most one extra parallel batch, only on contested reads; the mock path
+ *  (samples <= 1) never escalates, so the offline suite and eval stay deterministic. */
 export async function selfConsistentExtract(
   providers: VisionProvider[],
   image: ImageInput,
@@ -159,15 +224,18 @@ export async function selfConsistentExtract(
   samples: number,
 ): Promise<ExtractedFields> {
   if (samples <= 1) return reconcileExtract(providers, image, timeoutMs);
-  const settled = await Promise.allSettled(
-    Array.from({ length: samples }, () => reconcileExtract(providers, image, timeoutMs, { sample: true })),
-  );
-  const reads = settled
-    .filter((s): s is PromiseFulfilledResult<ExtractedFields> => s.status === "fulfilled")
-    .map((s) => s.value);
-  if (reads.length === 0) {
-    const rejected = settled.find((s): s is PromiseRejectedResult => s.status === "rejected");
-    throw rejected ? rejected.reason : new Error("All self-consistency samples failed.");
+  const base = await drawSamples(providers, image, timeoutMs, samples);
+  if (base.reads.length === 0) {
+    throw base.firstError ?? new Error("All self-consistency samples failed.");
   }
-  return aggregateSamples(reads);
+  let aggregated = aggregateSamples(base.reads);
+
+  const escalation = resolveSelfConsistencyEscalation();
+  if (escalation > 0 && isExtractionReadable(aggregated) && hasBorderlineField(aggregated)) {
+    const extra = await drawSamples(providers, image, timeoutMs, escalation);
+    if (extra.reads.length > 0) {
+      aggregated = aggregateSamples([...base.reads, ...extra.reads]);
+    }
+  }
+  return aggregated;
 }

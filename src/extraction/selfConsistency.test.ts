@@ -37,6 +37,28 @@ describe("aggregateSamples", () => {
     expect(out.confidence.brand).toBeCloseTo(0.667, 2);
   });
 
+  it("CLUSTERS cosmetic variants as one reading — a dropped cedilla/comma is not a disagreement", () => {
+    // The exact-key vote read "Gonçalves" vs "Goncalves" as a 2/3 split and gated a CORRECT field
+    // to review. The clustered vote applies the same tolerant equivalence the provider merge uses.
+    const addr = (v: string) =>
+      readWith({ address: v, confidence: { ...read("X", 0.9).confidence, address: 0.9 } });
+    const out = aggregateSamples([
+      addr("Bento Gonçalves, Rio Grande do Sul, Brazil"),
+      addr("Bento Goncalves Rio Grande do Sul Brazil"),
+      addr("Bento Gonçalves, Rio Grande do Sul, Brazil"),
+    ]);
+    expect(out.confidence.address).toBe(1); // one cluster, full agreement
+    expect(out.address).toBe("Bento Gonçalves, Rio Grande do Sul, Brazil"); // most frequent exact form
+  });
+
+  it("never clusters a NUMERIC difference — digits are the value, not cosmetics", () => {
+    const net = (v: string) =>
+      readWith({ netContents: v, confidence: { ...read("X", 0.9).confidence, netContents: 0.9 } });
+    const out = aggregateSamples([net("750 mL"), net("750 mL"), net("1750 mL")]);
+    expect(out.netContents).toBe("750 mL");
+    expect(out.confidence.netContents).toBeCloseTo(0.667, 2); // genuine split -> review band
+  });
+
   it("votes the warning flags too (majority all-caps wins)", () => {
     const out = aggregateSamples([read("X", 0.9, true), read("X", 0.9, true), read("X", 0.9, false)]);
     expect(out.warningPrefixIsAllCaps).toBe(true);
@@ -135,9 +157,10 @@ describe("aggregateSamples", () => {
       readWith({ alcoholContentText: "45% Alc./Vol." }),
       readWith({ alcoholContentText: "45% Alc./Vol. (90 Proof)" }),
     ]);
-    // Raw text differs (proof present vs absent) so text agreement is 2/3, but the NUMBERS are stable,
-    // so the alcohol guard does NOT cap it further.
-    expect(out.confidence.alcoholContent).toBeCloseTo(0.667, 2);
+    // The clustered vote treats the proof-less read as a LESS COMPLETE version of the same value
+    // (containment, numbers compatible): full agreement, and the fuller reading is kept.
+    expect(out.confidence.alcoholContent).toBe(1);
+    expect(out.alcoholContentText).toBe("45% Alc./Vol. (90 Proof)");
   });
 
   it("fully-agreeing alcohol stays at full confidence (guard never down-weights agreement)", () => {
@@ -151,13 +174,62 @@ describe("aggregateSamples", () => {
 describe("selfConsistentExtract", () => {
   const img = { filename: "x", data: new Uint8Array([1]) };
 
-  it("aggregates N successful samples to agreement-based confidence", async () => {
-    const brands = ["Old Tom", "Old Tom", "0ld T0m"];
-    let i = 0;
-    const provider: VisionProvider = { name: "gemini", extract: async () => read(brands[i++], 0.9) };
-    const out = await selfConsistentExtract([provider], img, undefined, 3);
-    expect(out.brand).toBe("Old Tom");
-    expect(out.confidence.brand).toBeCloseTo(0.667, 2);
+  /** Run with SELF_CONSISTENCY_ESCALATION pinned, restoring the env afterwards. */
+  async function withEscalation<T>(value: string | undefined, fn: () => Promise<T>): Promise<T> {
+    const prev = process.env.SELF_CONSISTENCY_ESCALATION;
+    if (value === undefined) delete process.env.SELF_CONSISTENCY_ESCALATION;
+    else process.env.SELF_CONSISTENCY_ESCALATION = value;
+    try {
+      return await fn();
+    } finally {
+      if (prev === undefined) delete process.env.SELF_CONSISTENCY_ESCALATION;
+      else process.env.SELF_CONSISTENCY_ESCALATION = prev;
+    }
+  }
+
+  it("aggregates N successful samples to agreement-based confidence (escalation disabled)", async () => {
+    await withEscalation("0", async () => {
+      const brands = ["Old Tom", "Old Tom", "0ld T0m"];
+      let i = 0;
+      const provider: VisionProvider = { name: "gemini", extract: async () => read(brands[i++], 0.9) };
+      const out = await selfConsistentExtract([provider], img, undefined, 3);
+      expect(out.brand).toBe("Old Tom");
+      expect(out.confidence.brand).toBeCloseTo(0.667, 2);
+    });
+  });
+
+  it("ESCALATES once on a borderline field: a single noisy sample recovers to 4/5 = 0.8", async () => {
+    await withEscalation(undefined, async () => {
+      // default escalation (2): base reads split 2/1 (0.67, borderline) -> 2 extra reads agree -> 0.8
+      const brands = ["Old Tom", "Old Tom", "0ld T0m", "Old Tom", "Old Tom"];
+      let i = 0;
+      const provider: VisionProvider = { name: "gemini", extract: async () => read(brands[i++], 0.9) };
+      const out = await selfConsistentExtract([provider], img, undefined, 3);
+      expect(i).toBe(5); // exactly one extra batch of 2 — never a loop
+      expect(out.brand).toBe("Old Tom");
+      expect(out.confidence.brand).toBeCloseTo(0.8, 2);
+    });
+  });
+
+  it("a GENUINE split stays below the gate even after escalation (more evidence, same honest answer)", async () => {
+    await withEscalation(undefined, async () => {
+      const brands = ["Old Tom", "Old Tom", "New Barrel Co", "New Barrel Co", "New Barrel Co"];
+      let i = 0;
+      const provider: VisionProvider = { name: "gemini", extract: async () => read(brands[i++], 0.9) };
+      const out = await selfConsistentExtract([provider], img, undefined, 3);
+      expect(i).toBe(5);
+      expect(out.confidence.brand).toBeLessThan(0.7); // 3/5 -> still routed to review
+    });
+  });
+
+  it("does NOT escalate when the base samples already agree (no extra cost on clean reads)", async () => {
+    await withEscalation(undefined, async () => {
+      let i = 0;
+      const provider: VisionProvider = { name: "gemini", extract: async () => { i++; return read("Old Tom", 0.9); } };
+      const out = await selfConsistentExtract([provider], img, undefined, 3);
+      expect(i).toBe(3);
+      expect(out.confidence.brand).toBe(1);
+    });
   });
 
   it("tolerates a partial sample failure (aggregates the survivors)", async () => {
