@@ -141,13 +141,14 @@ The offline latency it prints is sub-millisecond because the mock skips the mode
 the pipeline, not a vision model. Real-deployment latency is measured too:
 [`scripts/measure-live-latency.ts`](scripts/measure-live-latency.ts) posts the three sample labels
 to a deployed `/api/verify` end to end and checks each verdict. Against the live demo (OpenAI on
-Vercel, gpt-4.1 extraction + a gpt-5.5 warning judge, 15 sequential reads, 2026-06-10): **p50 4.9s,
-p95 7.5s, and every completed read (14/14) returned the correct verdict**. One read of the fifteen
-hit the ~8s per-call straggler cap and returned the explicit "timed out, please try again" path
-rather than a guessed verdict: the budget is enforced, not hoped for. The median sits at the ~5s
-budget and the tail is bounded by the cap. The levers are
-documented in [`.env.example`](.env.example): `SELF_CONSISTENCY_SAMPLES` (3 reads per image by
-default; a measured 7-wide vote with a 5s straggler cap ran 10/10 correct verdicts at 2.9-5.0s),
+Vercel, gpt-4.1 extraction + a gpt-5.5 warning judge, a 7-wide self-consistency vote under a 5s
+straggler cap, 15 sequential reads, 2026-06-10): **p50 3.1s, p95 5.2s, 15/15 verdicts correct, no
+timeouts**. The median sits comfortably inside the ~5s budget; the single 5.2s read was the first
+request, which pays the serverless cold start. The straggler cap is load-bearing: 7 reads run in
+parallel and slow samples are dropped at 5s so the vote proceeds rather than one straggler dragging
+the request past budget. The levers are
+documented in [`.env.example`](.env.example): `SELF_CONSISTENCY_SAMPLES` (the vote width; the demo
+runs 7 with a `VISION_TIMEOUT_MS=5000` cap, the pairing that measured 15/15 inside budget),
 `SELF_CONSISTENCY_ESCALATION` (opt-in extra reads on a contested verdict-relevant field; accuracy
 over tail latency), and the model choice. Uploads are downscaled in the browser to keep request
 sizes inside the budget.
