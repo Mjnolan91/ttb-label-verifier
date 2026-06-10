@@ -55,7 +55,7 @@ export function readGeminiConfig(
 }
 
 // Gemini's structured-output schema is an OpenAPI subset: UPPERCASE type names, `nullable` instead
-// of a union type, no `additionalProperties`. (Same 15 confidenced fields + two warning flags.)
+// of a union type, no `additionalProperties`. (Same catalog-derived confidenced fields + warning flags.)
 // Each field carries its catalog description so the model reads per-field rules from the schema.
 const confidencedValue = (description: string) => ({
   type: "OBJECT",

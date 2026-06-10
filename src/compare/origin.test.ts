@@ -5,7 +5,7 @@ import type { ExtractedFields } from "@/domain";
 /** Minimal extracted shape for origin inference (only the consulted text fields). */
 type Evidence = Pick<
   ExtractedFields,
-  "name" | "address" | "countryOfOrigin" | "class" | "classType" | "commodityStatement"
+  "name" | "address" | "countryOfOrigin" | "class" | "classType" | "commodityStatement" | "importerStatement"
 >;
 function ex(fields: Partial<Evidence>): Evidence {
   return {
@@ -15,6 +15,7 @@ function ex(fields: Partial<Evidence>): Evidence {
     class: undefined,
     classType: undefined,
     commodityStatement: undefined,
+    importerStatement: undefined,
     ...fields,
   };
 }
@@ -116,7 +117,65 @@ describe("inferOrigin", () => {
   it("returns unknown when there is no evidence either way", () => {
     expect(inferOrigin(ex({}))).toBe("unknown");
     expect(inferOrigin(ex({ name: "Old Tom Distillery" }))).toBe("unknown");
-    expect(inferOrigin(ex({ address: "Cognac, France" }))).toBe("unknown");
+  });
+
+  it("treats a separate 'IMPORTED BY …' statement as import evidence (the dual-line label)", () => {
+    // The standard imported-wine pattern: a foreign producer line in name/address plus a separate
+    // importer line — the Sailor Sally's case. Either signal alone must classify it imported.
+    expect(
+      inferOrigin(
+        ex({
+          name: "Sailor Sally's Cellars",
+          address: "Valencia, Spain",
+          importerStatement: "IMPORTED BY: SEA TRADER IMPORTS, MIAMI, FL.",
+        }),
+      ),
+    ).toBe("imported");
+    expect(inferOrigin(ex({ importerStatement: "Imported by Sea Trader Imports, Miami, FL" }))).toBe("imported");
+  });
+
+  it("treats a FOREIGN producer address as import evidence on its own", () => {
+    // The producer line alone is a lawful imported-product pattern (27 CFR 4.35(b)): nothing on it
+    // says "imported", but "Valencia, Spain" is not a domestic responsibility address.
+    expect(inferOrigin(ex({ name: "Sailor Sally's Cellars", address: "Valencia, Spain" }))).toBe("imported");
+    expect(inferOrigin(ex({ address: "Cognac, France" }))).toBe("imported");
+    expect(inferOrigin(ex({ address: "Pontarlier, France 25300" }))).toBe("imported");
+    expect(inferOrigin(ex({ address: "Pontarlier, France, 25300" }))).toBe("imported"); // postcode as its own segment
+    expect(inferOrigin(ex({ address: "Oaxaca, Mexico" }))).toBe("imported");
+    expect(inferOrigin(ex({ address: "Mexico City, México" }))).toBe("imported"); // diacritics fold
+    expect(inferOrigin(ex({ address: "Port of Spain, Trinidad & Tobago" }))).toBe("imported"); // & -> and
+  });
+
+  it("the foreign TAIL wins over a US-state-lookalike earlier in the address", () => {
+    // Italian province codes (MO, MI, PA) collide with US state abbreviations; the explicit
+    // country tail must decide. A wrong "domestic" here would tell the reviewer the mandatory
+    // import marking is not applicable — the module's own documented costly direction.
+    expect(inferOrigin(ex({ address: "Modena, MO, Italy" }))).toBe("imported");
+    expect(inferOrigin(ex({ address: "Milano, MI, Italy" }))).toBe("imported");
+    expect(inferOrigin(ex({ address: "Washington, England" }))).toBe("imported");
+    // A foreign province with NO country tail is unknown (neutral) — never wrongly domestic.
+    expect(inferOrigin(ex({ address: "Wyoming, Ontario" }))).toBe("unknown");
+  });
+
+  it("never reads a country-named US town or state as a foreign address", () => {
+    // Only the TAIL segment is judged and matches are EXACT — the classic collisions stay domestic
+    // because their tail is the state, not the country-named town.
+    expect(inferOrigin(ex({ address: "Lebanon, KY" }))).toBe("domestic");
+    expect(inferOrigin(ex({ address: "Peru, IN" }))).toBe("domestic");
+    expect(inferOrigin(ex({ address: "Cuba, New Mexico" }))).toBe("domestic");
+    expect(inferOrigin(ex({ address: "Albuquerque, New Mexico" }))).toBe("domestic");
+    // "Georgia" is deliberately not in the country list (it is also a US state): an Atlanta label
+    // must never read as imported. The DOCUMENTED cost is that a Tbilisi, Georgia label also
+    // matches the state name and reads domestic — the one collision that errs that way.
+    expect(inferOrigin(ex({ address: "Atlanta, Georgia" }))).toBe("domestic");
+    expect(inferOrigin(ex({ address: "Tbilisi, Georgia" }))).toBe("domestic");
+  });
+
+  it("recognizes periodized and spelled-out US forms (fuzzer-found gaps)", () => {
+    expect(isUsAddress("Brooklyn, N.Y.")).toBe(true);
+    expect(isUsAddress("Georgetown, D.C.")).toBe(true);
+    expect(isUsAddress("St. Croix, U.S. Virgin Islands")).toBe(true);
+    expect(isUsAddress("Hagatna, Guam")).toBe(true);
   });
 });
 
@@ -128,6 +187,10 @@ describe("suggestedCountryOfOrigin", () => {
     expect(
       suggestedCountryOfOrigin(ex({ countryOfOrigin: "Product of USA" })),
     ).toBeUndefined();
+    // The leading article must not defeat the synonym match (fuzzer-found gap): "Made in the USA"
+    // must never be suggested into the imports-only input.
+    expect(suggestedCountryOfOrigin(ex({ countryOfOrigin: "Made in the USA" }))).toBeUndefined();
+    expect(suggestedCountryOfOrigin(ex({ countryOfOrigin: "Product of the United States" }))).toBeUndefined();
   });
 
   it("passes a genuine import statement through", () => {

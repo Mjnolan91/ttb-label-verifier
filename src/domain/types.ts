@@ -74,6 +74,7 @@ export interface FieldConfidence {
   name?: number;
   address?: number;
   countryOfOrigin?: number;
+  importerStatement?: number;
   appellation?: number;
   vintage?: number;
   varietal?: number;
@@ -200,6 +201,14 @@ export interface ExtractedFields {
   address?: string;
   /** Country of origin, required for imported products, e.g. "Product of Scotland". */
   countryOfOrigin?: string;
+  /**
+   * The SEPARATE "IMPORTED BY …" responsibility statement, verbatim (importer name and address),
+   * e.g. "IMPORTED BY: SEA TRADER IMPORTS, MIAMI, FL." Imported products commonly carry TWO
+   * responsibility lines — the foreign producer's (captured in name/address) AND the US importer's
+   * (captured here; mandatory for imported wine per 27 CFR 4.35(b)(1), and for spirits/malt imported
+   * in containers per 5.68(b)/7.68(b)). Its presence is direct import evidence for origin inference.
+   */
+  importerStatement?: string;
   /** Appellation of origin (wine), e.g. "Napa Valley". */
   appellation?: string;
   /** Vintage year (wine), e.g. "2019". */

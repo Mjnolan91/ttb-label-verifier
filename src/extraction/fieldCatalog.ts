@@ -25,6 +25,7 @@ export type ExtractedValueKey = Extract<
   | "name"
   | "address"
   | "countryOfOrigin"
+  | "importerStatement"
   | "appellation"
   | "vintage"
   | "varietal"
@@ -135,7 +136,10 @@ export const FIELD_CATALOG: readonly FieldDescriptor[] = [
       "\"PRODUCED BY\", \"IMPORTED BY\" — e.g. from \"DISTILLED AND BOTTLED BY: ABC DISTILLERY, FREDERICK, MD\" " +
       "the name is \"ABC Distillery\". Do NOT include the verb or the address. " +
       "NOTE: `name`, `address`, and `commodityStatement` are all parsed from the SAME printed responsibility " +
-      "line — populate all three from it; do NOT leave name/address empty just because commodityStatement is filled.",
+      "line — populate all three from it; do NOT leave name/address empty just because commodityStatement is filled. " +
+      "When the label carries BOTH a producer/bottler line AND a separate \"IMPORTED BY …\" line, use the " +
+      "producer/bottler line for name/address/commodityStatement and put the imported-by line (verbatim, whole) " +
+      "in `importerStatement`.",
   },
   {
     key: "address", rawKey: "address", confKey: "address", label: "Producer / bottler address", csvColumn: "address", group: "detail",
@@ -150,6 +154,15 @@ export const FIELD_CATALOG: readonly FieldDescriptor[] = [
       "A PRINTED origin/import statement only, e.g. \"Product of Scotland\" (imports carry one). " +
       "NEVER infer a country from the producer/bottler address — a US city/state like \"Baltimore, MD\" " +
       "is the address, not a country of origin. \"\" if no origin statement is printed.",
+  },
+  {
+    key: "importerStatement", rawKey: "importerStatement", confKey: "importerStatement", label: "Importer statement", csvColumn: "importer_statement", group: "detail",
+    description:
+      "The SEPARATE \"IMPORTED BY …\" responsibility statement, verbatim INCLUDING the verb, importer name, " +
+      "and the importer's city/state, e.g. \"IMPORTED BY: SEA TRADER IMPORTS, MIAMI, FL.\" Imported products " +
+      "often carry TWO responsibility lines — the producer's (\"PRODUCED & BOTTLED BY …\", which belongs in " +
+      "name/address/commodityStatement) AND the importer's, which belongs HERE. Do NOT copy the producer line " +
+      "into this field. \"\" if the label has no imported-by line.",
   },
   {
     key: "appellation", rawKey: "appellation", confKey: "appellation", label: "Appellation", csvColumn: "appellation", group: "detail",

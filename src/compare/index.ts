@@ -54,6 +54,7 @@ export {
 export {
   inferOrigin,
   isUsAddress,
+  isForeignAddress,
   suggestedCountryOfOrigin,
   type OriginInference,
   type OriginEvidence,

@@ -26,6 +26,7 @@ export interface RawExtractedFields {
   name?: RawConfidencedValue;
   address?: RawConfidencedValue;
   countryOfOrigin?: RawConfidencedValue;
+  importerStatement?: RawConfidencedValue;
   appellation?: RawConfidencedValue;
   vintage?: RawConfidencedValue;
   varietal?: RawConfidencedValue;

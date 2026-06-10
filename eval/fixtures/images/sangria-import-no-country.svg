@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="800" viewBox="0 0 600 800" font-family="Georgia, 'Times New Roman', serif">
+  <!-- Placeholder fixture image: the mock provider keys off the FILENAME and replays the cases.json
+       extracted block; this SVG exists so the fixture set stays complete (see images/MANIFEST.md).
+       Scenario: dual-responsibility-line imported wine with NO country-of-origin statement. -->
+  <rect width="600" height="800" fill="#f3e9d6"/>
+  <rect x="24" y="24" width="552" height="752" fill="none" stroke="#7a2c2c" stroke-width="4"/>
+  <text x="300" y="120" text-anchor="middle" font-size="44" fill="#7a2c2c" font-weight="bold">SAILOR SALLY'S</text>
+  <text x="300" y="170" text-anchor="middle" font-size="34" fill="#7a2c2c">SANGRIA</text>
+  <text x="300" y="225" text-anchor="middle" font-size="20" fill="#444">Superb Sweet Sangria Blend</text>
+  <text x="300" y="290" text-anchor="middle" font-size="22" fill="#222">8.5% ALC/VOL (17 PROOF)</text>
+  <text x="300" y="325" text-anchor="middle" font-size="22" fill="#222">750 mL</text>
+  <text x="300" y="430" text-anchor="middle" font-size="15" fill="#222">PRODUCED &amp; BOTTLED BY:</text>
+  <text x="300" y="455" text-anchor="middle" font-size="15" fill="#222">SAILOR SALLY'S CELLARS, VALENCIA, SPAIN.</text>
+  <text x="300" y="490" text-anchor="middle" font-size="15" fill="#222">IMPORTED BY: SEA TRADER IMPORTS, MIAMI, FL.</text>
+  <text x="300" y="540" text-anchor="middle" font-size="13" fill="#7a2c2c">(no "Product of Spain" statement anywhere — the deliberate defect)</text>
+  <text x="60" y="620" font-size="13" fill="#111" font-weight="bold">GOVERNMENT WARNING:</text>
+  <text x="60" y="642" font-size="12" fill="#111">(1) According to the Surgeon General, women should not drink</text>
+  <text x="60" y="660" font-size="12" fill="#111">alcoholic beverages during pregnancy because of the risk of birth</text>
+  <text x="60" y="678" font-size="12" fill="#111">defects. (2) Consumption of alcoholic beverages impairs your ability</text>
+  <text x="60" y="696" font-size="12" fill="#111">to drive a car or operate machinery, and may cause health problems.</text>
+</svg>

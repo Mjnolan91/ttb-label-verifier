@@ -91,6 +91,30 @@ describe("checkCompleteness — country of origin (imports only, 27 CFR 5.69/7.6
     expect(r.overall).toBe("incomplete");
   });
 
+  it("the dual-line imported wine (foreign producer + importer line, no country statement) -> incomplete", () => {
+    // The Sailor Sally's pattern: "PRODUCED & BOTTLED BY … VALENCIA, SPAIN" + "IMPORTED BY: SEA
+    // TRADER IMPORTS, MIAMI, FL." and NO "Product of Spain" anywhere. Either signal alone (the
+    // separate importer statement, or the foreign producer address) must flag the missing
+    // country-of-origin statement instead of sailing through as "unknown".
+    const sangria = ds({
+      brand: "Sailor Sally's",
+      classType: "Sangria",
+      alcoholContentText: "8.5% ALC/VOL (17 PROOF)",
+      netContents: "750 mL",
+      name: "Sailor Sally's Cellars",
+      address: "Valencia, Spain",
+      importerStatement: "IMPORTED BY: SEA TRADER IMPORTS, MIAMI, FL.",
+      confidence: { ...ds().confidence, importerStatement: 0.93 },
+    });
+    const r = checkCompleteness(sangria);
+    expect(r.beverageClass).toBe("wineUnder14");
+    expect(statusOf(r, "countryOfOrigin")).toBe("missing");
+    expect(r.overall).toBe("incomplete");
+    // Foreign address ALONE (no importer line read) reaches the same flag.
+    const producerOnly = checkCompleteness(ds({ ...sangria, importerStatement: undefined }));
+    expect(statusOf(producerOnly, "countryOfOrigin")).toBe("missing");
+  });
+
   it("an import with its country printed is simply present (both signals on one label)", () => {
     const r = checkCompleteness(
       ds({

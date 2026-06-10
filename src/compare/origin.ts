@@ -32,7 +32,7 @@ export type OriginInference = "domestic" | "imported" | "unknown";
 /** The extracted fields origin inference consults. */
 export type OriginEvidence = Pick<
   ExtractedFields,
-  "name" | "address" | "countryOfOrigin" | "class" | "classType" | "commodityStatement"
+  "name" | "address" | "countryOfOrigin" | "class" | "classType" | "commodityStatement" | "importerStatement"
 >;
 
 /** USPS state abbreviations, DC, and the territories whose products are domestic for TTB labeling
@@ -53,7 +53,9 @@ const US_STATE_NAMES = new Set([
   "new york", "north carolina", "north dakota", "ohio", "oklahoma", "oregon", "pennsylvania",
   "rhode island", "south carolina", "south dakota", "tennessee", "texas", "utah", "vermont",
   "virginia", "washington", "west virginia", "wisconsin", "wyoming", "district of columbia",
-  "puerto rico",
+  // Territories whose products are domestic for TTB labeling, spelled out (abbrs are above).
+  "puerto rico", "virgin islands", "us virgin islands", "u s virgin islands", "guam",
+  "american samoa",
 ]);
 
 /** US-country synonyms a printed origin statement may use. Exact matches only (after stripping the
@@ -75,46 +77,101 @@ const IMPORT_PHRASE = /\bimported\b|\bimporter\b/i;
  *  malt style. A false "imported" is the safe direction (it only asks a human for the country). */
 const FOREIGN_DISTINCTIVE_CLASS = /\bscotch\s+whisk|\birish\s+whisk|\bcanadian\s+whisk|\btequila\b|\bmezcal\b|\bcognac\b/i;
 
+/**
+ * English names of foreign countries, for the structured "City, Country" address form — a label
+ * whose responsibility line reads "… Valencia, Spain" is an import even when nothing says
+ * "imported" (the producer line alone is a lawful imported-wine pattern, 27 CFR 4.35(b)).
+ * Matched by EXACT equality against the address TAIL segment only — so "Lebanon, KY" (a US town;
+ * its tail is the state) and "Albuquerque, New Mexico" (exact !== "mexico") never match.
+ * "Georgia" is deliberately ABSENT (US-state collision: an Atlanta label must never read as
+ * imported); the accepted cost is that a Tbilisi, Georgia label ALSO matches the US state name
+ * and reads "domestic" — the one collision that errs that way; the reviewer sees the address
+ * either way. Any OTHER name missing from this list is a miss toward "unknown" (neutral).
+ * Non-English spellings ("Deutschland", "España") and Canadian provinces are documented misses.
+ */
+const FOREIGN_COUNTRY_NAMES = new Set([
+  "france", "italy", "spain", "portugal", "germany", "austria", "switzerland", "belgium",
+  "netherlands", "holland", "luxembourg", "ireland", "northern ireland", "united kingdom",
+  "great britain", "england", "scotland", "wales", "greece", "hungary", "romania", "bulgaria",
+  "croatia", "slovenia", "serbia", "albania", "north macedonia", "armenia", "moldova", "ukraine",
+  "russia", "poland", "czech republic", "czechia", "slovakia", "denmark", "sweden", "norway",
+  "finland", "iceland", "estonia", "latvia", "lithuania", "malta", "cyprus", "turkey",
+  "mexico", "canada", "brazil", "argentina", "chile", "uruguay", "paraguay", "bolivia", "peru",
+  "colombia", "venezuela", "ecuador", "guatemala", "nicaragua", "panama", "costa rica",
+  "honduras", "belize", "el salvador", "cuba", "jamaica", "haiti", "dominican republic",
+  "barbados", "trinidad", "trinidad and tobago", "bahamas", "guyana", "suriname",
+  "japan", "china", "india", "south korea", "korea", "taiwan", "thailand", "vietnam",
+  "philippines", "indonesia", "singapore", "malaysia", "sri lanka", "nepal", "mongolia",
+  "australia", "new zealand", "fiji",
+  "south africa", "kenya", "ethiopia", "tanzania", "uganda", "nigeria", "ghana", "morocco",
+  "tunisia", "algeria", "egypt", "israel", "lebanon", "jordan",
+  "uk", "u k", "bosnia and herzegovina",
+]);
+
 const normalize = (s: string): string =>
   s
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "") // fold combining diacritics: "México" -> "Mexico"
     .toLowerCase()
+    .replace(/&/g, " and ")
     .replace(/[.,;:!?'"()]/g, " ")
     .replace(/\s+/g, " ")
     .trim();
 
-/** Whether a printed origin statement names the United States (vs a foreign country). */
+/** Whether a printed origin statement names the United States (vs a foreign country).
+ *  A leading article is folded ("Made in the USA" -> "usa"). */
 function isUsOriginText(text: string): boolean {
-  return US_COUNTRY_SYNONYMS.has(normalize(text.replace(ORIGIN_PREFIX, "")));
+  return US_COUNTRY_SYNONYMS.has(normalize(text.replace(ORIGIN_PREFIX, "")).replace(/^the\s+/, ""));
+}
+
+/** The address TAIL — the last comma segment that names a PLACE: a trailing postcode-only
+ *  segment ("…, France, 25300") is dropped, then a trailing digit run and punctuation are
+ *  stripped — "MD 21201-1234" -> "md", "N.Y." -> "n y", "Spain." -> "spain". "" when the
+ *  address has fewer than two place segments (a bare name is never judged). */
+function addressTail(address: string | undefined): string {
+  const raw = (address ?? "").trim();
+  if (raw === "") return "";
+  const segments = raw.split(",").map((s) => s.trim()).filter((s) => s !== "");
+  while (segments.length > 0 && /^\d[\d\s-]*$/.test(segments[segments.length - 1])) segments.pop();
+  if (segments.length < 2) return "";
+  return normalize(segments[segments.length - 1].replace(/\s+\d[\d-]*$/, ""));
 }
 
 /**
  * Whether an extracted producer/bottler address is in the United States. Matches only the
- * structured "City, ST [ZIP]" / "City, StateName" forms (with an optional trailing USA), so
- * free text containing state-like letter pairs ("MADE IN OAK BARRELS") never triggers.
+ * structured "City, ST [ZIP]" / "City, StateName" / "City, ST, USA" forms — and judges the TAIL
+ * segment ONLY, so free text containing state-like letter pairs ("MADE IN OAK BARRELS") never
+ * triggers, and a US-state-lookalike EARLIER in a foreign address ("Modena, MO, Italy" — Italian
+ * province codes collide with state abbreviations) can never veto the explicit foreign tail.
  */
 export function isUsAddress(address: string | undefined): boolean {
-  const raw = (address ?? "").trim();
-  if (raw === "") return false;
-  // Work on the text after the LAST comma-separated segments: "Baltimore, MD 21201", or
-  // "Baltimore, MD, USA" (then the segment before the USA suffix carries the state).
-  const segments = raw.split(",").map((s) => s.trim()).filter((s) => s !== "");
-  if (segments.length < 2) return false;
-  const tail = [...segments].reverse();
-  for (const segment of tail.slice(0, 2)) {
-    // Strip a ZIP and a trailing period: "MD 21201-1234" / "KY." -> "MD" / "KY".
-    const noZip = segment.replace(/\s+\d{5}(?:-\d{4})?$/, "").replace(/\.$/, "").trim();
-    if (US_STATE_ABBR.has(noZip.toUpperCase())) return true;
-    if (US_STATE_NAMES.has(noZip.toLowerCase())) return true;
-    if (US_COUNTRY_SYNONYMS.has(normalize(noZip))) return true;
-  }
-  return false;
+  const tail = addressTail(address);
+  if (tail === "") return false;
+  if (US_COUNTRY_SYNONYMS.has(tail)) return true; // "…, USA"
+  // normalize() spaces out punctuation, so compare the de-spaced form against the abbr set
+  // ("n y" -> "NY", "d c" -> "DC") and the spaced form against the state names ("new mexico").
+  if (US_STATE_ABBR.has(tail.replace(/\s+/g, "").toUpperCase())) return true;
+  return US_STATE_NAMES.has(tail);
 }
 
 /**
- * Classify the label's origin from its own text. Import evidence — an "imported …" phrase in the
- * responsibility line (name/address/commodity statement), a foreign-distinctive class designation,
- * or a printed non-US origin statement — always wins; a US address or a printed US origin statement
- * reads domestic only in its absence; otherwise unknown.
+ * Whether an extracted producer/bottler address is positively FOREIGN: the structured
+ * "City, Country" form whose TAIL segment names a known foreign country. A foreign producer
+ * address is import evidence in its own right — the producer line alone ("PRODUCED & BOTTLED BY
+ * X, VALENCIA, SPAIN") is a lawful imported-product pattern with nothing else saying "import".
+ * The tail decides alone (the country list and the US state/synonym sets are disjoint), so a
+ * state-lookalike EARLIER in the address ("Modena, MO, Italy") cannot veto the foreign tail,
+ * and country-named US towns ("Lebanon, KY") never match because their tail is the state.
+ */
+export function isForeignAddress(address: string | undefined): boolean {
+  return FOREIGN_COUNTRY_NAMES.has(addressTail(address));
+}
+
+/**
+ * Classify the label's origin from its own text. Import evidence — an "imported …" phrase in any
+ * responsibility text, a separate importer statement, a FOREIGN producer address, a
+ * foreign-distinctive class designation, or a printed non-US origin statement — always wins; a US
+ * address or a printed US origin statement reads domestic only in its absence; otherwise unknown.
  */
 export function inferOrigin(e: OriginEvidence): OriginInference {
   const origin = (e.countryOfOrigin ?? "").trim();
@@ -122,6 +179,11 @@ export function inferOrigin(e: OriginEvidence): OriginInference {
     IMPORT_PHRASE.test(e.name ?? "") ||
     IMPORT_PHRASE.test(e.address ?? "") ||
     IMPORT_PHRASE.test(e.commodityStatement ?? "") ||
+    // Deliberately confidence-blind: a low-confidence "IMPORTED BY …" read still routes the label
+    // to review (the safe direction); the self-consistency presence vote already drops a one-off
+    // hallucinated sample before it gets here.
+    IMPORT_PHRASE.test(e.importerStatement ?? "") ||
+    isForeignAddress(e.address) ||
     FOREIGN_DISTINCTIVE_CLASS.test(e.classType ?? "") ||
     FOREIGN_DISTINCTIVE_CLASS.test(e.class ?? "") ||
     (origin !== "" && !isUsOriginText(origin));

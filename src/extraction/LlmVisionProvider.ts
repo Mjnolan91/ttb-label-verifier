@@ -38,13 +38,13 @@ const DEFAULT_API_VERSION = "2024-10-21";
 
 /**
  * Completion-token ceiling. Generous because the full verbatim government warning (~30+ words) plus
- * 15 confidenced fields must fit; truncation is detected explicitly (finish_reason === "length")
+ * the catalog's confidenced fields must fit; truncation is detected explicitly (finish_reason === "length")
  * rather than surfacing as a confusing JSON parse error.
  */
 const MAX_OUTPUT_TOKENS = 1500;
 
 /**
- * Strict Structured Outputs schema (the 15 confidenced fields + the two warning flags). Sent as
+ * Strict Structured Outputs schema (the catalog's confidenced fields + the warning flags). Sent as
  * `response_format: json_schema` so the model is CONSTRAINED to this exact shape — eliminating the
  * class of silent malformed-output bugs that loose json_object mode allows. parseModelJson remains a
  * thin defensive guard for any provider/api-version that doesn't honor the constraint. Supported on

@@ -246,9 +246,10 @@ export function evaluateAbsentCountryOfOrigin(spec: RequirementSpec, e: Extracte
       ...base(spec),
       status: "missing",
       detail:
-        "The label shows import evidence (an \"Imported by …\" statement or a foreign-distinctive " +
-        "designation) but no country of origin was read. Mandatory for imported products " +
-        "(27 CFR 5.69 / 7.69 / 4.35(e); CBP 19 CFR 134.11).",
+        "The label shows import evidence (an \"Imported by …\" statement, a foreign producer " +
+        "address, or a foreign-distinctive designation) but no country-of-origin statement was " +
+        "read. Mandatory for imported products (27 CFR 5.69 / 7.69 / 4.35(e); CBP 19 CFR 134.11). " +
+        "Confirm the label carries a \"Product of …\" marking.",
     };
   }
   if (origin === "domestic") {
