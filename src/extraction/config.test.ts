@@ -4,8 +4,19 @@ import {
   resolveSelfConsistencyTemperature,
   resolveWarningJudgeSamples,
   resolveRescueTimeoutMs,
+  resolveJointExtraction,
   DEFAULT_SELF_CONSISTENCY_TEMPERATURE,
 } from "./config";
+
+describe("resolveJointExtraction", () => {
+  it("defaults ON; JOINT_EXTRACTION=0/false/off opts out", () => {
+    expect(resolveJointExtraction({})).toBe(true);
+    expect(resolveJointExtraction({ JOINT_EXTRACTION: "1" })).toBe(true);
+    expect(resolveJointExtraction({ JOINT_EXTRACTION: "0" })).toBe(false);
+    expect(resolveJointExtraction({ JOINT_EXTRACTION: "false" })).toBe(false);
+    expect(resolveJointExtraction({ JOINT_EXTRACTION: "OFF" })).toBe(false);
+  });
+});
 describe("resolveSelfConsistencySamples", () => {
   it("defaults to 3 and honors a valid override; floors to >=1 on junk", () => {
     expect(resolveSelfConsistencySamples({})).toBe(3);

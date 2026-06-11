@@ -12,7 +12,7 @@
  */
 import type { ExtractedFields } from "@/domain";
 import type { ExtractOptions, ImageInput, VisionProvider } from "./VisionProvider";
-import { SYSTEM_PROMPT, USER_PROMPT, parseModelJson } from "./LlmVisionProvider";
+import { CONFLICTING_FIELDS_DESCRIPTION, SYSTEM_PROMPT, USER_PROMPT, jointReadPreamble, parseModelJson } from "./LlmVisionProvider";
 import { RESCUE_PROMPT } from "./rescue";
 import { FIELD_CATALOG } from "./fieldCatalog";
 import { defaultFetch, fetchWithRetry, withHardTimeout, type FetchLike } from "./http";
@@ -73,6 +73,11 @@ const RESPONSE_SCHEMA = {
   type: "OBJECT",
   properties: {
     ...Object.fromEntries(FIELD_CATALOG.map((d) => [d.rawKey, confidencedValue(d.description)])),
+    conflictingFields: {
+      type: "ARRAY",
+      items: { type: "STRING", enum: FIELD_CATALOG.map((d) => d.rawKey) },
+      description: CONFLICTING_FIELDS_DESCRIPTION,
+    },
     warningPrefixIsAllCaps: {
       type: "BOOLEAN",
       nullable: true,
@@ -109,6 +114,7 @@ const RESPONSE_SCHEMA = {
   },
   required: [
     ...CONFIDENCED_FIELDS,
+    "conflictingFields",
     "warningPrefixIsAllCaps",
     "warningPrefixIsBold",
     "warningRemainderIsBold",
@@ -169,10 +175,16 @@ export class GeminiVisionProvider implements VisionProvider {
   }
 
   async extract(image: ImageInput, signal?: AbortSignal, options?: ExtractOptions): Promise<ExtractedFields> {
-    if (!image.data || image.data.length === 0) {
-      throw new Error("The gemini provider requires image bytes (image.data).");
+    return this.extractAll([image], signal, options);
+  }
+
+  /** The JOINT read: every image of the product in ONE request (see VisionProvider.extractAll). */
+  async extractAll(images: ImageInput[], signal?: AbortSignal, options?: ExtractOptions): Promise<ExtractedFields> {
+    for (const image of images) {
+      if (!image.data || image.data.length === 0) {
+        throw new Error("The gemini provider requires image bytes (image.data).");
+      }
     }
-    const base64 = Buffer.from(image.data).toString("base64");
     const url = `${API_BASE}/models/${this.config.model}:generateContent`;
     const tuning = geminiTuning(this.config.model, options?.sample ? "sample" : "read");
 
@@ -185,12 +197,22 @@ export class GeminiVisionProvider implements VisionProvider {
         contents: [
           {
             role: "user",
+            // Google's multimodal prompt-design guidance: the instruction prompt goes AFTER the
+            // image parts; each image keeps its position hint immediately before it.
             parts: [
-              ...(image.position
-                ? [{ text: `This image is the ${image.position} label of the product.` }]
-                : []),
+              ...(images.length > 1 ? [{ text: jointReadPreamble(images.length) }] : []),
+              ...images.flatMap((image) => [
+                ...(image.position
+                  ? [{ text: `This image is the ${image.position} label of the product.` }]
+                  : []),
+                {
+                  inlineData: {
+                    mimeType: image.contentType ?? "image/jpeg",
+                    data: Buffer.from(image.data!).toString("base64"),
+                  },
+                },
+              ]),
               { text: USER_PROMPT },
-              { inlineData: { mimeType: image.contentType ?? "image/jpeg", data: base64 } },
             ],
           },
         ],

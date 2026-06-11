@@ -48,8 +48,16 @@ every push/PR to main, also offline on the mock.
 ## Architecture as built (where the AGENTS.md pipeline lives)
 AGENTS.md describes the `image → VisionProvider(s) → reconciler → (optional) comparator → UI`
 pipeline and the "why". As built, the load-bearing pieces are:
-- **`src/pipeline.ts`** — `runExtraction()` reads EACH of a product's images (front/back/neck) and
-  MERGES them (`mergeExtracted`) → readability gate; the PRIMARY path. Each image is read N times
+- **`src/pipeline.ts`** — `runExtraction()` reads a product's images (front/back/neck) → readability
+  gate; the PRIMARY path. On chat providers a MULTI-IMAGE product is read JOINTLY by default
+  (`extractAll` + `selfConsistentExtractJoint`: ALL images ride ONE request per sample as
+  position-labeled separate image parts — never a stitched bitmap, which would halve per-label
+  resolution under the vision APIs' caps; `JOINT_EXTRACTION=0` opts out), so fields get cross-panel
+  context and a 2-image product pays samples requests, not images×samples; a model-reported
+  cross-panel conflict (`crossImageConflicts`) is capped into the review band, review-gated and
+  rescue-ineligible, never silently resolved (`applyCrossImageConflictCaps`). Providers WITHOUT
+  `extractAll` (mock, ocr — hence the offline suite/eval and the Azure ensemble) read EACH image
+  separately and MERGE (`mergeExtracted`). Each read is sampled N times
   (self-consistency, `selfConsistentExtract`); per-field confidence becomes the AGREEMENT fraction
   across samples — better calibrated than the model's self-reported confidence. The vote CLUSTERS
   samples by the merge's tolerant equivalence (`valuesAgree`: cosmetic variance is one reading,

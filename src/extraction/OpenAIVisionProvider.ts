@@ -9,7 +9,7 @@
  */
 import type { ExtractedFields } from "@/domain";
 import type { ExtractOptions, ImageInput, VisionProvider } from "./VisionProvider";
-import { buildExtractionBody, callChatCompletion, judgeWarningBoldViaChat, readFieldsViaChat } from "./LlmVisionProvider";
+import { buildExtractionBody, callChatCompletion, encodeLabelImage, judgeWarningBoldViaChat, readFieldsViaChat } from "./LlmVisionProvider";
 import { defaultFetch, type FetchLike } from "./http";
 import { resolveSelfConsistencyTemperature, resolveWarningJudgeModel } from "./config";
 
@@ -67,10 +67,12 @@ export class OpenAIVisionProvider implements VisionProvider {
   }
 
   async extract(image: ImageInput, signal?: AbortSignal, options?: ExtractOptions): Promise<ExtractedFields> {
-    if (!image.data || image.data.length === 0) {
-      throw new Error("The openai provider requires image bytes (image.data).");
-    }
-    const dataUrl = `data:${image.contentType ?? "image/jpeg"};base64,${Buffer.from(image.data).toString("base64")}`;
+    return this.extractAll([image], signal, options);
+  }
+
+  /** The JOINT read: every image of the product in ONE request (see VisionProvider.extractAll). */
+  async extractAll(images: ImageInput[], signal?: AbortSignal, options?: ExtractOptions): Promise<ExtractedFields> {
+    const encoded = images.map((img) => encodeLabelImage(img, "openai"));
     // Base read is greedy (0); a self-consistency SAMPLE uses the env-tunable sampling temperature
     // (default ~0.4) — shared with the Azure chat path via config so both stay tuned in one place.
     const temperature = options?.sample ? resolveSelfConsistencyTemperature() : 0;
@@ -79,7 +81,7 @@ export class OpenAIVisionProvider implements VisionProvider {
       fetchImpl: this.fetchImpl,
       url: OPENAI_URL,
       headers: { authorization: `Bearer ${this.config.apiKey}` },
-      body: buildExtractionBody(image, dataUrl, { model: this.config.model }, temperature),
+      body: buildExtractionBody(encoded, { model: this.config.model }, temperature),
       label: "OpenAI",
       hintFor: (status) =>
         status === 401

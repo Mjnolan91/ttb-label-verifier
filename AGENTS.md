@@ -60,6 +60,16 @@ fieldCatalog.ts` — that the mapper, merge, field table, and CSV all derive fro
   offline), `openai` (OpenAI-direct), `gemini` (Google Gemini-direct), `llm` (Azure OpenAI
   multimodal), `ocr` (Azure AI Document Intelligence), and `ensemble` (llm + ocr reconciled). The
   three chat-model providers share one prompt + JSON parser; only the request/response dialect differs.
+- **A multi-image product is read JOINTLY by default** (`extractAll`: every image of the product in
+  ONE request per self-consistency sample, each image a separate full-resolution part preceded by
+  its position hint — deliberately NEVER a stitched composite, which halves per-label pixels under
+  the APIs' total-resolution caps and measurably degrades fine-print OCR). The model allocates
+  fields with cross-panel context (brand on the front, warning on the back) and the request burst
+  shrinks from images x samples to samples. A model-reported cross-panel CONFLICT
+  (`conflictingFields` -> `crossImageConflicts`) is deterministically capped into the review band —
+  review-gated AND rescue-ineligible — so a front/back contradiction always reaches a human.
+  `JOINT_EXTRACTION=0` opts out; the mock/`ocr` providers don't implement `extractAll`, so the
+  offline suite, the eval, and the Azure `ensemble` keep the per-image reads + merge path.
 - **The real providers are Azure-native, and that IS the firewall-survival story.** The
   brief's outbound firewall blocks third-party AI endpoints; running *in-tenant* on Azure
   survives it. The `llm` reference impl targets **Azure OpenAI** (multimodal); the `ocr`

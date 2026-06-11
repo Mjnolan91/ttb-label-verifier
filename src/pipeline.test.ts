@@ -180,6 +180,135 @@ describe("runExtraction — burst hygiene + rescue budget", () => {
   });
 });
 
+describe("runExtraction — JOINT multi-image read (one request per product)", () => {
+  /** Pin JOINT_EXTRACTION for a test, restoring the env afterwards. */
+  async function withJointEnv<T>(value: string | undefined, fn: () => Promise<T>): Promise<T> {
+    const prev = process.env.JOINT_EXTRACTION;
+    if (value === undefined) delete process.env.JOINT_EXTRACTION;
+    else process.env.JOINT_EXTRACTION = value;
+    try {
+      return await fn();
+    } finally {
+      if (prev === undefined) delete process.env.JOINT_EXTRACTION;
+      else process.env.JOINT_EXTRACTION = prev;
+    }
+  }
+
+  const frontBack = [
+    { ...img("front.jpg"), position: "front" as const },
+    { ...img("back.jpg"), position: "back" as const },
+  ];
+
+  it("a capable provider reads ALL images in ONE call — extract() is never used, nothing is reported failed", async () => {
+    let jointCalls = 0;
+    let singleCalls = 0;
+    const provider: VisionProvider = {
+      name: "mock", // samples forced to 1: exactly one joint request
+      extract: async () => {
+        singleCalls++;
+        return fields({ brand: "ABC", confidence: { brand: 0.95 } });
+      },
+      extractAll: async (images) => {
+        jointCalls++;
+        expect(images.map((i) => i.filename)).toEqual(["front.jpg", "back.jpg"]);
+        return fields({
+          brand: "ABC",
+          warningText: CANONICAL_GOVERNMENT_WARNING,
+          warningPrefixIsAllCaps: true,
+          warningPrefixIsBold: true,
+          confidence: { brand: 0.95, warningText: 0.95 },
+        });
+      },
+    };
+    const out = await runExtraction([provider], frontBack);
+    expect(jointCalls).toBe(1);
+    expect(singleCalls).toBe(0);
+    expect(out.readable).toBe(true);
+    expect(out.extracted.brand).toBe("ABC");
+    expect(out.extracted.warningText).toContain("GOVERNMENT WARNING");
+    expect(out.failedImages).toEqual([]); // all-or-nothing: no partial drop is possible
+  });
+
+  it("JOINT_EXTRACTION=0 falls back to per-image reads + merge", async () => {
+    await withJointEnv("0", async () => {
+      let jointCalls = 0;
+      let singleCalls = 0;
+      const provider: VisionProvider = {
+        name: "mock",
+        extract: async () => {
+          singleCalls++;
+          return fields({ brand: "ABC", confidence: { brand: 0.95 } });
+        },
+        extractAll: async () => {
+          jointCalls++;
+          return fields({ brand: "ABC", confidence: { brand: 0.95 } });
+        },
+      };
+      const out = await runExtraction([provider], frontBack);
+      expect(singleCalls).toBe(2);
+      expect(jointCalls).toBe(0);
+      expect(out.extracted.brand).toBe("ABC");
+    });
+  });
+
+  it("a SINGLE-image product stays on the per-image path (no joint preamble for one image)", async () => {
+    let jointCalls = 0;
+    let singleCalls = 0;
+    const provider: VisionProvider = {
+      name: "mock",
+      extract: async () => {
+        singleCalls++;
+        return fields({ brand: "ABC", confidence: { brand: 0.95 } });
+      },
+      extractAll: async () => {
+        jointCalls++;
+        return fields({ brand: "ABC", confidence: { brand: 0.95 } });
+      },
+    };
+    await runExtraction([provider], [img("front.jpg")]);
+    expect(singleCalls).toBe(1);
+    expect(jointCalls).toBe(0);
+  });
+
+  it("a model-reported CROSS-IMAGE CONFLICT is capped into the review band — never a confident pass", async () => {
+    // The joint read picked the front's 45% at high confidence but flagged the back's contradiction.
+    const provider: VisionProvider = {
+      name: "mock",
+      extract: async () => fields({}),
+      extractAll: async () =>
+        fields({
+          brand: "ABC",
+          alcoholContentText: "45% Alc./Vol.",
+          crossImageConflicts: ["alcoholContent"],
+          confidence: { brand: 0.95, alcoholContent: 0.98 },
+        }),
+    };
+    const out = await runExtraction([provider], frontBack);
+    expect(out.extracted.alcoholContentText).toBe("45% Alc./Vol."); // the suggestion survives for the human
+    expect(out.extracted.confidence.alcoholContent).toBeLessThanOrEqual(0.3); // verdict routes to review
+    expect(out.extracted.confidence.brand).toBe(0.95); // unlisted fields untouched
+  });
+
+  it("a joint read that times out entirely surfaces the TimeoutError (re-upload path)", async () => {
+    const provider: VisionProvider = {
+      name: "mock",
+      extract: async () => fields({}),
+      extractAll: timeout,
+    };
+    await expect(runExtraction([provider], frontBack)).rejects.toMatchObject({ name: "TimeoutError" });
+  });
+
+  it("a provider WITHOUT extractAll keeps the per-image path (mock/ocr/ensemble unaffected)", async () => {
+    const provider = providerByFilename({
+      "front.jpg": () => Promise.resolve(fields({ brand: "ABC", confidence: { brand: 0.95 } })),
+      "back.jpg": () => Promise.resolve(fields({ netContents: "750 mL", confidence: { netContents: 0.9 } })),
+    });
+    const out = await runExtraction([provider], frontBack);
+    expect(out.extracted.brand).toBe("ABC");
+    expect(out.extracted.netContents).toBe("750 mL");
+  });
+});
+
 describe("runVerification", () => {
   const claimed: ClaimedFields = { brand: "ABC", alcoholContentText: "40% Alc./Vol." };
 

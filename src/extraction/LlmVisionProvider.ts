@@ -70,10 +70,29 @@ function confidencedValueSchema(description: string) {
 // from the field set the mapper/merge/UI/CSV use. Per-field descriptions travel with the schema.
 const CONFIDENCED_FIELDS: readonly string[] = FIELD_CATALOG.map((d) => d.rawKey);
 
+/**
+ * Schema description for the cross-image conflict report (shared verbatim with the Gemini dialect).
+ * Only a JOINT multi-image read can populate it; the pipeline deterministically caps every listed
+ * field into the review band (applyCrossImageConflictCaps) — the model reports the contradiction,
+ * code decides what it means.
+ */
+export const CONFLICTING_FIELDS_DESCRIPTION =
+  "Field keys (from this schema) that DIFFERENT images of the product print with genuinely DIFFERENT " +
+  "values — e.g. the front label says 45% ABV while the back says 40%. List the key and lower that " +
+  "field's confidence; NEVER silently pick one of the conflicting values as the answer. " +
+  "Case, punctuation, spacing, or abbreviation differences are NOT conflicts, and a field present on " +
+  "one image but absent on another is NOT a conflict. Empty array when there is no contradiction or " +
+  "only one image.";
+
 const EXTRACTION_JSON_SCHEMA = {
   type: "object",
   properties: {
     ...Object.fromEntries(FIELD_CATALOG.map((d) => [d.rawKey, confidencedValueSchema(d.description)])),
+    conflictingFields: {
+      type: "array",
+      items: { type: "string", enum: FIELD_CATALOG.map((d) => d.rawKey) },
+      description: CONFLICTING_FIELDS_DESCRIPTION,
+    },
     warningPrefixIsAllCaps: {
       type: ["boolean", "null"],
       description:
@@ -107,6 +126,7 @@ const EXTRACTION_JSON_SCHEMA = {
   },
   required: [
     ...CONFIDENCED_FIELDS,
+    "conflictingFields",
     "warningPrefixIsAllCaps",
     "warningPrefixIsBold",
     "warningRemainderIsBold",
@@ -166,15 +186,29 @@ export const SYSTEM_PROMPT =
   "\"Handcrafted\", \"Legendary\") are NEITHER the brand NOR, by themselves, the class/type — never put them in " +
   "`brand`, and never put puffery in `classType`.\n" +
   "5. Return exactly ONE JSON object and nothing else — no prose, no markdown, no code fences.\n" +
-  "6. A product may have several label images (front/back/neck). You are shown ONE of them — extract " +
-  'only what is visible on THIS image and leave the rest "" with low confidence.';
+  "6. A product may have several label images (front/back/neck). When this request contains ONE " +
+  'image, extract only what is visible on it and leave the rest "" with low confidence. When it ' +
+  "contains SEVERAL images, they are label panels of the SAME product: read them TOGETHER as one " +
+  "label set — take each field from the image where it is most legible, and return \"\" only when " +
+  "it appears on none of them.\n" +
+  "7. CONFLICTS BETWEEN IMAGES: if two images print genuinely DIFFERENT values for the same field, " +
+  "list that field's key in `conflictingFields` and lower its confidence — never silently pick one. " +
+  "Formatting or abbreviation differences are not conflicts.";
 
 export const USER_PROMPT =
-  "Read EVERY piece of text on this label — top, bottom, sides, and small/fine print. Transcribe each " +
-  "field exactly as printed, preserving capitalization, digits, punctuation, and symbols; do not " +
+  "Read EVERY piece of text on each label image — top, bottom, sides, and small/fine print. Transcribe " +
+  "each field exactly as printed, preserving capitalization, digits, punctuation, and symbols; do not " +
   "interpret, normalize, translate, autocomplete, or correct. For multi-column layouts read left to " +
   'right. Use "" with low confidence ONLY when the text is truly not present. Each field\'s specific ' +
   "rule is given in its schema description.";
+
+/** The user-message preamble for a JOINT multi-image read (one product, several label panels). */
+export function jointReadPreamble(count: number): string {
+  return (
+    `These ${count} images are the label panels of ONE product (each panel's position is noted ` +
+    "before its image). Read them together as one label set."
+  );
+}
 
 /**
  * Confidence we stamp on a PARSE-DEGRADED field — a `{value, confidence}` cell that survived JSON
@@ -257,7 +291,21 @@ export function parseModelJson(content: string): ExtractedFields {
     warningRemainderIsBold: flag(p.warningRemainderIsBold),
     warningIsReadilyLegible: flag(p.warningIsReadilyLegible),
   };
-  return mapRawExtracted(raw);
+  const mapped = mapRawExtracted(raw);
+  // The joint-read conflict report: model-facing raw keys -> confidence channels. Unknown keys are
+  // dropped (defensive: the enum constrains the model, but this parser also guards loose dialects).
+  if (Array.isArray(p.conflictingFields)) {
+    const confByRaw = new Map(FIELD_CATALOG.map((d) => [d.rawKey, d.confKey]));
+    const conflicts = [
+      ...new Set(
+        p.conflictingFields
+          .map((k) => (typeof k === "string" ? confByRaw.get(k) : undefined))
+          .filter((k): k is NonNullable<typeof k> => k !== undefined),
+      ),
+    ];
+    if (conflicts.length > 0) mapped.crossImageConflicts = conflicts;
+  }
+  return mapped;
 }
 
 /**
@@ -282,12 +330,31 @@ async function chatCompletionErrorDetail(
   return `${message}${hint}`;
 }
 
-/** The shared multimodal request body (system + user-with-image). `extra` lets OpenAI add `model`;
- *  when it does, the token/temperature params adapt to the model family (gpt-5/o-series reject the
- *  classic `max_tokens`/`temperature` idioms — see openaiTuning.ts). */
+/** One label image encoded for a chat request, with its position hint. */
+export interface EncodedLabelImage {
+  dataUrl: string;
+  position?: string;
+}
+
+/** Encode an image's bytes as a data URL (throws the provider's actionable error when absent). */
+export function encodeLabelImage(image: ImageInput, providerLabel: string): EncodedLabelImage {
+  if (!image.data || image.data.length === 0) {
+    throw new Error(`The ${providerLabel} provider requires image bytes (image.data).`);
+  }
+  return {
+    dataUrl: `data:${image.contentType ?? "image/jpeg"};base64,${Buffer.from(image.data).toString("base64")}`,
+    position: image.position,
+  };
+}
+
+/** The shared multimodal request body (system + user-with-image(s)). Several images = ONE product's
+ *  label panels read JOINTLY (each preceded by its position hint, after a joint-read preamble) —
+ *  always separate image parts at full per-image resolution, never a stitched composite (see
+ *  VisionProvider.extractAll). `extra` lets OpenAI add `model`; when it does, the token/temperature
+ *  params adapt to the model family (gpt-5/o-series reject the classic `max_tokens`/`temperature`
+ *  idioms — see openaiTuning.ts). */
 export function buildExtractionBody(
-  image: ImageInput,
-  dataUrl: string,
+  images: EncodedLabelImage[],
   extra?: Record<string, unknown>,
   temperature = 0,
 ): object {
@@ -298,11 +365,14 @@ export function buildExtractionBody(
       {
         role: "user",
         content: [
-          ...(image.position
-            ? [{ type: "text", text: `This image is the ${image.position} label of the product.` }]
-            : []),
+          ...(images.length > 1 ? [{ type: "text", text: jointReadPreamble(images.length) }] : []),
           { type: "text", text: USER_PROMPT },
-          { type: "image_url", image_url: { url: dataUrl, detail: "high" } },
+          ...images.flatMap((img) => [
+            ...(img.position
+              ? [{ type: "text", text: `This image is the ${img.position} label of the product.` }]
+              : []),
+            { type: "image_url", image_url: { url: img.dataUrl, detail: "high" } },
+          ]),
         ],
       },
     ],
@@ -525,10 +595,12 @@ export class LlmVisionProvider implements VisionProvider {
   }
 
   async extract(image: ImageInput, signal?: AbortSignal, options?: ExtractOptions): Promise<ExtractedFields> {
-    if (!image.data || image.data.length === 0) {
-      throw new Error("The llm provider requires image bytes (image.data).");
-    }
-    const dataUrl = `data:${image.contentType ?? "image/jpeg"};base64,${Buffer.from(image.data).toString("base64")}`;
+    return this.extractAll([image], signal, options);
+  }
+
+  /** The JOINT read: every image of the product in ONE request (see VisionProvider.extractAll). */
+  async extractAll(images: ImageInput[], signal?: AbortSignal, options?: ExtractOptions): Promise<ExtractedFields> {
+    const encoded = images.map((img) => encodeLabelImage(img, "llm"));
     const url =
       `${this.config.endpoint.replace(/\/+$/, "")}/openai/deployments/` +
       `${this.config.deployment}/chat/completions?api-version=${this.config.apiVersion}`;
@@ -541,7 +613,7 @@ export class LlmVisionProvider implements VisionProvider {
       fetchImpl: this.fetchImpl,
       url,
       headers: { "api-key": this.config.apiKey },
-      body: buildExtractionBody(image, dataUrl, undefined, temperature),
+      body: buildExtractionBody(encoded, undefined, temperature),
       label: "Azure OpenAI",
       hintFor: (status) =>
         status === 401 ? " (check AZURE_OPENAI_API_KEY)" : status === 429 ? " (rate limited — retry shortly)" : "",

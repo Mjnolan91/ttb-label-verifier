@@ -50,8 +50,8 @@ interface BatchRow {
   status: "pending" | "done" | "error";
   extracted?: ExtractedFields;
   completeness?: CompletenessResult;
-  /** The product's label image previews, for the review drawer. */
-  images?: { src: string; alt: string }[];
+  /** The product's label image previews (front first), for the row thumbnails + review drawer. */
+  images?: { src: string; alt: string; position?: LabelPosition }[];
   /** The matched application CSV row (null when none) — the BASE the reviewer's drawer edits
    *  overlay. The verdict itself is NOT cached here: it derives at render (deriveProductVerdict)
    *  from this row + the worklist edits, so the table, the drawer, and the exports can't diverge. */
@@ -117,6 +117,12 @@ const POSITION_LABEL: Record<string, string> = {
   neck: "Neck / strip label",
 };
 
+/** Display order for a product's images: the front leads, then back/neck/other. */
+const POSITION_RANK: Record<LabelPosition, number> = { front: 0, back: 1, neck: 2, other: 3 };
+function byPosition<T extends { position: LabelPosition }>(images: T[]): T[] {
+  return [...images].sort((a, b) => POSITION_RANK[a.position] - POSITION_RANK[b.position]);
+}
+
 /** Row note for a PARTIAL read (some of the product's images dropped out of the merge): the row
  *  stays reviewable, but the reviewer must know the extracted fields are honest-but-incomplete. */
 function partialReadNote(failures: ImageReadFailure[]): string {
@@ -131,7 +137,11 @@ async function analyzeOnce(
   claimedMap: Map<string, ClaimedRow>,
   previewByName: Map<string, string>,
 ): Promise<{ row: BatchRow; retryable: boolean }> {
-  const images = group.images.map((im) => ({ src: previewByName.get(im.file.name) ?? "", alt: im.file.name }));
+  const images = byPosition(group.images).map((im) => ({
+    src: previewByName.get(im.file.name) ?? "",
+    alt: im.file.name,
+    position: im.position,
+  }));
   const base: BatchRow = { product: group.product, imageCount: group.images.length, status: "error", images };
   try {
     const form = new FormData();
@@ -821,16 +831,20 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
             {visibleRows.map(({ r, i, d }) => {
               const { verdict, resolvedCompleteness, decision, category, pv, matchedClaim } = d;
               const settled = r.status !== "pending";
-              // The row's thumbnail: the analyzed previews when settled, else derived from the
-              // upload list so pending/retrying rows show their image too.
-              const thumb =
-                r.images?.[0] ??
-                (() => {
-                  const g = groups.find((grp) => grp.product === r.product);
-                  const fn = g?.images[0]?.file.name;
-                  const src = fn ? previewByName.get(fn) : undefined;
-                  return src ? { src, alt: fn ?? r.product } : undefined;
-                })();
+              // The row's thumbnails: EVERY image of the product, front first (the analyzed
+              // previews when settled, else derived from the upload list so pending/retrying rows
+              // show their images too) — a front/back pair reads as one product at a glance.
+              const thumbs = (
+                r.images && r.images.length > 0
+                  ? r.images
+                  : byPosition(groups.find((grp) => grp.product === r.product)?.images ?? []).map(
+                      (im) => ({
+                        src: previewByName.get(im.file.name) ?? "",
+                        alt: im.file.name,
+                        position: im.position as LabelPosition | undefined, // widen to match r.images
+                      }),
+                    )
+              ).filter((t) => t.src !== "");
               const combineTarget = combineTargetFor(r, i);
               // Attention rows get a left accent + soft tint (red for hard failures, amber for the
               // rest); decided rows dim so the open remainder pops. State is never color-only: every
@@ -855,20 +869,27 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
                   key={`${r.product}-${i}`}
                   className={`grid items-start gap-y-2 px-3 py-3 hover:bg-brand-50 sm:items-center ${ROW_GRID} ${accent}`}
                 >
-                  {/* 1. Product identity (the only flexible track), led by a thumbnail of the
-                      product's first image (derived from the upload previews for pending rows). */}
+                  {/* 1. Product identity (the only flexible track), led by thumbnails of the
+                      product's images — front first, then back/neck — so a pair reads together
+                      (derived from the upload previews for pending rows). */}
                   <div className="flex min-w-0 items-start gap-2.5 text-ink">
-                    {thumb && (
-                      <button
-                        type="button"
-                        onClick={() => setZoom(thumb)}
-                        aria-label={`Show ${r.product} label larger`}
-                        className="h-12 w-12 shrink-0 cursor-zoom-in overflow-hidden rounded-field border border-border bg-surface-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2"
-                      >
-                        {/* object-contain: a tall strip label must stay recognizable, not crop to a sliver */}
-                        {/* eslint-disable-next-line @next/next/no-img-element -- local object URL preview */}
-                        <img src={thumb.src} alt="" className="h-full w-full object-contain" />
-                      </button>
+                    {thumbs.length > 0 && (
+                      <div className="flex shrink-0 flex-wrap gap-1">
+                        {thumbs.map((t) => (
+                          <button
+                            key={t.alt}
+                            type="button"
+                            onClick={() => setZoom({ src: t.src, alt: t.alt })}
+                            aria-label={`Show ${r.product} ${t.position ? `${t.position} ` : ""}label larger`}
+                            title={t.position ? POSITION_LABEL[t.position] ?? t.position : undefined}
+                            className="h-12 w-12 cursor-zoom-in overflow-hidden rounded-field border border-border bg-surface-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2"
+                          >
+                            {/* object-contain: a tall strip label must stay recognizable, not crop to a sliver */}
+                            {/* eslint-disable-next-line @next/next/no-img-element -- local object URL preview */}
+                            <img src={t.src} alt="" className="h-full w-full object-contain" />
+                          </button>
+                        ))}
+                      </div>
                     )}
                     <div className="min-w-0">
                       <span className="block break-all font-mono text-xs">{r.product}</span>

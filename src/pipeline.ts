@@ -6,7 +6,7 @@
  * evaluation measures the exact production pipeline.
  */
 import type { ClaimedFields, ExtractedFields } from "@/domain";
-import { selfConsistentExtract, resolveSelfConsistencySamples, resolveWarningJudgeSamples, resolveRescueTimeoutMs, resolveTimeoutMs, mergeExtracted, harvestOriginStatement, isAbortOrTimeout, aggregateBoldVotes, combineBoldSignals, resolveLowConfidenceRescue, rescueEligibleKeys, rescueRawKeys, applyRescue, readFieldsBounded, type ImageInput, type LabelPosition, type VisionProvider } from "@/extraction";
+import { selfConsistentExtract, selfConsistentExtractJoint, applyCrossImageConflictCaps, resolveSelfConsistencySamples, resolveJointExtraction, resolveWarningJudgeSamples, resolveRescueTimeoutMs, resolveTimeoutMs, mergeExtracted, harvestOriginStatement, isAbortOrTimeout, aggregateBoldVotes, combineBoldSignals, resolveLowConfidenceRescue, rescueEligibleKeys, rescueRawKeys, applyRescue, readFieldsBounded, type ImageInput, type LabelPosition, type VisionProvider } from "@/extraction";
 import { verifyLabel, isExtractionReadable, type VerifyResult } from "@/compare";
 
 /** One image of the product that could not be read while at least one other image succeeded. */
@@ -81,8 +81,24 @@ export async function runExtraction(
   // The judge fan-out is CAPPED below the extraction width (default 3): it answers one boolean on
   // the strong model, and judge calls are the cheapest place to shrink the per-verify request burst.
   const judgeSamples = resolveWarningJudgeSamples(samples);
+  // JOINT READ (the default for capable providers): a multi-image product goes to the model as ONE
+  // request per sample carrying every image, so fields are allocated with full cross-panel context
+  // and the request burst shrinks from images x samples to samples. NEVER a stitched composite —
+  // separate image parts keep each label at full per-image resolution (see VisionProvider.extractAll).
+  // The mock/OCR providers lack extractAll, so the offline suite, the eval, and the Azure ensemble
+  // stay on the per-image + merge path, as does JOINT_EXTRACTION=0.
+  const joint =
+    images.length > 1 &&
+    providers.every((p) => typeof p.extractAll === "function") &&
+    resolveJointExtraction();
+  const extractionsPromise: Promise<PromiseSettledResult<ExtractedFields>[]> = joint
+    ? selfConsistentExtractJoint(providers, images, perCallTimeoutMs, samples).then(
+        (value) => [{ status: "fulfilled", value } as const],
+        (reason: unknown) => [{ status: "rejected", reason } as const],
+      )
+    : Promise.allSettled(images.map((img) => selfConsistentExtract(providers, img, perCallTimeoutMs, samples)));
   const [settled, boldVerdicts] = await Promise.all([
-    Promise.allSettled(images.map((img) => selfConsistentExtract(providers, img, perCallTimeoutMs, samples))),
+    extractionsPromise,
     bolder
       ? Promise.all(
           images.map((img) =>
@@ -105,20 +121,29 @@ export async function runExtraction(
   }
 
   // Record which images dropped out (the merge proceeds from the survivors). Indexes align: settled
-  // was produced by mapping over `images`.
-  const failedImages: ImageReadFailure[] = images.flatMap((image, i) => {
-    const s = settled[i];
-    if (s.status !== "rejected") return [];
-    return [
-      {
-        filename: image.filename,
-        position: image.position,
-        reason: isAbortOrTimeout(s.reason) ? ("timeout" as const) : ("error" as const),
-      },
-    ];
-  });
+  // was produced by mapping over `images`. A JOINT read is all-or-nothing — every image rides every
+  // request, so a partial silent drop (the Bonnaire failure mode) is structurally impossible and a
+  // total failure already threw above.
+  const failedImages: ImageReadFailure[] = joint
+    ? []
+    : images.flatMap((image, i) => {
+        const s = settled[i];
+        if (s.status !== "rejected") return [];
+        return [
+          {
+            filename: image.filename,
+            position: image.position,
+            reason: isAbortOrTimeout(s.reason) ? ("timeout" as const) : ("error" as const),
+          },
+        ];
+      });
 
   const extracted = reads.reduce((acc, cur) => mergeExtracted(acc, cur));
+
+  // A model-reported cross-image CONFLICT (front and back printing different values for one field)
+  // is deterministically capped into the conflict band: review-gated, rescue-ineligible — a panel
+  // contradiction always reaches a human (see applyCrossImageConflictCaps).
+  applyCrossImageConflictCaps(extracted);
 
   // Deterministic origin harvesting: a printed "PRODUCT OF <country>" the samples misallocated to a
   // sibling field fills an EMPTY countryOfOrigin (plain code over already-read text — see harvest.ts).

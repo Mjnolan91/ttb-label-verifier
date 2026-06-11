@@ -213,9 +213,31 @@ describe("BatchVerify — verify against an application CSV", () => {
     uploadOne(container);
     fireEvent.click(q.getByRole("button", { name: /Read all labels/i }));
     await q.findByText("Acme");
-    const thumb = q.getByRole("button", { name: /Show acme label larger/i });
+    const thumb = q.getByRole("button", { name: /Show acme front label larger/i });
     fireEvent.click(thumb);
     expect(screen.getByRole("dialog")).toBeTruthy(); // the shared ImageLightbox
+  });
+
+  it("a front/back product shows BOTH thumbnails in the row, front first", { retry: 2 }, async () => {
+    globalThis.fetch = vi.fn(async () => ({ ok: true, json: async () => RESPONSE })) as unknown as typeof fetch;
+    const { container } = render(<BatchVerify />);
+    const q = within(container);
+    const imageInput = container.querySelector('input[accept="image/*"]') as HTMLInputElement;
+    fireEvent.change(imageInput, {
+      target: {
+        files: [
+          // Deliberately uploaded back-first: the row must still lead with the front.
+          new File(["y"], "acme-back.png", { type: "image/png" }),
+          new File(["x"], "acme-front.png", { type: "image/png" }),
+        ],
+      },
+    });
+    fireEvent.click(q.getByRole("button", { name: /Read all labels/i }));
+    await q.findByText("Acme");
+    const front = q.getByRole("button", { name: /Show acme front label larger/i });
+    const back = q.getByRole("button", { name: /Show acme back label larger/i });
+    // Front precedes back in the DOM regardless of upload order.
+    expect(front.compareDocumentPosition(back) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it("'Retry all failed' re-runs every terminal-error row in one click", { retry: 2 }, async () => {

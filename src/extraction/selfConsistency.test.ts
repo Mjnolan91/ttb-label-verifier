@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { aggregateSamples, selfConsistentExtract, SUPERMAJORITY_DROPOUT_CONFIDENCE } from "./selfConsistency";
+import { aggregateSamples, applyCrossImageConflictCaps, selfConsistentExtract, selfConsistentExtractJoint, SUPERMAJORITY_DROPOUT_CONFIDENCE } from "./selfConsistency";
 import { DISAGREEMENT_CONFIDENCE } from "./reconcile";
 import type { ExtractedFields } from "@/domain";
 import type { VisionProvider } from "./VisionProvider";
@@ -316,5 +316,69 @@ describe("selfConsistentExtract", () => {
   it("rejects only when ALL samples fail", async () => {
     const provider: VisionProvider = { name: "gemini", extract: async () => { throw new Error("down"); } };
     await expect(selfConsistentExtract([provider], img, undefined, 3)).rejects.toThrow();
+  });
+});
+
+describe("cross-image conflicts (the joint read's contradiction signal)", () => {
+  it("aggregateSamples UNIONS conflict reports across samples — one sighting routes to a human", () => {
+    const out = aggregateSamples([
+      readWith({ crossImageConflicts: ["alcoholContent"] }),
+      read("Old Tom", 0.9),
+      readWith({ crossImageConflicts: ["netContents"] }),
+    ]);
+    expect(out.crossImageConflicts).toEqual(expect.arrayContaining(["alcoholContent", "netContents"]));
+  });
+
+  it("no sample reporting a conflict -> no conflict on the aggregate", () => {
+    const out = aggregateSamples([read("Old Tom", 0.9), read("Old Tom", 0.9), read("Old Tom", 0.9)]);
+    expect(out.crossImageConflicts).toBeUndefined();
+  });
+
+  it("applyCrossImageConflictCaps pins each reported field into the conflict band (review-gated, rescue-ineligible)", () => {
+    // Samples can AGREE on the model's pick (front's 45%) at full agreement confidence — the
+    // deterministic cap is what keeps a panel contradiction from becoming a confident pass.
+    const e = readWith({ crossImageConflicts: ["alcoholContent"] });
+    e.confidence.alcoholContent = 1;
+    applyCrossImageConflictCaps(e);
+    expect(e.confidence.alcoholContent).toBe(DISAGREEMENT_CONFIDENCE);
+    expect(e.confidence.brand).toBe(0.9); // unlisted fields untouched
+  });
+
+  it("the cap only ever LOWERS confidence (an already-lower value stands)", () => {
+    const e = readWith({ crossImageConflicts: ["alcoholContent"] });
+    e.confidence.alcoholContent = 0.1;
+    applyCrossImageConflictCaps(e);
+    expect(e.confidence.alcoholContent).toBe(0.1);
+  });
+});
+
+describe("selfConsistentExtractJoint", () => {
+  const imgs = [
+    { filename: "front.jpg", data: new Uint8Array([1]), position: "front" as const },
+    { filename: "back.jpg", data: new Uint8Array([2]), position: "back" as const },
+  ];
+
+  it("each sample is ONE joint request over ALL images (extract is never called)", async () => {
+    let jointCalls = 0;
+    let singleCalls = 0;
+    const provider: VisionProvider = {
+      name: "gemini",
+      extract: async () => { singleCalls++; return read("Old Tom", 0.9); },
+      extractAll: async (images) => { jointCalls++; expect(images).toHaveLength(2); return read("Old Tom", 0.9); },
+    };
+    const out = await selfConsistentExtractJoint([provider], imgs, undefined, 3);
+    expect(jointCalls).toBe(3); // samples, NOT images x samples
+    expect(singleCalls).toBe(0);
+    expect(out.brand).toBe("Old Tom");
+    expect(out.confidence.brand).toBe(1);
+  });
+
+  it("rejects when every joint sample fails", async () => {
+    const provider: VisionProvider = {
+      name: "gemini",
+      extract: async () => read("Old Tom", 0.9),
+      extractAll: async () => { throw new Error("down"); },
+    };
+    await expect(selfConsistentExtractJoint([provider], imgs, undefined, 3)).rejects.toThrow();
   });
 });

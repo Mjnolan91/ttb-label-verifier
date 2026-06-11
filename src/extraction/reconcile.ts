@@ -208,6 +208,10 @@ export function mergeExtracted(a: ExtractedFields, b: ExtractedFields): Extracte
     warningIsReadilyLegible: warnFlag((e) => e.warningIsReadilyLegible),
     confidence,
   };
+  // Cross-image conflict reports survive the merge as a UNION: either source flagging a panel
+  // contradiction keeps it routed to a human (bias to review, mirroring disagreement handling).
+  const conflicts = [...new Set([...(a.crossImageConflicts ?? []), ...(b.crossImageConflicts ?? [])])];
+  if (conflicts.length > 0) out.crossImageConflicts = conflicts;
 
   for (const f of VALUE_FIELDS) {
     const key = CONF_KEY[f];
@@ -247,24 +251,14 @@ export function mergeExtracted(a: ExtractedFields, b: ExtractedFields): Extracte
   return out;
 }
 
-/**
- * Run all providers in parallel (each with a per-call timeout) and reconcile whatever returned.
+/** Settle the per-provider calls and reconcile whatever returned (shared by single + joint reads).
  * - 0 returned: if every failure was a timeout, throw a TimeoutError (surfaced by the re-upload path);
  *   otherwise rethrow the first real error.
  * - 1 returned: use it (a timed-out partner doesn't fail the verify).
  * - 2+ returned: merge field-by-field (agree/disagree).
  */
-export async function reconcileExtract(
-  providers: VisionProvider[],
-  image: ImageInput,
-  timeoutMs: number = DEFAULT_PER_CALL_TIMEOUT_MS,
-  options?: ExtractOptions,
-): Promise<ExtractedFields> {
-  if (providers.length === 0) throw new Error("No vision providers are configured.");
-
-  const settled = await Promise.allSettled(
-    providers.map((p) => extractWithTimeout(p, image, timeoutMs, options)),
-  );
+async function settleAndReconcile(calls: Promise<ExtractedFields>[]): Promise<ExtractedFields> {
+  const settled = await Promise.allSettled(calls);
   const fulfilled = settled
     .filter((s): s is PromiseFulfilledResult<ExtractedFields> => s.status === "fulfilled")
     .map((s) => s.value);
@@ -279,4 +273,61 @@ export async function reconcileExtract(
   }
 
   return fulfilled.reduce((acc, cur) => mergeExtracted(acc, cur));
+}
+
+/** Run all providers in parallel (each with a per-call timeout) and reconcile whatever returned. */
+export async function reconcileExtract(
+  providers: VisionProvider[],
+  image: ImageInput,
+  timeoutMs: number = DEFAULT_PER_CALL_TIMEOUT_MS,
+  options?: ExtractOptions,
+): Promise<ExtractedFields> {
+  if (providers.length === 0) throw new Error("No vision providers are configured.");
+  return settleAndReconcile(providers.map((p) => extractWithTimeout(p, image, timeoutMs, options)));
+}
+
+/** Run one provider's JOINT read (extractAll) with a per-call timeout (mirrors extractWithTimeout). */
+export function extractJointWithTimeout(
+  provider: VisionProvider,
+  images: ImageInput[],
+  timeoutMs: number,
+  options?: ExtractOptions,
+): Promise<ExtractedFields> {
+  const controller = new AbortController();
+  return new Promise<ExtractedFields>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      controller.abort();
+      reject(
+        new DOMException(`Provider '${provider.name}' timed out after ${timeoutMs}ms`, "TimeoutError"),
+      );
+    }, timeoutMs);
+    provider.extractAll!(images, controller.signal, options).then(
+      (r) => {
+        clearTimeout(timer);
+        resolve(r);
+      },
+      (e: unknown) => {
+        clearTimeout(timer);
+        reject(e instanceof Error ? e : new Error(String(e)));
+      },
+    );
+  });
+}
+
+/**
+ * The JOINT-read reconciler: every provider reads ALL of a product's images in ONE call
+ * (extractAll), in parallel with the per-call timeout, and the returns are merged exactly like
+ * reconcileExtract. Callers must ensure every provider implements extractAll (the pipeline gates
+ * on that and otherwise stays on the per-image path).
+ */
+export async function reconcileExtractJoint(
+  providers: VisionProvider[],
+  images: ImageInput[],
+  timeoutMs: number = DEFAULT_PER_CALL_TIMEOUT_MS,
+  options?: ExtractOptions,
+): Promise<ExtractedFields> {
+  if (providers.length === 0) throw new Error("No vision providers are configured.");
+  const missing = providers.find((p) => typeof p.extractAll !== "function");
+  if (missing) throw new Error(`Provider '${missing.name}' does not support joint extraction.`);
+  return settleAndReconcile(providers.map((p) => extractJointWithTimeout(p, images, timeoutMs, options)));
 }

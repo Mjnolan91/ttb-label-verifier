@@ -111,6 +111,38 @@ describe("GeminiVisionProvider.extract — request shape + parsing (HTTP mocked)
     expect(calls[0].init.body).toContain("back label");
   });
 
+  it("puts the instruction prompt AFTER the image parts (Google's multimodal prompt guidance)", async () => {
+    const { fetchImpl, calls } = mockFetch();
+    const provider = new GeminiVisionProvider({ config: CONFIG, fetchImpl });
+    await provider.extract({ filename: "label.jpg", data: new Uint8Array([1]) });
+    const body = JSON.parse(calls[0].init.body ?? "{}") as {
+      contents: { parts: { text?: string; inlineData?: unknown }[] }[];
+    };
+    const parts = body.contents[0].parts;
+    const imageIdx = parts.findIndex((p) => p.inlineData);
+    const promptIdx = parts.findIndex((p) => p.text?.includes("Read EVERY piece of text"));
+    expect(imageIdx).toBeGreaterThanOrEqual(0);
+    expect(promptIdx).toBeGreaterThan(imageIdx);
+  });
+
+  it("extractAll sends EVERY image in ONE request with position hints (the joint read)", async () => {
+    const { fetchImpl, calls } = mockFetch();
+    const provider = new GeminiVisionProvider({ config: CONFIG, fetchImpl });
+    await provider.extractAll([
+      { filename: "x-front.jpg", data: new Uint8Array([1]), position: "front" },
+      { filename: "x-back.jpg", data: new Uint8Array([2]), position: "back" },
+    ]);
+    expect(calls).toHaveLength(1);
+    const body = JSON.parse(calls[0].init.body ?? "{}") as {
+      contents: { parts: { text?: string; inlineData?: unknown }[] }[];
+    };
+    const parts = body.contents[0].parts;
+    expect(parts.filter((p) => p.inlineData)).toHaveLength(2); // both images, one call
+    expect(parts.some((p) => p.text?.includes("ONE product"))).toBe(true); // the joint preamble
+    expect(parts.some((p) => p.text?.includes("front label"))).toBe(true);
+    expect(parts.some((p) => p.text?.includes("back label"))).toBe(true);
+  });
+
   it("requires image bytes", async () => {
     const { fetchImpl } = mockFetch();
     const provider = new GeminiVisionProvider({ config: CONFIG, fetchImpl });

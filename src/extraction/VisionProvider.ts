@@ -65,6 +65,18 @@ export interface VisionProvider {
    */
   extract(image: ImageInput, signal?: AbortSignal, options?: ExtractOptions): Promise<ExtractedFields>;
   /**
+   * OPTIONAL joint read: ALL of a product's images (front/back/neck) in ONE model request, so the
+   * model allocates fields with full cross-panel context instead of per-image reads being merged
+   * after the fact. Deliberately a SEPARATE request with multiple image parts — never a physical
+   * splice of the images into one bitmap: vision APIs cap the TOTAL resolution per image (OpenAI
+   * high-detail fits the whole image into 2048x2048 then scales the short side to 768px), so a
+   * stitched composite halves each label's effective pixels and measurably degrades fine-print OCR
+   * (MMNeedle, NAACL 2025: stitched sub-images collapse retrieval accuracy vs separate images).
+   * Implemented by the chat providers; the mock and OCR providers omit it, so the pipeline falls
+   * back to per-image reads + merge (the offline suite and eval are unaffected).
+   */
+  extractAll?(images: ImageInput[], signal?: AbortSignal, options?: ExtractOptions): Promise<ExtractedFields>;
+  /**
    * OPTIONAL second pass: judge ONLY whether the "GOVERNMENT WARNING:" prefix is rendered bolder than
    * the warning body. Returns true (bolder) / false (same weight) / null (cannot tell or no warning).
    * Real providers implement this; the mock omits it (the pipeline skips the pass when absent).

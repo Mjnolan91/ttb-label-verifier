@@ -89,7 +89,13 @@ image(s) ──> VisionProvider(s) ──> reconciler ──> completeness check
 - **The real providers use current best practice.** Strict structured outputs
   (`response_format: json_schema` on the OpenAI-dialect providers, Gemini's `responseSchema`
   equivalent) so the model is constrained to the exact field shape; bounded retry on 429/5xx and a
-  self-limiting per-call timeout on every real provider. Each image is read N times in parallel
+  self-limiting per-call timeout on every real provider. A multi-image product (front + back) is
+  read JOINTLY by default: every image rides ONE request as separate full-resolution, position-
+  labeled parts, so the model allocates fields with cross-panel context and a two-image product
+  costs half the requests (never a stitched composite — vision APIs cap total per-image resolution,
+  so splicing halves each label's pixels and degrades the fine print exactly where the government
+  warning lives; a model-reported front-vs-back CONFLICT on a field is capped to review, never
+  silently resolved). Each read is sampled N times in parallel
   (self-consistency, default 3) and per-field confidence is the agreement fraction across reads,
   which is better calibrated than a model's self-reported confidence. The vote is CLUSTERED, not
   literal: reads that differ only cosmetically (a dropped cedilla or comma, a less complete variant

@@ -30,9 +30,9 @@
 import type { ExtractedFields, FieldConfidence } from "@/domain";
 import { FIELD_CATALOG } from "./fieldCatalog";
 import { FIELD_REVIEW_CONFIDENCE, isExtractionReadable, normalizeText, parseAlcoholText } from "@/compare";
-import { DISAGREEMENT_CONFIDENCE, canonical, reconcileExtract, valuesAgree } from "./reconcile";
+import { DISAGREEMENT_CONFIDENCE, canonical, reconcileExtract, reconcileExtractJoint, valuesAgree } from "./reconcile";
 import { resolveSelfConsistencyEscalation } from "./config";
-import type { ImageInput, VisionProvider } from "./VisionProvider";
+import type { ExtractOptions, ImageInput, VisionProvider } from "./VisionProvider";
 
 type ValueKey = (typeof FIELD_CATALOG)[number]["key"];
 
@@ -207,19 +207,38 @@ export function aggregateSamples(samples: ExtractedFields[]): ExtractedFields {
   out.warningPrefixIsBold = voteBool(samples.map((s) => s.warningPrefixIsBold));
   out.warningRemainderIsBold = voteBool(samples.map((s) => s.warningRemainderIsBold));
   out.warningIsReadilyLegible = voteBool(samples.map((s) => s.warningIsReadilyLegible));
+  // Cross-image conflict reports UNION across samples (no majority vote): one sample seeing a panel
+  // contradiction is uncertainty enough to route that field to a human — bias to review, never to a
+  // silently-resolved conflict. (Per-image reads never set this; it is the joint read's signal.)
+  const conflicts = [...new Set(samples.flatMap((s) => s.crossImageConflicts ?? []))];
+  if (conflicts.length > 0) out.crossImageConflicts = conflicts;
   return out;
 }
 
+/**
+ * Deterministically cap every field the model reported as a CROSS-IMAGE CONFLICT into the conflict
+ * band (DISAGREEMENT_CONFIDENCE, 0.3): review-gated AND below the rescue band, because two label
+ * panels printing different values is a physical discrepancy a third model read cannot arbitrate —
+ * the same reasoning that keeps cross-source conflicts rescue-ineligible (see rescue.ts). The model
+ * reports the contradiction; THIS code decides what it means. Mutates and returns `e`.
+ */
+export function applyCrossImageConflictCaps(e: ExtractedFields): ExtractedFields {
+  for (const k of e.crossImageConflicts ?? []) {
+    const cur = e.confidence[k];
+    e.confidence[k] = Math.min(typeof cur === "number" ? cur : DISAGREEMENT_CONFIDENCE, DISAGREEMENT_CONFIDENCE);
+  }
+  return e;
+}
+
+/** One reconciled read — the unit self-consistency samples (per-image or joint, the caller picks). */
+type ReconciledRead = (options?: ExtractOptions) => Promise<ExtractedFields>;
+
 /** Draw `n` sampled reads in parallel; returns the ones that succeeded (possibly empty). */
 async function drawSamples(
-  providers: VisionProvider[],
-  image: ImageInput,
-  timeoutMs: number | undefined,
+  read: ReconciledRead,
   n: number,
 ): Promise<{ reads: ExtractedFields[]; firstError: unknown }> {
-  const settled = await Promise.allSettled(
-    Array.from({ length: n }, () => reconcileExtract(providers, image, timeoutMs, { sample: true })),
-  );
+  const settled = await Promise.allSettled(Array.from({ length: n }, () => read({ sample: true })));
   const reads = settled
     .filter((s): s is PromiseFulfilledResult<ExtractedFields> => s.status === "fulfilled")
     .map((s) => s.value);
@@ -271,8 +290,24 @@ export async function selfConsistentExtract(
   timeoutMs: number | undefined,
   samples: number,
 ): Promise<ExtractedFields> {
-  if (samples <= 1) return reconcileExtract(providers, image, timeoutMs);
-  const base = await drawSamples(providers, image, timeoutMs, samples);
+  return selfConsistentRead((options) => reconcileExtract(providers, image, timeoutMs, options), samples);
+}
+
+/** The JOINT-read twin of selfConsistentExtract: each sample is ONE request carrying ALL of the
+ *  product's images (reconcileExtractJoint), so a product pays `samples` requests instead of
+ *  `images x samples` — same N-sample agreement vote, escalation, and failure semantics. */
+export async function selfConsistentExtractJoint(
+  providers: VisionProvider[],
+  images: ImageInput[],
+  timeoutMs: number | undefined,
+  samples: number,
+): Promise<ExtractedFields> {
+  return selfConsistentRead((options) => reconcileExtractJoint(providers, images, timeoutMs, options), samples);
+}
+
+async function selfConsistentRead(read: ReconciledRead, samples: number): Promise<ExtractedFields> {
+  if (samples <= 1) return read();
+  const base = await drawSamples(read, samples);
   if (base.reads.length === 0) {
     throw base.firstError ?? new Error("All self-consistency samples failed.");
   }
@@ -280,7 +315,7 @@ export async function selfConsistentExtract(
 
   const escalation = resolveSelfConsistencyEscalation();
   if (escalation > 0 && isExtractionReadable(aggregated) && hasBorderlineField(aggregated)) {
-    const extra = await drawSamples(providers, image, timeoutMs, escalation);
+    const extra = await drawSamples(read, escalation);
     if (extra.reads.length > 0) {
       aggregated = aggregateSamples([...base.reads, ...extra.reads]);
     }

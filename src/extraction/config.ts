@@ -126,6 +126,22 @@ export function resolveLowConfidenceRescue(
 }
 
 /**
+ * Whether a multi-image product is read JOINTLY — every image of the product in ONE model request
+ * (VisionProvider.extractAll) instead of per-image reads merged after the fact. DEFAULT ON for
+ * providers that support it (the mock and OCR providers don't, so the offline suite/eval and the
+ * Azure ensemble keep the per-image path): the model allocates fields with full cross-panel context
+ * (the misallocation class the origin harvest patches over), and a product pays `samples` requests
+ * instead of `images x samples` — directly fewer 429s under batch load. Set JOINT_EXTRACTION=0 to
+ * fall back to per-image reads + merge.
+ */
+export function resolveJointExtraction(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  const raw = env.JOINT_EXTRACTION?.trim().toLowerCase();
+  return !(raw === "0" || raw === "false" || raw === "off");
+}
+
+/**
  * Optional model override for the DEDICATED government-warning judge pass (the bold/format
  * verification). The warning is the one check that can hard-fail a label, so it can justify a
  * stronger (slower) model than the bulk extraction reads: for the gemini/openai providers this is a

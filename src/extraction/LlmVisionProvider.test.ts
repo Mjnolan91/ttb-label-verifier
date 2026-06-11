@@ -139,6 +139,46 @@ describe("LlmVisionProvider.extract — request shape + parsing (HTTP mocked)", 
   });
 });
 
+describe("LlmVisionProvider.extractAll — the JOINT multi-image read (HTTP mocked)", () => {
+  it("sends EVERY image in ONE request, each with its position hint, after a joint-read preamble", async () => {
+    const { fetchImpl, calls } = mockFetch();
+    const provider = new LlmVisionProvider({ config: CONFIG, fetchImpl });
+    await provider.extractAll([
+      { filename: "x-front.jpg", data: new Uint8Array([1]), position: "front" },
+      { filename: "x-back.jpg", data: new Uint8Array([2]), position: "back" },
+    ]);
+    expect(calls).toHaveLength(1); // joint = one request, not one per image
+    const body = JSON.parse(calls[0].init.body ?? "{}") as {
+      messages: { role: string; content: { type: string; text?: string }[] }[];
+    };
+    const content = body.messages[1].content;
+    expect(content.filter((c) => c.type === "image_url")).toHaveLength(2);
+    const texts = content.filter((c) => c.type === "text").map((c) => c.text ?? "");
+    expect(texts.some((t) => t.includes("ONE product"))).toBe(true); // the joint preamble
+    expect(texts.some((t) => t.includes("front label"))).toBe(true);
+    expect(texts.some((t) => t.includes("back label"))).toBe(true);
+    // Each position hint sits IMMEDIATELY before its image part (the hint introduces the image).
+    const frontIdx = content.findIndex((c) => c.text?.includes("front label"));
+    expect(content[frontIdx + 1]?.type).toBe("image_url");
+  });
+
+  it("a single image keeps the single-read shape (no joint preamble)", async () => {
+    const { fetchImpl, calls } = mockFetch();
+    const provider = new LlmVisionProvider({ config: CONFIG, fetchImpl });
+    await provider.extractAll([{ filename: "x.jpg", data: new Uint8Array([1]) }]);
+    const body = JSON.parse(calls[0].init.body ?? "{}") as {
+      messages: { role: string; content: { type: string; text?: string }[] }[];
+    };
+    const texts = body.messages[1].content.filter((c) => c.type === "text").map((c) => c.text ?? "");
+    expect(texts.some((t) => t.includes("ONE product"))).toBe(false);
+  });
+
+  it("the strict schema REQUIRES the cross-image conflict report", () => {
+    const schema = EXTRACTION_RESPONSE_FORMAT.json_schema.schema as { required: readonly string[] };
+    expect(schema.required).toContain("conflictingFields");
+  });
+});
+
 describe("getVisionProvider('llm') — selection + offline safety", () => {
   function withEnv(vars: Record<string, string | undefined>, fn: () => void) {
     const keys = Object.keys(vars);
@@ -192,6 +232,21 @@ describe("parseModelJson — robust parsing (offline)", () => {
     const r = parseModelJson('```json\n{"warningPrefixIsAllCaps":true,"warningPrefixIsBold":null}\n```');
     expect(r.warningPrefixIsAllCaps).toBe(true);
     expect(r.warningPrefixIsBold).toBeNull();
+  });
+
+  it("maps the conflictingFields report onto crossImageConflicts (raw keys -> confidence channels)", () => {
+    const r = parseModelJson(
+      '{"alcoholContent":{"value":"45% Alc./Vol.","confidence":0.95},' +
+        '"conflictingFields":["alcoholContent","notARealField"],' +
+        '"warningPrefixIsAllCaps":null,"warningPrefixIsBold":null}',
+    );
+    // The raw schema key maps to the confidence channel; unknown keys are dropped defensively.
+    expect(r.crossImageConflicts).toEqual(["alcoholContent"]);
+  });
+
+  it("no/empty conflict report leaves crossImageConflicts unset", () => {
+    const r = parseModelJson('{"conflictingFields":[],"warningPrefixIsAllCaps":null,"warningPrefixIsBold":null}');
+    expect(r.crossImageConflicts).toBeUndefined();
   });
 
   it("recovers the first balanced object from surrounding prose", () => {

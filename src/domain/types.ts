@@ -235,4 +235,12 @@ export interface ExtractedFields {
   statementOfComposition?: string;
   /** Per-field confidence scores in [0, 1]. */
   confidence: FieldConfidence;
+  /**
+   * Confidence-channel keys the reader flagged as printed with genuinely DIFFERENT values on
+   * DIFFERENT images of the same product (a joint multi-image read's cross-panel contradiction
+   * signal, e.g. front says 45% ABV while the back says 40%). The pipeline deterministically caps
+   * each listed field's confidence into the conflict band so it routes to a human — a physical
+   * discrepancy between panels is never silently resolved by the model picking one.
+   */
+  crossImageConflicts?: (keyof FieldConfidence)[];
 }

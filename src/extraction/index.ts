@@ -33,8 +33,10 @@ export {
 } from "./OcrVisionProvider";
 export {
   reconcileExtract,
+  reconcileExtractJoint,
   mergeExtracted,
   extractWithTimeout,
+  extractJointWithTimeout,
   resolveTimeoutMs,
   DEFAULT_PER_CALL_TIMEOUT_MS,
   REAL_PROVIDER_TIMEOUT_MS,
@@ -42,13 +44,16 @@ export {
 } from "./reconcile";
 export {
   aggregateSamples,
+  applyCrossImageConflictCaps,
   selfConsistentExtract,
+  selfConsistentExtractJoint,
   SUPERMAJORITY_DROPOUT_CONFIDENCE,
   SUPERMAJORITY_PRESENCE_FRACTION,
 } from "./selfConsistency";
 export { harvestOriginStatement } from "./harvest";
 export {
   resolveSelfConsistencySamples,
+  resolveJointExtraction,
   resolveLowConfidenceRescue,
   resolveWarningJudgeSamples,
   resolveRescueTimeoutMs,
