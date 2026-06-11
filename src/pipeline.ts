@@ -6,13 +6,26 @@
  * evaluation measures the exact production pipeline.
  */
 import type { ClaimedFields, ExtractedFields } from "@/domain";
-import { selfConsistentExtract, resolveSelfConsistencySamples, resolveTimeoutMs, mergeExtracted, isAbortOrTimeout, aggregateBoldVotes, combineBoldSignals, resolveLowConfidenceRescue, rescueEligibleKeys, rescueRawKeys, applyRescue, readFieldsBounded, type ImageInput, type VisionProvider } from "@/extraction";
+import { selfConsistentExtract, resolveSelfConsistencySamples, resolveWarningJudgeSamples, resolveRescueTimeoutMs, resolveTimeoutMs, mergeExtracted, isAbortOrTimeout, aggregateBoldVotes, combineBoldSignals, resolveLowConfidenceRescue, rescueEligibleKeys, rescueRawKeys, applyRescue, readFieldsBounded, type ImageInput, type LabelPosition, type VisionProvider } from "@/extraction";
 import { verifyLabel, isExtractionReadable, type VerifyResult } from "@/compare";
+
+/** One image of the product that could not be read while at least one other image succeeded. */
+export interface ImageReadFailure {
+  filename: string;
+  position?: LabelPosition;
+  reason: "timeout" | "error";
+}
 
 export interface ExtractionOutcome {
   /** false => the merged read was unreadable/low-confidence: re-upload path, no trustworthy fields. */
   readable: boolean;
   extracted: ExtractedFields;
+  /**
+   * Images that dropped out of the merge. A dropped back label must NEVER masquerade as a clean
+   * "the label has no net contents" read — the route forwards these so the UI can warn and offer a
+   * retry (the silent-drop failure mode behind the 2026-06-10 Bonnaire investigation).
+   */
+  failedImages: ImageReadFailure[];
 }
 
 export interface VerificationOutcome extends ExtractionOutcome {
@@ -23,7 +36,9 @@ export interface VerificationOutcome extends ExtractionOutcome {
 /**
  * Read each of a product's images in parallel (each through the provider reconciler with its per-call
  * timeout), then merge them into one ExtractedFields. A product is usually one image; front+back is
- * common. An image whose read fails drops out; only if NONE read do we surface a timeout/error.
+ * common. An image whose read fails drops out of the merge and is REPORTED in `failedImages` (the
+ * route forwards it as `imageFailures`; the UIs warn and offer a retry — a dropped image must never
+ * masquerade as a clean read). Only if NONE read do we surface a timeout/error.
  */
 export async function runExtraction(
   providers: VisionProvider[],
@@ -63,12 +78,15 @@ export async function runExtraction(
       }),
     ]);
   };
+  // The judge fan-out is CAPPED below the extraction width (default 3): it answers one boolean on
+  // the strong model, and judge calls are the cheapest place to shrink the per-verify request burst.
+  const judgeSamples = resolveWarningJudgeSamples(samples);
   const [settled, boldVerdicts] = await Promise.all([
     Promise.allSettled(images.map((img) => selfConsistentExtract(providers, img, perCallTimeoutMs, samples))),
     bolder
       ? Promise.all(
           images.map((img) =>
-            Promise.all(Array.from({ length: samples }, () => judgeOnce(img))).then(aggregateBoldVotes),
+            Promise.all(Array.from({ length: judgeSamples }, () => judgeOnce(img))).then(aggregateBoldVotes),
           ),
         )
       : Promise.resolve<(boolean | null)[]>([]),
@@ -85,6 +103,20 @@ export async function runExtraction(
     }
     throw reasons.find((r): r is Error => r instanceof Error) ?? new Error("Failed to read the label images.");
   }
+
+  // Record which images dropped out (the merge proceeds from the survivors). Indexes align: settled
+  // was produced by mapping over `images`.
+  const failedImages: ImageReadFailure[] = images.flatMap((image, i) => {
+    const s = settled[i];
+    if (s.status !== "rejected") return [];
+    return [
+      {
+        filename: image.filename,
+        position: image.position,
+        reason: isAbortOrTimeout(s.reason) ? ("timeout" as const) : ("error" as const),
+      },
+    ];
+  });
 
   const extracted = reads.reduce((acc, cur) => mergeExtracted(acc, cur));
 
@@ -107,12 +139,20 @@ export async function runExtraction(
   if (rescuer && isExtractionReadable(extracted) && resolveLowConfidenceRescue()) {
     const contested = rescueEligibleKeys(extracted);
     if (contested.length > 0) {
-      const strong = await readFieldsBounded(rescuer, images, rescueRawKeys(contested), perCallTimeoutMs);
+      // The rescue gets its OWN budget (resolveRescueTimeoutMs, >= 10s by default): it runs on the
+      // strongest model, whose single read can exceed a tight per-sample straggler cap — sharing
+      // that cap made the rescue a guaranteed timeout (dead wall-clock, zero effect).
+      const strong = await readFieldsBounded(
+        rescuer,
+        images,
+        rescueRawKeys(contested),
+        resolveRescueTimeoutMs(perCallTimeoutMs),
+      );
       if (strong) applyRescue(extracted, contested, strong);
     }
   }
 
-  return { readable: isExtractionReadable(extracted), extracted };
+  return { readable: isExtractionReadable(extracted), extracted, failedImages };
 }
 
 /**
@@ -125,9 +165,9 @@ export async function runVerification(
   images: ImageInput[],
   timeoutMs?: number,
 ): Promise<VerificationOutcome> {
-  const { readable, extracted } = await runExtraction(providers, images, timeoutMs);
+  const { readable, extracted, failedImages } = await runExtraction(providers, images, timeoutMs);
   if (!readable) {
-    return { readable, extracted, result: null };
+    return { readable, extracted, failedImages, result: null };
   }
-  return { readable, extracted, result: verifyLabel(claimed, extracted) };
+  return { readable, extracted, failedImages, result: verifyLabel(claimed, extracted) };
 }

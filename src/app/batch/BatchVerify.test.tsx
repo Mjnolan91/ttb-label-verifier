@@ -70,6 +70,63 @@ describe("BatchVerify — verify against an application CSV", () => {
     expect(await q.findByText("Approve")).toBeTruthy();
   });
 
+  it("a partial read (one image of the pair failed) surfaces a note on the row, never silence", { retry: 2 }, async () => {
+    const partial: VerifyApiResponse = {
+      ...RESPONSE,
+      imageFailures: [{ filename: "acme-back.png", position: "back", reason: "timeout" }],
+    };
+    globalThis.fetch = vi.fn(async () => ({ ok: true, json: async () => partial })) as unknown as typeof fetch;
+    const { container } = render(<BatchVerify />);
+    const q = within(container);
+    const imageInput = container.querySelector('input[accept="image/*"]') as HTMLInputElement;
+    fireEvent.change(imageInput, {
+      target: {
+        files: [
+          new File(["x"], "acme-front.png", { type: "image/png" }),
+          new File(["y"], "acme-back.png", { type: "image/png" }),
+        ],
+      },
+    });
+    fireEvent.click(q.getByRole("button", { name: /Read all labels/i }));
+    expect(await q.findByText(/Back label image couldn.t be read/i)).toBeTruthy();
+  });
+
+  it("a partial read caps the row verdict at Needs review, offers Retry, and warns inside the drawer", { retry: 2 }, async () => {
+    // Same CSV-matched product that earns Approve in the clean-read test above — but the back image
+    // dropped out of the read. An approve on partial evidence is the unshippable false-approval class.
+    const partial: VerifyApiResponse = {
+      ...RESPONSE,
+      imageFailures: [{ filename: "acme-back.png", position: "back", reason: "timeout" }],
+    };
+    globalThis.fetch = vi.fn(async () => ({ ok: true, json: async () => partial })) as unknown as typeof fetch;
+    const { container } = render(<BatchVerify />);
+    const q = within(container);
+    const imageInput = container.querySelector('input[accept="image/*"]') as HTMLInputElement;
+    fireEvent.change(imageInput, {
+      target: {
+        files: [
+          new File(["x"], "acme-front.png", { type: "image/png" }),
+          new File(["y"], "acme-back.png", { type: "image/png" }),
+        ],
+      },
+    });
+    const csv = "filename,brand,alcohol\nacme-front.png,Acme,40% Alc./Vol.";
+    const csvFile = new File([csv], "claims.csv", { type: "text/csv" });
+    Object.defineProperty(csvFile, "text", { value: () => Promise.resolve(csv) });
+    fireEvent.change(q.getByLabelText(/Application values CSV/i) as HTMLInputElement, { target: { files: [csvFile] } });
+    await q.findByText(/application row\(s\) loaded/i);
+    fireEvent.click(q.getByRole("button", { name: /Read all labels/i }));
+    // The row badge is capped: Needs review, not Approve.
+    expect(await q.findByText("Needs review")).toBeTruthy();
+    expect(q.queryByText("Approve")).toBeNull();
+    // A partial row gets a Retry action alongside Review.
+    expect(q.getByRole("button", { name: /^Retry/ })).toBeTruthy();
+    // And the drawer (the decision surface) repeats the warning — not just the muted row note.
+    fireEvent.click(q.getByRole("button", { name: /^Review/ }));
+    const drawer = within(await screen.findByRole("dialog"));
+    expect(drawer.getByText(/couldn.t be read/i)).toBeTruthy();
+  });
+
   async function run(csv: string, fetchImpl?: typeof fetch): Promise<ReturnType<typeof within>> {
     globalThis.fetch = (fetchImpl ??
       (vi.fn(async () => ({ ok: true, json: async () => RESPONSE })) as unknown as typeof fetch));

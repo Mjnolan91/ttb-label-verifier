@@ -10,7 +10,7 @@
  * computed by the real pure combinedVerdict.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, waitFor, within } from "@testing-library/react";
 import { VerifyForm } from "./VerifyForm";
 import type { VerifyApiResponse } from "./api/verify/contract";
 import { CANONICAL_GOVERNMENT_WARNING, type ExtractedFields } from "@/domain";
@@ -348,6 +348,43 @@ describe("VerifyForm — verify against the application", () => {
     expect(within(container).getAllByText(/Back label/i).length).toBeGreaterThan(0);
   });
 
+  it("hides the neck/strip slot behind an 'Add a neck or strip label' button until asked for", () => {
+    const { container } = render(<VerifyForm />);
+    const q = within(container);
+    // Default view is unchanged: two slots, no third dropzone.
+    expect(container.querySelectorAll('input[type="file"]')).toHaveLength(2);
+    expect(q.queryByText(/Neck \/ strip label/i)).toBeNull();
+    fireEvent.click(q.getByRole("button", { name: /Add a neck or strip label/i }));
+    expect(container.querySelectorAll('input[type="file"]')).toHaveLength(3);
+    expect(q.getAllByText(/Neck \/ strip label/i).length).toBeGreaterThan(0);
+    // The disclosure button is gone while the slot is open.
+    expect(q.queryByRole("button", { name: /Add a neck or strip label/i })).toBeNull();
+  });
+
+  it("reads the neck image with position 'neck' after the front, and collapses the slot on remove", ASYNC, async () => {
+    mockFetch(READ_OK());
+    const { container } = render(<VerifyForm />);
+    const q = within(container);
+    dropLabelImage(container);
+    await q.findByText("Complete the application to verify");
+    fireEvent.click(q.getByRole("button", { name: /Add a neck or strip label/i }));
+    const neckInput = q.getByLabelText("Upload neck or strip label (optional)") as HTMLInputElement;
+    fireEvent.change(neckInput, {
+      target: { files: [new File(["n"], "old-tom-neck.png", { type: "image/png" })] },
+    });
+    // The neck image joins the SAME product read: one POST with front first, then neck.
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledTimes(2));
+    const calls = (globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls;
+    const fd = (calls[calls.length - 1][1] as RequestInit).body as FormData;
+    expect(fd.getAll("position")).toEqual(["front", "neck"]);
+    // Removing the neck collapses the slot back to the disclosure button; the front stays put.
+    await q.findByText("Complete the application to verify");
+    fireEvent.click(q.getByRole("button", { name: /^Remove Neck/i }));
+    expect(q.queryByText(/Neck \/ strip label/i)).toBeNull();
+    expect(q.getByRole("button", { name: /Add a neck or strip label/i })).toBeTruthy();
+    expect(q.getByRole("button", { name: /^Remove Front/i })).toBeTruthy();
+  });
+
   it("offers sample label downloads while the front slot is empty, hidden once an image is in", ASYNC, async () => {
     mockFetch(READ_OK());
     const { container } = render(<VerifyForm />);
@@ -395,6 +432,53 @@ describe("VerifyForm — verify against the application", () => {
     expect(await q.findByText(/Could not reach the label reader/)).toBeTruthy();
     fireEvent.click(q.getByRole("button", { name: /^Remove Front/i }));
     expect(q.queryByText(/Could not reach the label reader/)).toBeNull();
+  });
+
+  it("WARNS when one of the product's images couldn't be read, and offers a retry", ASYNC, async () => {
+    mockFetch({
+      ...READ_OK(),
+      imageFailures: [{ filename: "old-tom-back.png", position: "back", reason: "timeout" }],
+    });
+    const { container } = render(<VerifyForm />);
+    const q = within(container);
+    dropLabelImage(container);
+    await q.findByText("Complete the application to verify");
+    // The partial-read warning names the failed slot; a silent drop must never look like a clean read.
+    const banner = await q.findByRole("alert");
+    expect(banner.textContent).toMatch(/Back label/i);
+    expect(banner.textContent).toMatch(/couldn.t be read/i);
+    fireEvent.click(within(banner).getByRole("button", { name: /Try reading again/i }));
+    await waitFor(() => expect(globalThis.fetch).toHaveBeenCalledTimes(2));
+  });
+
+  it("a partial read CAPS the headline at Needs review even when every compared field matches", ASYNC, async () => {
+    mockFetch({
+      ...READ_OK(),
+      imageFailures: [{ filename: "old-tom-back.png", position: "back", reason: "timeout" }],
+    });
+    const { container } = render(<VerifyForm />);
+    const q = within(container);
+    dropLabelImage(container);
+    await q.findByText("Complete the application to verify");
+    fireEvent.click(q.getByRole("button", { name: /Accept all AI suggestions/i }));
+    // Same data approves in the clean-read test above; with an unread image the verdict must not.
+    const verdict = within(await q.findByRole("region", { name: "Verification result" }));
+    expect(verdict.getAllByText("Needs review").length).toBeGreaterThan(0);
+    expect(verdict.queryByText("Approve")).toBeNull();
+  });
+
+  it("suppresses the partial-read banner on the unreadable path (the re-upload prompt owns that state)", ASYNC, async () => {
+    mockFetch({
+      provider: "mock", readable: false, extracted: extractedBourbon(), result: null,
+      message: "We couldn't read this label clearly. Please re-upload a clearer, well-lit photo.",
+      imageFailures: [{ filename: "old-tom-back.png", position: "back", reason: "timeout" }],
+    });
+    const { container } = render(<VerifyForm />);
+    const q = within(container);
+    dropLabelImage(container);
+    expect(await q.findByText(/Couldn.t read the label/i)).toBeTruthy();
+    // No second, contradictory alert claiming "results below" when there are none.
+    expect(q.queryByText(/results below reflect/i)).toBeNull();
   });
 
   it("shows the re-upload prompt for an unreadable image (never a fabricated verdict)", ASYNC, async () => {

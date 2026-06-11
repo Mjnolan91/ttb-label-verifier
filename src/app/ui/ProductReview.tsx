@@ -18,7 +18,7 @@
  */
 import { useState } from "react";
 import type { ExtractedFields } from "@/domain";
-import { deriveLabelReview, type FieldNotes, type FieldOverrides, type ReviewDecision } from "./labelReview";
+import { deriveLabelReview, capVerdictForPartialRead, type FieldNotes, type FieldOverrides, type ReviewDecision } from "./labelReview";
 import { resolveCompletenessOverall } from "@/compare";
 import type { CombinedVerdict, FieldResult, VerifyFieldKey, VerifyResult } from "@/compare";
 import type { FieldOverride } from "./ResultView";
@@ -54,6 +54,7 @@ export function ProductReview({
   combined,
   readable,
   unreadableMessage,
+  partialReadNote,
   extracted,
   application,
   csvValues,
@@ -73,6 +74,9 @@ export function ProductReview({
   combined: CombinedVerdict | null;
   readable: boolean;
   unreadableMessage?: string;
+  /** Set when an image of the product DROPPED OUT of an otherwise-readable read: the drawer warns
+   *  on the decision surface and the derived verdict is capped at review. */
+  partialReadNote?: string;
   /** The merged label reading — drives the application editor's suggestions + the extracted table. */
   extracted?: ExtractedFields;
   /** The effective application values (CSV row overlaid with the reviewer's edits). */
@@ -104,7 +108,12 @@ export function ProductReview({
     ? resolveCompletenessOverall(combined.completeness, review?.completenessOverrides ?? {})
     : null;
   const completenessOverall: VerifyResult["overall"] = resolvedCompleteness === "complete" ? "approve" : "review";
-  const panelVerdict = !readable ? "review" : (review?.effectiveOverall ?? completenessOverall);
+  // A partial read caps the derived verdict at review (the unread image could contradict anything);
+  // the reviewer's explicitly recorded decision below remains their own call.
+  const partialRead = Boolean(partialReadNote);
+  const panelVerdict = !readable
+    ? "review"
+    : capVerdictForPartialRead(review?.effectiveOverall ?? completenessOverall, partialRead);
 
   const completenessOnlyNextStep =
     completenessOverall === "approve"
@@ -118,7 +127,7 @@ export function ProductReview({
   // user believing the prior verdict still stands.
   const verdictAnnouncement =
     readable && combined?.verify && review
-      ? `Verdict: ${VERDICT_LABEL[review.effectiveOverall ?? "review"]}.`
+      ? `Verdict: ${VERDICT_LABEL[capVerdictForPartialRead(review.effectiveOverall, partialRead) ?? "review"]}.`
       : readable && claimedNeeds
         ? `Verdict cleared. Add ${claimedNeeds} to verify.`
         : "";
@@ -165,6 +174,19 @@ export function ProductReview({
         />
       )}
 
+      {/* A PARTIAL read warns ON the decision surface: the comparison below covers only the images
+          that were read, and the unread one could contradict it. (The row's Retry re-reads.) */}
+      {readable && partialReadNote && (
+        <section role="alert" className="rounded-card border-l-8 border-review-500 bg-review-50 p-4 shadow-card">
+          <p className="flex items-start gap-2 font-semibold text-review-900">
+            <IconReview className="mt-0.5 h-5 w-5 shrink-0" /> Part of this product wasn&apos;t read
+          </p>
+          <p className="mt-1 text-sm text-review-900">
+            {partialReadNote} Use Retry on the worklist row to re-read it, or review what was read.
+          </p>
+        </section>
+      )}
+
       {!readable ? (
         <section role="alert" className="rounded-card border-l-8 border-review-500 bg-review-50 p-5 shadow-card">
           <h3 className="flex items-center gap-2 text-lg font-semibold text-review-900">
@@ -181,7 +203,7 @@ export function ProductReview({
         <>
           <ResultView
             result={combined.verify}
-            overall={review?.effectiveOverall ?? undefined}
+            overall={capVerdictForPartialRead(review?.effectiveOverall, partialRead) ?? undefined}
             gatedByCompleteness={review?.effectiveGatedByCompleteness ?? false}
             overrides={overrides}
             onOverride={onOverride}

@@ -14,6 +14,16 @@
 export const DEFAULT_MAX_EDGE = 2000;
 export const JPEG_QUALITY = 0.85;
 
+/** Files over this byte size are RE-ENCODED to JPEG even when their pixel dimensions already fit
+ *  the edge cap: a multi-MB PNG/screenshot under 2000px otherwise ships at full weight, and the
+ *  server base64-encodes those bytes into EVERY self-consistency sample's request. */
+export const MAX_PASSTHROUGH_BYTES = 1_500_000;
+
+/** Whether a dimensionally-fine raster file should still be re-encoded for its byte size. */
+export function needsReencode(type: string, byteLength: number): boolean {
+  return !shouldSkipDownscale(type) && byteLength > MAX_PASSTHROUGH_BYTES;
+}
+
 /** File types we must not rasterize (vector/animated/non-image) — pass through untouched. */
 export function shouldSkipDownscale(type: string): boolean {
   // SVG is vector (the hermetic sample stubs); GIF may be animated; non-images obviously skip.
@@ -51,19 +61,22 @@ export async function downscaleForUpload(
     // would be sent to the model sideways — self-inflicted "bad image" on the brief's primary input.
     const bitmap = await createImageBitmap(file, { imageOrientation: "from-image" });
     const target = computeTargetSize(bitmap.width, bitmap.height, maxEdge);
-    if (!target) {
+    // Dimensions fit AND the bytes are modest -> pass through. A heavy file still gets re-encoded
+    // to JPEG at its current size (needsReencode): byte weight matters even when pixels don't.
+    if (!target && !needsReencode(file.type, file.size)) {
       bitmap.close();
       return file;
     }
+    const { width, height } = target ?? { width: bitmap.width, height: bitmap.height };
     const canvas = document.createElement("canvas");
-    canvas.width = target.width;
-    canvas.height = target.height;
+    canvas.width = width;
+    canvas.height = height;
     const ctx = canvas.getContext("2d");
     if (!ctx) {
       bitmap.close();
       return file;
     }
-    ctx.drawImage(bitmap, 0, 0, target.width, target.height);
+    ctx.drawImage(bitmap, 0, 0, width, height);
     bitmap.close();
     const blob = await new Promise<Blob | null>((resolve) =>
       canvas.toBlob(resolve, "image/jpeg", JPEG_QUALITY),

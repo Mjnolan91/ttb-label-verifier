@@ -75,6 +75,93 @@ describe("runExtraction — multi-image merge + readability gate", () => {
   });
 });
 
+describe("runExtraction — a partial image failure is REPORTED, never silent", () => {
+  it("reports the failed image (timeout) while reconciling from the survivor", async () => {
+    const provider = providerByFilename({
+      "front.jpg": () => Promise.resolve(fields({ brand: "ABC", confidence: { brand: 0.95 } })),
+      "back.jpg": timeout,
+    });
+    const out = await runExtraction(
+      [provider],
+      [{ ...img("back.jpg"), position: "back" }, { ...img("front.jpg"), position: "front" }],
+    );
+    expect(out.readable).toBe(true);
+    expect(out.extracted.brand).toBe("ABC");
+    expect(out.failedImages).toEqual([{ filename: "back.jpg", position: "back", reason: "timeout" }]);
+  });
+
+  it("classifies a non-timeout failure as reason 'error'", async () => {
+    const provider = providerByFilename({
+      "front.jpg": () => Promise.resolve(fields({ brand: "ABC", confidence: { brand: 0.95 } })),
+      "broken.jpg": () => Promise.reject(new Error("boom")),
+    });
+    const out = await runExtraction(
+      [provider],
+      [{ ...img("front.jpg"), position: "front" }, { ...img("broken.jpg"), position: "back" }],
+    );
+    expect(out.failedImages).toEqual([{ filename: "broken.jpg", position: "back", reason: "error" }]);
+  });
+
+  it("reports no failures when every image reads", async () => {
+    const provider = providerByFilename({
+      "front.jpg": () => Promise.resolve(fields({ brand: "ABC", confidence: { brand: 0.95 } })),
+    });
+    const out = await runExtraction([provider], [img("front.jpg")]);
+    expect(out.failedImages).toEqual([]);
+  });
+});
+
+describe("runExtraction — burst hygiene + rescue budget", () => {
+  it("caps the bold-judge fan-out at 3 per image even when extraction samples wider", async () => {
+    const prev = process.env.SELF_CONSISTENCY_SAMPLES;
+    process.env.SELF_CONSISTENCY_SAMPLES = "5";
+    try {
+      let extractCalls = 0;
+      let judgeCalls = 0;
+      const provider: VisionProvider = {
+        name: "openai", // any non-"mock" name: the sample count is honored
+        extract: async () => {
+          extractCalls++;
+          return fields({
+            brand: "XYZ",
+            warningText: CANONICAL_GOVERNMENT_WARNING,
+            warningPrefixIsAllCaps: true,
+            warningPrefixIsBold: true,
+            confidence: { brand: 0.95, warningText: 0.95 },
+          });
+        },
+        judgeWarningBold: async () => {
+          judgeCalls++;
+          return true;
+        },
+      };
+      const out = await runExtraction([provider], [img("front.jpg")]);
+      expect(out.readable).toBe(true);
+      expect(extractCalls).toBe(5); // extraction keeps its full consensus width
+      expect(judgeCalls).toBe(3); // the boolean judge needs no 5-way burst
+    } finally {
+      if (prev === undefined) delete process.env.SELF_CONSISTENCY_SAMPLES;
+      else process.env.SELF_CONSISTENCY_SAMPLES = prev;
+    }
+  });
+
+  it("gives the rescue its own budget: a strong read slower than the straggler cap still lands", async () => {
+    // Straggler cap 10ms; the strong model takes 50ms. The rescue must NOT race the per-sample cap
+    // (a gpt-5.5 read can never finish inside a tight cap), so the agreed value still lifts the field.
+    const provider: VisionProvider = {
+      name: "mock", // samples forced to 1; extraction instant
+      extract: async () =>
+        fields({ brand: "Bonnaire", classType: "Champagne", confidence: { brand: 0.6, classType: 0.95 } }),
+      readFields: async () => {
+        await new Promise((r) => setTimeout(r, 50));
+        return { brand: "Bonnaire" };
+      },
+    };
+    const out = await runExtraction([provider], [img("front.jpg")], 10);
+    expect(out.extracted.confidence.brand ?? 0).toBeGreaterThanOrEqual(0.7); // cross-model agreement cleared the gate
+  });
+});
+
 describe("runVerification", () => {
   const claimed: ClaimedFields = { brand: "ABC", alcoholContentText: "40% Alc./Vol." };
 

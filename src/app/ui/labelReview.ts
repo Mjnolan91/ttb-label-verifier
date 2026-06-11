@@ -44,6 +44,21 @@ export const REQUIREMENT_TO_FIELD: Partial<Record<RequirementKey, VerifyFieldKey
 );
 
 
+/**
+ * Cap a derived verdict at review when one of the product's images dropped out of the read. The
+ * unread image could contradict anything the surviving images showed, so an approve on partial
+ * evidence is the false-approval class this project refuses to ship. Reject is never relaxed (the
+ * surviving evidence already shows a violation; more images cannot un-violate it), and the
+ * reviewer's explicitly RECORDED decision is theirs — this caps only the derived headline. Shared
+ * by the single screen, the batch row/triage derivation, and the drawer, so they cannot disagree.
+ */
+export function capVerdictForPartialRead<T extends CombinedVerdict["overall"] | null | undefined>(
+  verdict: T,
+  partialRead: boolean,
+): T | "review" {
+  return partialRead && verdict === "approve" ? "review" : verdict;
+}
+
 export interface LabelReviewState {
   /** Headline verdict after the reviewer's overrides (null when no application values were supplied). */
   effectiveOverall: CombinedVerdict["overall"];

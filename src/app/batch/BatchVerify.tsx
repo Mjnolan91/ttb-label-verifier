@@ -19,6 +19,7 @@ import { analysisToCsv, parseClaimedCsv, type ClaimedRow } from "@/batch/csv";
 import { resolveClaimedFor } from "@/batch/claimedMatch";
 import { resolveCompletenessOverall, type VerifyResult } from "@/compare";
 import type { VerifyApiResponse, VerifyApiError } from "../api/verify/contract";
+import type { ImageReadFailure } from "@/pipeline";
 import { downscaleForUpload } from "../imageDownscale";
 import { ErrorAlert } from "../ui/ErrorAlert";
 import { StatusBadge } from "../ui/StatusBadge";
@@ -30,7 +31,7 @@ import { DropZone } from "../ui/DropZone";
 import { ImageLightbox } from "../ui/ImageLightbox";
 import { Drawer } from "../ui/Drawer";
 import { ProductReview } from "../ui/ProductReview";
-import { deriveLabelReview, toggleOverride, setFieldNote } from "../ui/labelReview";
+import { deriveLabelReview, toggleOverride, setFieldNote, capVerdictForPartialRead } from "../ui/labelReview";
 import type { AppInputKey } from "../ui/fieldHelpCopy";
 import { applicationFromCsv, deriveProductVerdict, mergeApplication, type ProductVerdict } from "./productVerdict";
 import { useWorklist } from "./useWorklist";
@@ -57,6 +58,9 @@ interface BatchRow {
   /** Whether the label itself was readable (drives the re-scan vs. add-claim-value prompts). */
   readable?: boolean;
   note?: string;
+  /** Images of the product that dropped out of the read (partial read): caps the derived verdict at
+   *  review, surfaces in the drawer + exports, and earns the row a Retry action. */
+  imageFailures?: ImageReadFailure[];
 }
 
 function groupFiles(files: File[]): ProductImages[] {
@@ -65,6 +69,22 @@ function groupFiles(files: File[]): ProductImages[] {
     product: g.product,
     images: g.images.map((im) => ({ file: byName.get(im.filename) as File, position: im.position })),
   }));
+}
+
+/** Human name for a failed image's slot in the partial-read row note. */
+const POSITION_LABEL: Record<string, string> = {
+  front: "Front label",
+  back: "Back label",
+  neck: "Neck / strip label",
+};
+
+/** Row note for a PARTIAL read (some of the product's images dropped out of the merge): the row
+ *  stays reviewable, but the reviewer must know the extracted fields are honest-but-incomplete. */
+function partialReadNote(failures: ImageReadFailure[]): string {
+  const names = failures.map((f) => (f.position && POSITION_LABEL[f.position]) || f.filename);
+  const timedOut = failures.every((f) => f.reason === "timeout");
+  const plural = failures.length > 1 ? "images" : "image";
+  return `${names.join(" and ")} ${plural} couldn't be read${timedOut ? " (the read timed out)" : ""}; the results reflect the remaining images.`;
 }
 
 async function analyzeProduct(
@@ -92,6 +112,7 @@ async function analyzeProduct(
         { product: group.product, images: group.images.map((im) => ({ filename: im.file.name, position: im.position })) },
         claimedMap,
       ) ?? null;
+    const failNote = r.imageFailures && r.imageFailures.length > 0 ? partialReadNote(r.imageFailures) : undefined;
     return {
       ...base,
       status: "done",
@@ -99,7 +120,8 @@ async function analyzeProduct(
       completeness: r.completeness,
       claimedRow,
       readable: r.readable,
-      note: r.readable ? undefined : r.message,
+      note: r.readable ? failNote : r.message,
+      imageFailures: r.imageFailures,
     };
   } catch {
     return { ...base, note: "Request failed." };
@@ -157,7 +179,12 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
     const resolvedCompleteness = pv.combined
       ? resolveCompletenessOverall(pv.combined.completeness, review?.completenessOverrides ?? {})
       : null;
-    const verdict = review?.effectiveOverall ?? null;
+    // A partial read (an image dropped out) caps the derived verdict at review: the unread image
+    // could contradict anything, so it must never badge Approve or triage as ready-to-approve.
+    const verdict = capVerdictForPartialRead(
+      review?.effectiveOverall ?? null,
+      (r.imageFailures?.length ?? 0) > 0,
+    );
     const decision = rec?.decision;
     const category: RowCategory =
       r.status === "pending"
@@ -270,6 +297,9 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
           // The worklist lifecycle: the reviewer's recorded decision, distinct from the AI verdict.
           ...(rec?.decision ? { decision: rec.decision, note: rec.note ?? "" } : {}),
           ...(rec?.notes && Object.keys(rec.notes).length ? { humanNotes: rec.notes } : {}),
+          // The audit record must carry the partial-read fact: without it a saved approval over a
+          // dropped image reads as a clean read of every uploaded image.
+          ...(r.imageFailures?.length ? { imageFailures: r.imageFailures } : {}),
         };
       }),
     );
@@ -289,6 +319,7 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
             overall: d.verdict ?? undefined,
             decision: rec?.decision,
             note: rec?.note,
+            readFailures: r.imageFailures?.length ? partialReadNote(r.imageFailures) : undefined,
           };
         }),
       ),
@@ -653,26 +684,33 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
                       <span className="text-ink-muted">…</span>
                     )}
                   </div>
-                  {/* 4. Action: every settled row has one (review or retry); 44px target, full width on mobile */}
-                  <div>
+                  {/* 4. Action: every settled row has one (review or retry); 44px target, full width
+                      on mobile. A PARTIAL read (an image dropped out) gets BOTH: re-read to recover
+                      the missing image, or review what survived. */}
+                  <div className="flex flex-col gap-1.5">
                     {!settled ? (
                       <span className="text-ink-muted">…</span>
-                    ) : r.status === "error" ? (
-                      <button
-                        type="button"
-                        onClick={() => void retryRow(i)}
-                        className="inline-flex min-h-[44px] w-full items-center justify-center rounded-field border border-brand-600 bg-surface px-3 py-1.5 text-sm font-semibold text-brand-700 transition hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2 sm:w-auto"
-                      >
-                        Retry
-                      </button>
                     ) : (
-                      <button
-                        type="button"
-                        onClick={() => setReviewIndex(i)}
-                        className="inline-flex min-h-[44px] w-full items-center justify-center rounded-field border border-brand-600 bg-surface px-3 py-1.5 text-sm font-semibold text-brand-700 transition hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2 sm:w-auto"
-                      >
-                        {decision ? "Re-review" : "Review"}
-                      </button>
+                      <>
+                        {(r.status === "error" || (r.imageFailures?.length ?? 0) > 0) && (
+                          <button
+                            type="button"
+                            onClick={() => void retryRow(i)}
+                            className="inline-flex min-h-[44px] w-full items-center justify-center rounded-field border border-brand-600 bg-surface px-3 py-1.5 text-sm font-semibold text-brand-700 transition hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2 sm:w-auto"
+                          >
+                            Retry
+                          </button>
+                        )}
+                        {r.status !== "error" && (
+                          <button
+                            type="button"
+                            onClick={() => setReviewIndex(i)}
+                            className="inline-flex min-h-[44px] w-full items-center justify-center rounded-field border border-brand-600 bg-surface px-3 py-1.5 text-sm font-semibold text-brand-700 transition hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2 sm:w-auto"
+                          >
+                            {decision ? "Re-review" : "Review"}
+                          </button>
+                        )}
+                      </>
                     )}
                   </div>
                 </li>
@@ -696,6 +734,7 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
                 combined={d.pv.combined}
                 readable={r.readable ?? false}
                 unreadableMessage={r.note}
+                partialReadNote={r.imageFailures?.length ? r.note : undefined}
                 extracted={r.extracted}
                 application={d.pv.application}
                 csvValues={r.claimedRow ? applicationFromCsv(r.claimedRow) : null}

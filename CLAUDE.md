@@ -63,8 +63,14 @@ pipeline and the "why". As built, the load-bearing pieces are:
   bounded call, ALL images, ONLY the contested fields: cross-model agreement boosts the field
   above the gate; disagreement adopts the strong read but stays in review (a rescue clears false
   alarms, never silently flips a conflict to pass; the mock has no `readFields`, so offline never
-  rescues). When a warning is read, a dedicated `judgeWarningBold` pass over the
-  images sets `warningPrefixIsBold` (on gemini AND openai the judge DEFAULTS to the strongest model,
+  rescues). The rescue runs on its OWN budget (`resolveRescueTimeoutMs`, default ≥10s,
+  `RESCUE_TIMEOUT_MS`) — sharing the per-sample straggler cap made it a guaranteed dead timeout
+  (2026-06-10 RCA). An image whose read fails entirely drops out of the merge but is REPORTED
+  (`failedImages` → API `imageFailures` → warning banner + retry on the verify screen, row note in
+  batch): a dropped back label must never masquerade as a clean front-only read — that silent drop
+  under a 5000ms cap was the Bonnaire capture regression. When a warning is read, a dedicated `judgeWarningBold` pass over the
+  images sets `warningPrefixIsBold` (capped at min(samples, 3) votes per image,
+  `resolveWarningJudgeSamples`/`WARNING_JUDGE_SAMPLES` — one boolean needs no 7-way burst; on gemini AND openai the judge DEFAULTS to the strongest model,
   `GeminiVisionProvider.DEFAULT_JUDGE_MODEL` / `OpenAIVisionProvider.DEFAULT_JUDGE_MODEL`, falling
   back to the extraction model when that
   call fails; `WARNING_JUDGE_MODEL` pins/upgrades it per provider; an UNVERIFIABLE caps/bold
@@ -133,7 +139,8 @@ pipeline and the "why". As built, the load-bearing pieces are:
   is not mandatory for every class. (Historical note: a `confirmVerdict`/`ConfirmPanel` confirm-to-approve layer existed briefly
   and was removed 2026-06-09 when the screen was realigned to lead with the comparison — ignore older
   docs/plans that reference it.)
-- **`src/app/`** — verify-first single screen (`VerifyForm`: front/back upload + auto-read on upload,
+- **`src/app/`** — verify-first single screen (`VerifyForm`: front/back upload — plus a neck/strip
+  slot disclosed by an "Add a neck or strip label" button — + auto-read on upload,
   plus "The application" inputs. The REQUIRED input set is DYNAMIC per beverage type
   (`requiredInputKeysFor` over the CFR matrix: brand/class/net/producer name/address always; alcohol
   only for spirits / wine >14% / unknown); country of origin, fanciful name, and statement of

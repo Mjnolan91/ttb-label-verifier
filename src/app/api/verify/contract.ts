@@ -6,6 +6,7 @@
  */
 import type { ClaimedFields, ExtractedFields } from "@/domain";
 import type { VerifyResult, CompletenessResult } from "@/compare";
+import type { ImageReadFailure } from "@/pipeline";
 
 /** Successful analyze response (extraction, plus an optional verdict). */
 export interface VerifyApiResponse {
@@ -26,6 +27,13 @@ export interface VerifyApiResponse {
   result: VerifyResult | null;
   /** Human-facing message for the unreadable/low-confidence path. */
   message?: string;
+  /**
+   * Images of the product that could NOT be read while the rest succeeded (per-image timeout or
+   * provider error). Present only when non-empty. The UI must surface these: the extracted fields
+   * reflect only the surviving images, and a silently dropped back label would otherwise read as
+   * "the label is missing its mandatory fields".
+   */
+  imageFailures?: ImageReadFailure[];
 }
 
 /** Error response (4xx/5xx). */

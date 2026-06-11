@@ -162,6 +162,9 @@ export interface AnalysisRow {
   decision?: "approve" | "reject";
   /** A free-text note captured with the decision. */
   note?: string;
+  /** Human description of a PARTIAL read (an image of the product dropped out): the audit record
+   *  must say the extraction covers only the surviving images. Blank for clean reads. */
+  readFailures?: string;
 }
 
 /** Human-readable forms for the recorded decision, for the export. */
@@ -200,11 +203,18 @@ export function analysisToCsv(rows: AnalysisRow[]): string {
   // The worklist decision columns appear only once any row has been decided (so a plain extraction
   // export stays unchanged).
   const hasDecision = rows.some((r) => r.decision || r.note);
+  // The partial-read column appears only when some row actually had an image drop out.
+  const hasReadFailures = rows.some((r) => r.readFailures);
   const fieldCols = FIELD_CATALOG.flatMap((d) => [d.csvColumn, `${d.csvColumn}_conf`]);
   const base = ["filename", ...fieldCols, "warning_all_caps", "warning_bold", "completeness", "completeness_issues"];
   const verdictCols = [...VERDICT_FIELDS.map((f) => f.col), "overall"];
   const decisionCols = ["decision", "reviewer_note"];
-  const header = [...base, ...(hasVerdict ? verdictCols : []), ...(hasDecision ? decisionCols : [])];
+  const header = [
+    ...base,
+    ...(hasVerdict ? verdictCols : []),
+    ...(hasDecision ? decisionCols : []),
+    ...(hasReadFailures ? ["read_failures"] : []),
+  ];
 
   const body = rows.map((r) => {
     const e = r.extracted;
@@ -226,6 +236,9 @@ export function analysisToCsv(rows: AnalysisRow[]): string {
     }
     if (hasDecision) {
       cells.push(r.decision ? DECISION_LABEL[r.decision] : "", r.note ?? "");
+    }
+    if (hasReadFailures) {
+      cells.push(r.readFailures ?? "");
     }
     return cells.map(csvCell).join(",");
   });

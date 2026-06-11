@@ -4,7 +4,29 @@
  * verification pass; here we lock down the size math and the skip rules.
  */
 import { describe, it, expect } from "vitest";
-import { computeTargetSize, shouldSkipDownscale, DEFAULT_MAX_EDGE } from "./imageDownscale";
+import {
+  computeTargetSize,
+  shouldSkipDownscale,
+  needsReencode,
+  DEFAULT_MAX_EDGE,
+  MAX_PASSTHROUGH_BYTES,
+} from "./imageDownscale";
+
+describe("needsReencode", () => {
+  it("re-encodes an oversized-byte raster file even when its dimensions already fit", () => {
+    // A 6 MB screenshot/PNG under 2000px used to pass through at full weight; JPEG re-encoding
+    // bounds the upload (and the per-sample base64 payload) without touching legibility.
+    expect(needsReencode("image/png", MAX_PASSTHROUGH_BYTES + 1)).toBe(true);
+    expect(needsReencode("image/jpeg", MAX_PASSTHROUGH_BYTES + 1)).toBe(true);
+  });
+
+  it("passes small files and non-raster types through untouched", () => {
+    expect(needsReencode("image/png", MAX_PASSTHROUGH_BYTES)).toBe(false);
+    expect(needsReencode("image/jpeg", 200_000)).toBe(false);
+    expect(needsReencode("image/svg+xml", 99_999_999)).toBe(false);
+    expect(needsReencode("image/gif", 99_999_999)).toBe(false);
+  });
+});
 
 describe("shouldSkipDownscale", () => {
   it("skips vector, animated, and non-image types", () => {

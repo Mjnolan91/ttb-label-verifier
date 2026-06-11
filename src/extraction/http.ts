@@ -54,8 +54,12 @@ export function isAbortOrTimeout(e: unknown): boolean {
   return e instanceof Error && (e.name === "AbortError" || e.name === "TimeoutError");
 }
 
-/** Abort-aware delay: resolves after `ms`, or rejects with an AbortError if `signal` fires first. */
+/** Abort-aware delay: resolves after `ms`, or rejects with an AbortError if `signal` fires first.
+ *  An ALREADY-aborted signal rejects immediately — the 'abort' event never fires for it, and a
+ *  Retry-After sleep started just after the per-sample cap aborted would otherwise run its full
+ *  (server-controlled, unclamped) duration with nothing able to cancel it. */
 export function sleep(ms: number, signal?: AbortSignal, message = "Aborted while waiting."): Promise<void> {
+  if (signal?.aborted) return Promise.reject(new DOMException(message, "AbortError"));
   if (ms <= 0) return Promise.resolve();
   return new Promise<void>((resolve, reject) => {
     const timer = setTimeout(resolve, ms);
@@ -70,8 +74,16 @@ export function sleep(ms: number, signal?: AbortSignal, message = "Aborted while
   });
 }
 
-/** Retry-After (seconds) from a response, in ms; null when absent/non-numeric. */
+/** Retry-After from a response, in ms; null when absent/non-numeric. OpenAI's millisecond
+ *  `retry-after-ms` takes precedence over the coarse seconds-valued `retry-after` — inside a
+ *  ~5-8s per-sample budget, oversleeping a whole second is the difference between a recovered
+ *  read and a dead one. */
 function retryAfterMs(headers: FetchResponse["headers"]): number | null {
+  const rawMs = headers?.get("retry-after-ms");
+  if (rawMs) {
+    const ms = Number(rawMs);
+    if (Number.isFinite(ms) && ms >= 0) return Math.ceil(ms);
+  }
   const raw = headers?.get("retry-after");
   if (!raw) return null;
   const seconds = Number(raw);

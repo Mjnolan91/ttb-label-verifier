@@ -16,6 +16,13 @@ import type { VerifyApiResponse } from "./contract";
 
 const POSITIONS: readonly LabelPosition[] = ["front", "back", "neck", "other"];
 
+// Vercel function duration. Without this the route gets the plan default (~10s on Hobby), which can
+// kill a slow multi-image read mid-pipeline: extraction is bounded by VISION_TIMEOUT_MS per sample
+// (~8s recommended, env-tunable) plus an optional escalation batch, and the rescue by its own budget
+// (default 10s, env-clamped to 30s max) — so a generously-tuned env can approach ~50s. 60 contains
+// every clamped configuration; we bound the request ourselves and the platform cap is the backstop.
+export const maxDuration = 60;
+
 // Upload guards (unauthenticated endpoint): bound memory/cost. A product has at most front/back/neck/other.
 const MAX_IMAGES = 4;
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024; // 10 MB per image (downscaled client-side to ~2000px first)
@@ -224,6 +231,7 @@ export async function POST(request: Request): Promise<Response> {
       result: null,
       message,
       ...(claimed ? { claimed } : {}),
+      ...(outcome.failedImages.length > 0 ? { imageFailures: outcome.failedImages } : {}),
     };
     return Response.json(payload);
   }
@@ -235,6 +243,7 @@ export async function POST(request: Request): Promise<Response> {
     completeness: checkCompleteness(outcome.extracted),
     result: outcome.result,
     ...(claimed ? { claimed } : {}),
+    ...(outcome.failedImages.length > 0 ? { imageFailures: outcome.failedImages } : {}),
   };
   return Response.json(payload);
 }

@@ -49,6 +49,48 @@ export function resolveSelfConsistencyEscalation(
   return Number.isFinite(n) && n >= 0 ? Math.min(3, Math.floor(n)) : 0;
 }
 
+/**
+ * Bold-judge samples per image. The judge answers ONE boolean (is the warning prefix bold?), so a
+ * majority over 3 is as decisive as one over 7 — and the judge runs on the STRONG (slow, lower-rps)
+ * model, speculatively, per image, concurrently with extraction. Capping it shrinks the per-verify
+ * request burst (rate-limit hygiene) without touching extraction's consensus width. Default
+ * min(samples, 3); WARNING_JUDGE_SAMPLES overrides, clamped to [1, samples].
+ */
+export function resolveWarningJudgeSamples(
+  samples: number,
+  env: Record<string, string | undefined> = process.env,
+): number {
+  const fallback = Math.min(samples, 3);
+  const raw = env.WARNING_JUDGE_SAMPLES;
+  if (raw === undefined || raw.trim() === "") return fallback;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return fallback;
+  // A numeric low value clamps to 1 (the operator asked for the MINIMUM strong-model burst);
+  // only non-numeric junk falls back to the default.
+  return Math.min(samples, Math.max(1, Math.floor(n)));
+}
+
+/**
+ * The rescue call's OWN time budget. The rescue runs on the provider's strongest model, whose
+ * single read (~6.5s measured on gpt-5.5) can exceed a tight per-sample straggler cap — sharing
+ * that cap made the rescue a guaranteed timeout that burned wall-clock and changed nothing
+ * (found 2026-06-10, the Bonnaire regression investigation). Default max(per-call cap, 10s);
+ * RESCUE_TIMEOUT_MS overrides, clamped to [1s, 30s] — the upper bound keeps extract + rescue
+ * inside the route's maxDuration (60s) with headroom, so a generous env can't get the whole
+ * request killed by the platform mid-pipeline.
+ */
+export function resolveRescueTimeoutMs(
+  perCallTimeoutMs: number,
+  env: Record<string, string | undefined> = process.env,
+): number {
+  const raw = env.RESCUE_TIMEOUT_MS;
+  if (raw !== undefined && raw.trim() !== "") {
+    const ms = Number(raw);
+    if (Number.isFinite(ms)) return Math.min(30_000, Math.max(1_000, Math.floor(ms)));
+  }
+  return Math.max(perCallTimeoutMs, 10_000);
+}
+
 /** Reasoning effort for gpt-5/o-series EXTRACTION reads (the classic gpt-4 line ignores it). */
 export type ReasoningEffort = "low" | "medium" | "high";
 

@@ -7,7 +7,20 @@
 import { describe, expect, it } from "vitest";
 import { combinedVerdict } from "@/compare";
 import { CANONICAL_GOVERNMENT_WARNING, type ClaimedFields, type ExtractedFields } from "@/domain";
-import { deriveLabelReview } from "./labelReview";
+import { deriveLabelReview, capVerdictForPartialRead } from "./labelReview";
+
+describe("capVerdictForPartialRead", () => {
+  it("caps approve to review when an image dropped out of the read; never relaxes review/reject", () => {
+    // The unread image could contradict anything the surviving images showed — an approve on
+    // partial evidence is the false-approval class this project refuses to ship.
+    expect(capVerdictForPartialRead("approve", true)).toBe("review");
+    expect(capVerdictForPartialRead("review", true)).toBe("review");
+    expect(capVerdictForPartialRead("reject", true)).toBe("reject");
+    expect(capVerdictForPartialRead("approve", false)).toBe("approve");
+    expect(capVerdictForPartialRead(null, true)).toBeNull();
+    expect(capVerdictForPartialRead(undefined, true)).toBeUndefined();
+  });
+});
 
 // A bourbon whose net contents (740 mL) MATCH the application but are not an authorized standard of
 // fill — so the comparison passes while completeness flags it: the screenshot's gated-review case.

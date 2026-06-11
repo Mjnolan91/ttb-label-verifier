@@ -3,7 +3,8 @@
 /**
  * VerifyForm — the single "verify a label" screen (the spec's core loop).
  *
- * Drop a product's label image(s) — front, back — and the AI reads them TOGETHER into one structured
+ * Drop a product's label image(s) — front, back, and the neck/strip if there is one — and the AI
+ * reads them TOGETHER into one structured
  * record. The screen ALWAYS runs the deterministic TTB completeness check; the agent then confirms the
  * application's values (the AI's reading is SUGGESTED in grey — Tab or "Accept all" to accept), and the
  * screen LEADS with the label-vs-application comparison once every field TTB REQUIRES for the beverage
@@ -13,6 +14,7 @@
  */
 import { useEffect, useId, useRef, useState, type KeyboardEvent } from "react";
 import type { VerifyApiResponse, VerifyApiError } from "./api/verify/contract";
+import type { ImageReadFailure } from "@/pipeline";
 import type { LabelPosition } from "@/extraction";
 import {
   combinedVerdict,
@@ -30,7 +32,7 @@ import type { BeverageClass, ClaimedFields, RequirementKey } from "@/domain";
 import { ExtractedFieldsView } from "./ui/ExtractedFieldsView";
 import { CompletenessView } from "./ui/CompletenessView";
 import { ResultView, type FieldOverride } from "./ui/ResultView";
-import { deriveLabelReview, toggleOverride, setFieldNote, type FieldNotes } from "./ui/labelReview";
+import { deriveLabelReview, toggleOverride, setFieldNote, capVerdictForPartialRead, type FieldNotes } from "./ui/labelReview";
 import { DecisionPanel } from "./ui/DecisionPanel";
 import { PipelineSteps } from "./ui/PipelineSteps";
 import { CLASS_DISPLAY_LABEL } from "./ui/beverageClass";
@@ -56,11 +58,36 @@ interface LabelImage {
   preview: string;
   position: LabelPosition;
 }
-type SlotKey = "front" | "back";
+type SlotKey = "front" | "back" | "neck";
+type Slots = Partial<Record<SlotKey, LabelImage>>;
 
-/** The ordered, present-only image list to read/export: front then back. */
-const orderedImagesOf = (s: { front?: LabelImage; back?: LabelImage }): LabelImage[] =>
-  [s.front, s.back].filter(Boolean) as LabelImage[];
+/** The ordered, present-only image list to read/export: front, then back, then neck — the merge
+ *  fills gaps left-to-right, so the front (the product anchor) wins any conflict. */
+const orderedImagesOf = (s: Slots): LabelImage[] =>
+  [s.front, s.back, s.neck].filter(Boolean) as LabelImage[];
+
+/** The explicit slots: position is fixed by the slot (no order-guessing, no dropdown). Front anchors
+ *  the product; back and neck are optional. The NECK slot is progressively disclosed — most products
+ *  have no neck/strip label, so the default screen stays two slots (see "Add a neck or strip label"). */
+const SLOT_DEFS: Record<SlotKey, { label: string; required: boolean; ariaLabel: string }> = {
+  front: { label: "Front / full label", required: true, ariaLabel: "Upload front or full label (required)" },
+  back: { label: "Back label", required: false, ariaLabel: "Upload back label (optional)" },
+  neck: { label: "Neck / strip label", required: false, ariaLabel: "Upload neck or strip label (optional)" },
+};
+
+/** The slot's human label for a failed image, falling back to its filename ("other" has no slot). */
+function failedImageName(f: ImageReadFailure): string {
+  return f.position && f.position !== "other" ? SLOT_DEFS[f.position].label : f.filename;
+}
+
+/** Human description of a partial read: which image(s) dropped out and why. Shown as a warning so a
+ *  dropped back label can never masquerade as "the label is missing its mandatory fields". */
+function describeImageFailures(failures: ImageReadFailure[]): string {
+  const what = failures.map(failedImageName).join(" and ");
+  const timedOut = failures.every((f) => f.reason === "timeout");
+  const plural = failures.length > 1 ? "images" : "image";
+  return `The ${what} ${plural} couldn't be read${timedOut ? " (the read timed out)" : ""}. The results below reflect only the images that were read.`;
+}
 
 /** Human label for each application input / requirement key (used by the "still needed" checklist). */
 const KEY_LABEL: Record<RequirementKey, string> = {
@@ -88,9 +115,12 @@ const LOW_CONF_INPUT =
 const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
 
 export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
-  // The label is uploaded into two explicit slots — Front (required) and Back (optional) — so the
-  // agent says what each image is; position is fixed by the slot (no order-guessing, no dropdown).
-  const [slots, setSlots] = useState<{ front?: LabelImage; back?: LabelImage }>({});
+  // The label is uploaded into explicit slots (SLOT_DEFS) — Front (required), Back (optional), and a
+  // progressively-disclosed Neck/strip — so the agent says what each image is.
+  const [slots, setSlots] = useState<Slots>({});
+  // The neck/strip slot is hidden until asked for (most products have none). It stays open while a
+  // neck image is loaded and collapses back to the disclosure button when that image is removed.
+  const [neckRevealed, setNeckRevealed] = useState(false);
   const [state, setState] = useState<SubmitState>("idle");
   const [formError, setFormError] = useState<string | null>(null);
   const [response, setResponse] = useState<VerifyApiResponse | null>(null);
@@ -164,11 +194,18 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
   };
   const headlineRef = useRef<HTMLHeadingElement>(null);
   const readToken = useRef(0);
+  const neckInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (state !== "done") return;
     headlineRef.current?.focus();
   }, [state]);
+
+  // Revealing the neck slot unmounts the disclosure button the keyboard user just pressed; move
+  // focus into the new slot's file input so they aren't dropped back to the top of the page.
+  useEffect(() => {
+    if (neckRevealed && !slots.neck) neckInputRef.current?.focus();
+  }, [neckRevealed, slots.neck]);
 
   const readable = state === "done" && Boolean(response?.readable);
   const extracted = readable && response ? response.extracted : undefined;
@@ -246,6 +283,12 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
     rejectNotes,
   } = deriveLabelReview(combined, fieldOverrides, fieldNotes);
 
+  // A PARTIAL read (one image dropped out) caps the displayed/exported verdict at review: the unread
+  // image could contradict anything, so matching on partial evidence must never headline Approve.
+  // The reviewer's explicitly recorded decision (DecisionPanel) remains their own call.
+  const partialRead = readable && (response?.imageFailures?.length ?? 0) > 0;
+  const shownOverall = capVerdictForPartialRead(effectiveOverall, partialRead);
+
   // Accept the AI's grey suggestion for one field by pressing Tab while it's empty (the agent confirms
   // the read as the application value) — fast, but deliberate, so an unaccepted required field still blocks.
   function acceptOnTab(e: KeyboardEvent<HTMLTextAreaElement>, id: string, value: string, suggestion: string | undefined, set: (v: string) => void) {
@@ -319,6 +362,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
     }
     const next = { ...slots, [key]: undefined };
     setSlots(next);
+    if (key === "neck") setNeckRevealed(false); // collapse the slot back to its disclosure button
     const imgs = orderedImagesOf(next);
     // Clearing the FRONT (the product anchor) or removing the last image starts a NEW product — drop the
     // typed application + beverage-type override so the next label isn't verified against the old one.
@@ -342,11 +386,14 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
       provider: response.provider,
       extracted: response.extracted,
       completeness: combined.completeness,
+      // The audit record must carry the partial-read fact: without it a saved approval over a
+      // dropped image reads as a clean two-image verification.
+      ...(response.imageFailures?.length ? { imageFailures: response.imageFailures } : {}),
       ...(claimed ? { claimed } : {}),
       ...(combined.verify
         ? {
             result: combined.verify,
-            overall: effectiveOverall,
+            overall: shownOverall,
             ...(Object.keys(fieldOverrides).length ? { humanOverrides: fieldOverrides } : {}),
             ...(Object.keys(fieldNotes).length ? { humanNotes: fieldNotes } : {}),
           }
@@ -361,7 +408,8 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
         extracted: response.extracted,
         completeness: combined.completeness,
         result: combined.verify,
-        overall: effectiveOverall ?? undefined,
+        overall: shownOverall ?? undefined,
+        readFailures: response.imageFailures?.length ? describeImageFailures(response.imageFailures) : undefined,
       },
     ]));
   }
@@ -370,7 +418,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
   const announce = !extracted
     ? ""
     : combined?.verify
-      ? `Verdict: ${VERDICT_LABEL[effectiveOverall ?? "review"]}.`
+      ? `Verdict: ${VERDICT_LABEL[shownOverall ?? "review"]}.`
       : `Label read. Complete the required application fields to verify: ${missingLabels.join(", ")}.`;
 
   const firstImage = orderedImages[0];
@@ -380,6 +428,9 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
 
   const pipelineStage: "reading" | "awaiting" | "done" | null =
     state === "loading" ? "reading" : readable ? (combined?.verify ? "done" : "awaiting") : null;
+
+  const neckVisible = neckRevealed || Boolean(slots.neck);
+  const slotKeys: readonly SlotKey[] = neckVisible ? ["front", "back", "neck"] : ["front", "back"];
 
   return (
     <section
@@ -391,7 +442,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
         Read &amp; verify a label
       </h2>
       <p className="mt-1 text-ink-muted">
-        Upload the product&apos;s front label (and the back, if you have it). The AI reads it, then you
+        Upload the product&apos;s front label (plus the back or neck, if you have them). The AI reads it, then you
         confirm what the application claims. The screen checks the label against the application
         field-by-field and the statutory government warning, and flags every mismatch as Approve / Needs
         review / Reject.
@@ -409,17 +460,18 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
       <div className="mt-6">
         <h3 className="mb-1.5 block font-medium text-ink">Step 1 · Label images</h3>
         <p id={ids.imageHelp} className="sr-only">
-          Upload the front label (required) and optionally the back label. Click an image to enlarge it.
+          Upload the front label (required) and optionally the back and neck or strip labels. Click an
+          image to enlarge it.
         </p>
         <div className="grid gap-4 sm:grid-cols-2">
-          {(["front", "back"] as const).map((key) => {
+          {slotKeys.map((key) => {
             const img = slots[key];
-            const label = key === "front" ? "Front / full label" : "Back label";
+            const { label, required, ariaLabel } = SLOT_DEFS[key];
             return (
               <div key={key}>
                 <span className="mb-1.5 block text-sm font-medium text-ink">
                   {label}{" "}
-                  <span className="font-normal text-ink-muted">{key === "front" ? "(required)" : "(optional)"}</span>
+                  <span className="font-normal text-ink-muted">{required ? "(required)" : "(optional)"}</span>
                 </span>
                 {img ? (
                   <figure className="overflow-hidden rounded-card border border-border bg-surface-muted shadow-card">
@@ -453,8 +505,9 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
                   <DropZone
                     id={`${ids.image}-${key}`}
                     multiple={false}
-                    required={key === "front"}
-                    ariaLabel={key === "front" ? "Upload front or full label (required)" : "Upload back label (optional)"}
+                    required={required}
+                    ariaLabel={ariaLabel}
+                    inputRef={key === "neck" ? neckInputRef : undefined}
                     onFiles={(files) => files[0] && setSlot(key, files[0])}
                     describedById={ids.imageHelp}
                   />
@@ -463,6 +516,36 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
             );
           })}
         </div>
+        {/* A PARTIAL read warns loudly: the merge proceeded from the surviving images, so the
+            extracted fields below are honest but incomplete — never let that look like a clean read. */}
+        {readable && response?.imageFailures && response.imageFailures.length > 0 && (
+          <div
+            role="alert"
+            className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-field border-2 border-review-500 bg-review-50 px-3 py-2.5 text-sm font-medium text-review-900"
+          >
+            <span className="min-w-[14rem] flex-1">{describeImageFailures(response.imageFailures)}</span>
+            <button
+              type="button"
+              onClick={() => void read(orderedImages)}
+              className="min-h-[40px] shrink-0 rounded-field border-2 border-border-strong bg-surface px-3 text-sm font-semibold text-ink transition hover:border-brand-600 hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2"
+            >
+              Try reading again
+            </button>
+          </div>
+        )}
+        {/* Most products have no neck/strip label, so the third slot is disclosed on demand: the
+            default screen stays two slots and the button still advertises the capability. */}
+        {!neckVisible && (
+          <p className="mt-2">
+            <button
+              type="button"
+              onClick={() => setNeckRevealed(true)}
+              className={"inline-flex min-h-[44px] items-center gap-1.5 text-sm " + linkClass}
+            >
+              <span aria-hidden="true">+</span> Add a neck or strip label
+            </button>
+          </p>
+        )}
         {/* Self-sufficient demo: a cold visitor has no label image on hand. The three bundled sample
             labels are served from /public/samples with their filenames intact, so the offline mock
             recognizes them AND a live provider reads their real pixels. Plain download links keep the
@@ -635,7 +718,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
       {/* The order-of-operations spine: read the label → AI confidence → compare → verdict. */}
       {pipelineStage && (
         <div className="mt-8 border-t border-border pt-6">
-          <PipelineSteps stage={pipelineStage} verdict={effectiveOverall ?? undefined} />
+          <PipelineSteps stage={pipelineStage} verdict={shownOverall ?? undefined} />
         </div>
       )}
 
@@ -684,7 +767,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
               <ResultView
                 step="Step 3"
                 result={combined.verify}
-                overall={effectiveOverall ?? undefined}
+                overall={shownOverall ?? undefined}
                 gatedByCompleteness={effectiveGatedByCompleteness}
                 headingRef={headlineRef}
                 onViewImage={viewFirstImage}
@@ -702,7 +785,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
               </details>
               <DecisionPanel
                 step="Step 4"
-                verdict={effectiveOverall ?? "review"}
+                verdict={shownOverall ?? "review"}
                 brand={claimBrand}
                 approveNotes={approveNotes}
                 rejectNotes={rejectNotes}

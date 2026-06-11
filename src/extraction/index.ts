@@ -41,7 +41,12 @@ export {
   DISAGREEMENT_CONFIDENCE,
 } from "./reconcile";
 export { aggregateSamples, selfConsistentExtract } from "./selfConsistency";
-export { resolveSelfConsistencySamples, resolveLowConfidenceRescue } from "./config";
+export {
+  resolveSelfConsistencySamples,
+  resolveLowConfidenceRescue,
+  resolveWarningJudgeSamples,
+  resolveRescueTimeoutMs,
+} from "./config";
 export { aggregateBoldVotes, combineBoldSignals } from "./boldJudgment";
 export { rescueEligibleKeys, rescueRawKeys, applyRescue, readFieldsBounded } from "./rescue";
 
