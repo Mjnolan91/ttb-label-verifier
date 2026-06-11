@@ -949,7 +949,7 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
                       <>
                         <StatusBadge tone="review" label="Couldn't read" />
                         {matchedClaim && (
-                          <span className="mt-1 block text-xs text-review-700">
+                          <span className="mt-1 block text-xs text-review-900">
                             Application matched. Upload a clearer image.
                           </span>
                         )}

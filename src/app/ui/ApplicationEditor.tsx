@@ -33,7 +33,7 @@ import { IconPass } from "./icons";
 /** The amber treatment for a low-confidence AI suggestion (mirrors the single screen). */
 const LOW_CONF_INPUT =
   "min-h-[44px] w-full rounded-field border-2 border-review-500 bg-review-50 px-3 py-2.5 text-ink " +
-  "placeholder:text-review-700 shadow-sm transition focus-visible:outline-none focus-visible:border-brand-600 " +
+  "placeholder:text-review-900 shadow-sm transition focus-visible:outline-none focus-visible:border-brand-600 " +
   "focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2";
 
 export function ApplicationEditor({
@@ -97,7 +97,7 @@ export function ApplicationEditor({
       <summary className="min-h-[44px] cursor-pointer py-2 text-sm font-semibold text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2">
         The application
         {claimedNeeds ? (
-          <span className="ml-2 font-normal text-review-700">Add {claimedNeeds} to verify</span>
+          <span className="ml-2 font-normal text-review-900">Add {claimedNeeds} to verify</span>
         ) : !hasVerdict ? (
           <span className="ml-2 font-normal text-ink-muted">No values yet. Add them to verify</span>
         ) : (
@@ -187,7 +187,7 @@ export function ApplicationEditor({
                 </span>
               )}
               {importNote && (
-                <span id={noteId} className="mt-1 block break-words text-xs font-medium text-review-700">
+                <span id={noteId} className="mt-1 block break-words text-xs font-medium text-review-900">
                   {importNote}
                 </span>
               )}

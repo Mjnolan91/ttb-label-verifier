@@ -59,7 +59,10 @@
  * `.dark` re-themes the whole app with no per-component changes. The `.dark` class is set before paint
  * by the inline script in layout.tsx (no flash) and toggled by ThemeToggle. Status TINTS flip (dark
  * surface + light text); the -600/-700 accents and solid badges keep their values because white text
- * reads on them in either mode. Text pairings stay >= WCAG AA.
+ * reads on them in either mode. The contract that keeps text pairings >= WCAG AA in BOTH modes:
+ * static foreground text uses the -900 status tokens (remapped light below), never -700 — the -700
+ * tokens are reserved for solid badge backgrounds and transient hover accents, which are not
+ * remapped and would sit below 4.5:1 as dark-mode text.
  */
 .dark {
   color-scheme: dark;

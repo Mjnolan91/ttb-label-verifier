@@ -164,10 +164,10 @@ export function DecisionPanel({
       d === "approve"
         ? active
           ? "border-pass-700 bg-pass-700 text-white"
-          : "border-pass-600 bg-surface text-pass-700 hover:bg-pass-50"
+          : "border-pass-600 bg-surface text-pass-900 hover:bg-pass-50"
         : active
           ? "border-fail-700 bg-fail-700 text-white"
-          : "border-fail-600 bg-surface text-fail-700 hover:bg-fail-50";
+          : "border-fail-600 bg-surface text-fail-900 hover:bg-fail-50";
     return (
       <button
         type="button"

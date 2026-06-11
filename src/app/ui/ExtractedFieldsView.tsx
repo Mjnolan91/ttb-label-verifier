@@ -23,7 +23,7 @@ function confidenceColor(v: number | undefined): string {
   // Green above FIELD_REVIEW_CONFIDENCE, the engine's per-field trust gate. The amber/red split
   // reuses MIN_READABLE_CONFIDENCE, which the engine only applies image-level (readability); per
   // field it is purely a display boundary, borrowed so the palette tracks named constants.
-  return v >= FIELD_REVIEW_CONFIDENCE ? "text-pass-700" : v >= MIN_READABLE_CONFIDENCE ? "text-review-700" : "text-fail-700";
+  return v >= FIELD_REVIEW_CONFIDENCE ? "text-pass-900" : v >= MIN_READABLE_CONFIDENCE ? "text-review-900" : "text-fail-900";
 }
 
 function ConfidenceTag({ value }: { value: number | undefined }) {

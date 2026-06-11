@@ -338,11 +338,11 @@ function NoteEditor({
           <IconPass className="h-4 w-4" /> Save note
         </button>
         {hasSaved && !dirty && (
-          <span className="inline-flex items-center gap-1 text-xs font-semibold text-pass-700">
+          <span className="inline-flex items-center gap-1 text-xs font-semibold text-pass-900">
             <IconPass className="h-3.5 w-3.5" /> Saved, added to the applicant email
           </span>
         )}
-        {dirty && hasSaved && <span className="text-xs font-semibold text-review-700">Unsaved changes</span>}
+        {dirty && hasSaved && <span className="text-xs font-semibold text-review-900">Unsaved changes</span>}
         {hasSaved && (
           <button
             type="button"

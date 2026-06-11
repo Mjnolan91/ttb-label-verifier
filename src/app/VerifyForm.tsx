@@ -110,7 +110,7 @@ const KEY_LABEL: Record<RequirementKey, string> = {
  *  before accepting. Distinct from inputClass so the "yellow highlight" is unmistakable. */
 const LOW_CONF_INPUT =
   "min-h-[44px] w-full rounded-field border-2 border-review-500 bg-review-50 px-3 py-2.5 text-ink " +
-  "placeholder:text-review-700 shadow-sm transition focus-visible:outline-none focus-visible:border-brand-600 " +
+  "placeholder:text-review-900 shadow-sm transition focus-visible:outline-none focus-visible:border-brand-600 " +
   "focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2";
 
 const norm = (s: string) => s.trim().toLowerCase().replace(/\s+/g, " ");
@@ -659,7 +659,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
             <>
               The AI&apos;s reading is suggested in grey. Press <kbd className="rounded border border-border bg-surface-muted px-1 font-sans text-xs">Tab</kbd> to accept a field, or use{" "}
               <strong className="text-ink">Accept all</strong>. Fields TTB requires for this type are
-              marked <span className="font-bold text-fail-700">*</span> and must be filled to verify.
+              marked <span className="font-bold text-fail-900">*</span> and must be filled to verify.
             </>
           ) : (
             <>Upload a label first. The AI&apos;s reading will pre-fill these as suggestions you can accept or correct.</>
@@ -728,7 +728,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
                 <div className="mb-1.5 flex items-center gap-1.5 text-sm font-medium text-ink">
                   <label htmlFor={f.id}>
                     {f.label}
-                    {required && <span className="text-fail-700" aria-hidden="true"> *</span>}
+                    {required && <span className="text-fail-900" aria-hidden="true"> *</span>}
                     {f.hint && <span className="font-normal text-ink-muted"> ({f.hint})</span>}
                   </label>
                   <FieldHelp label={f.label} text={APP_FIELD_HELP[f.key]} />
@@ -761,7 +761,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
                   </span>
                 )}
                 {importNote && (
-                  <span id={noteId} className="mt-1 block break-words text-xs font-medium text-review-700">
+                  <span id={noteId} className="mt-1 block break-words text-xs font-medium text-review-900">
                     {importNote}
                   </span>
                 )}
