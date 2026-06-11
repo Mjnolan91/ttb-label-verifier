@@ -30,14 +30,14 @@ const SAMPLES: { name: string; expect: string; detail: string; files: { href: st
       "warning from the back, and every field matches the application.",
   },
   {
-    name: "Non-bold government warning",
+    name: "Defective warning prefix",
     expect: "Reject",
     files: [{ href: "/samples/fear-the-dragon-warning-not-bold-back.jpg", label: "edited back label" }],
     detail:
-      'Upload the same front with this back: the warning text is word-for-word correct and all ' +
-      'caps, but the "GOVERNMENT WARNING:" prefix is printed in regular weight. 27 CFR ' +
-      "16.22(a)(2) requires it in bold type, a hard fail. (An edited test image; the real " +
-      "product's label is compliant.)",
+      'Upload the same front with this back: the warning wording is correct, but the prefix is ' +
+      'printed "Government Warning:" in title case and regular weight. 27 CFR 16.22(a)(2) ' +
+      "requires it in capital letters and bold type, a hard fail. (An edited test image; the " +
+      "real product's label is compliant.)",
   },
 ];
 

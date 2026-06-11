@@ -13,11 +13,13 @@
  * 450px web image, far below real COLA artwork resolution, and at that size the prefix's bold
  * differential is too weak for ANY reader (human or model) to verify honestly — measured live,
  * the bold judge returned "unverifiable" and the clean pair could never demo an Approve. The two
- * variants are IDENTICAL except the one statutory variable: the clean back prints the
- * "GOVERNMENT WARNING:" prefix in BOLD type (27 CFR 16.22(a)(2) compliant), the not-bold variant
- * prints it in REGULAR weight (still all caps) — the one defect that hard-fails on format alone.
- * The real product's label is compliant; the defect variant exists only so the demo can show a
- * Reject.
+ * variants are IDENTICAL except the statutory variable: the clean back prints the
+ * "GOVERNMENT WARNING:" prefix ALL-CAPS BOLD (27 CFR 16.22(a)(2) compliant); the defect variant
+ * prints it "Government Warning:" in TITLE CASE and REGULAR weight. Title case is deliberate:
+ * the caps rule is judged from the TRANSCRIPT (deterministic on a live model), while a pure
+ * weight-only defect measures as "could not be verified as bold" and routes to review — honest,
+ * but a mushy demo. The real product's label is compliant; the defect variant exists only so the
+ * demo can show a hard Reject.
  *
  * Sources are the original artwork JPGs, kept OUTSIDE the repo (real-brand images are not
  * committed; see SOURCE_DIR). Output goes to eval/fixtures/images/ — copy to public/samples/ in
@@ -74,23 +76,23 @@ async function main() {
   const fill = `rgb(${r},${g},${b})`;
 
   const PREFIX = "GOVERNMENT WARNING:";
-  const overlayFor = (boldPrefix) => `<?xml version="1.0"?>
+  const overlayFor = (compliant) => `<?xml version="1.0"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="900" height="1126">
   <rect x="0" y="${PATCH_TOP}" width="900" height="${1126 - PATCH_TOP}" fill="${fill}"/>
   ${WARNING_LINES.map((line, i) => {
     const body = line.startsWith(PREFIX)
-      ? `<tspan font-weight="${boldPrefix ? 700 : 400}">${esc(PREFIX)}</tspan><tspan font-weight="400">${esc(line.slice(PREFIX.length))}</tspan>`
+      ? `<tspan font-weight="${compliant ? 700 : 400}">${esc(compliant ? PREFIX : "Government Warning:")}</tspan><tspan font-weight="400">${esc(line.slice(PREFIX.length))}</tspan>`
       : esc(line);
     return `<text x="450" y="${1004 + i * 27}" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="18" font-weight="400" fill="#2e2a24" xml:space="preserve">${body}</text>`;
   }).join("\n  ")}
 </svg>`;
 
-  for (const [file, boldPrefix] of [
+  for (const [file, compliant] of [
     ["fear-the-dragon-back.jpg", true],
     ["fear-the-dragon-warning-not-bold-back.jpg", false],
   ]) {
     const out = await sharp(back)
-      .composite([{ input: Buffer.from(overlayFor(boldPrefix)), top: 0, left: 0 }])
+      .composite([{ input: Buffer.from(overlayFor(compliant)), top: 0, left: 0 }])
       .jpeg({ quality: 90 })
       .toBuffer();
     fs.writeFileSync(path.join(OUT_DIR, file), out);

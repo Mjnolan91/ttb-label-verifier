@@ -678,9 +678,10 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
             </a>
             . To see a Reject, swap in the{" "}
             <a href="/samples/fear-the-dragon-warning-not-bold-back.jpg" download className={linkClass}>
-              non-bold-warning back
+              defective-warning back
             </a>{" "}
-            (an edited test image; the real label is compliant).
+            (its prefix prints &quot;Government Warning:&quot; in title case and regular weight; an
+            edited test image, the real label is compliant).
           </p>
         )}
         {/* The read's live status, co-located with the slot the user just dropped into (all other

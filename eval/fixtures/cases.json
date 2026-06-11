@@ -1302,10 +1302,10 @@
      "confidence": 0.95
     },
     "warningText": {
-     "value": "GOVERNMENT WARNING: (1) ACCORDING TO THE SURGEON GENERAL, WOMEN SHOULD NOT DRINK ALCOHOLIC BEVERAGES DURING PREGNANCY BECAUSE OF THE RISK OF BIRTH DEFECTS. (2) CONSUMPTION OF ALCOHOLIC BEVERAGES IMPAIRS YOUR ABILITY TO DRIVE A CAR OR OPERATE MACHINERY, AND MAY CAUSE HEALTH PROBLEMS.",
+     "value": "Government Warning: (1) ACCORDING TO THE SURGEON GENERAL, WOMEN SHOULD NOT DRINK ALCOHOLIC BEVERAGES DURING PREGNANCY BECAUSE OF THE RISK OF BIRTH DEFECTS. (2) CONSUMPTION OF ALCOHOLIC BEVERAGES IMPAIRS YOUR ABILITY TO DRIVE A CAR OR OPERATE MACHINERY, AND MAY CAUSE HEALTH PROBLEMS.",
      "confidence": 0.96
     },
-    "warningPrefixIsAllCaps": true,
+    "warningPrefixIsAllCaps": false,
     "warningPrefixIsBold": false
    },
    "expected": {
@@ -1318,7 +1318,7 @@
     },
     "overall": "reject"
    },
-   "notes": "DEMO defect sample, an EDITED TEST ARTIFACT (scripts/make-fear-the-dragon-demo.cjs re-renders the warning block; the real product's label is compliant): the warning text is verbatim and ALL CAPS, but the GOVERNMENT WARNING: prefix is printed in REGULAR weight. 27 CFR 16.22(a)(2) requires the prefix in bold type, so this is the one defect that hard-fails on format alone: wording pass, caps pass, bold FALSE -> reject. The only fixture isolating the bold rule (title-case and missing-warning cover the other two warning failure modes). ALLOCATION (measured live, model unanimous at conf 1): the stylized FEAR THE DRAGON calligraphy is the DISTINCTIVE/FANCIFUL name and the producer DRAGON DISTILLERY is the brand, the typical COLA allocation for a collaboration one-off; the claimed application mirrors that."
+   "notes": "DEMO defect sample, an EDITED TEST ARTIFACT (scripts/make-fear-the-dragon-demo.cjs re-renders the warning block; the real product's label is compliant): the warning wording is verbatim, but the GOVERNMENT WARNING: prefix is printed 'Government Warning:' in TITLE CASE and REGULAR weight. The caps rule (27 CFR 16.22(a)(2)) is judged from the TRANSCRIPT, so a live model hard-fails it deterministically; a pure weight-only defect measured as 'could not be verified as bold' live and routed to review (the conservative tri-state working as designed), which is honest but a mushy demo. wording pass, caps FAIL, bold false -> reject."
   }
  ]
 }

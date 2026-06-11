@@ -487,7 +487,7 @@ describe("VerifyForm — verify against the application", () => {
       (q.getByRole("link", { name: /^back label/i }) as HTMLAnchorElement).getAttribute("href"),
     ).toBe("/samples/fear-the-dragon-back.jpg");
     expect(
-      (q.getByRole("link", { name: /non-bold-warning back/i }) as HTMLAnchorElement).getAttribute("href"),
+      (q.getByRole("link", { name: /defective-warning back/i }) as HTMLAnchorElement).getAttribute("href"),
     ).toBe("/samples/fear-the-dragon-warning-not-bold-back.jpg");
     dropLabelImage(container);
     await q.findByText("Complete the application to verify");

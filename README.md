@@ -34,7 +34,7 @@ for reviewers in
 | Sample product | The defect on the label | What to enter | Expected verdict |
 | --- | --- | --- | --- |
 | Fear the Dragon, clean pair: [front](eval/fixtures/images/fear-the-dragon-front.jpg) + [back](eval/fixtures/images/fear-the-dragon-back.jpg) | none (brand and alcohol on the front; net contents and the warning on the back) | accept all suggestions | **Approve** |
-| The same front + the [non-bold-warning back](eval/fixtures/images/fear-the-dragon-warning-not-bold-back.jpg) | the "GOVERNMENT WARNING:" prefix is printed in regular weight (an edited test image; the real label is compliant) | accept all suggestions | **Reject**. 27 CFR 16.22(a)(2) requires the prefix in bold type |
+| The same front + the [defective-warning back](eval/fixtures/images/fear-the-dragon-warning-not-bold-back.jpg) | the prefix prints "Government Warning:" in title case and regular weight (an edited test image; the real label is compliant) | accept all suggestions | **Reject**. 27 CFR 16.22(a)(2) requires the all-caps bold prefix |
 
 You never type the government warning: the tool compares the label's warning text word for word
 against the statutory text automatically. (Live model reads can occasionally vary; locally, the
