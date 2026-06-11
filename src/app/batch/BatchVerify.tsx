@@ -727,8 +727,8 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
                   // single screen's "No label handy?" links; fronts and backs pair by filename),
                   // so template + samples demo end to end — offline mock and live provider alike.
                   "filename,brand,class,fanciful,composition,alcohol,net,name,address,country\n" +
-                    "fear-the-dragon-front.jpg,Fear the Dragon,Spirit Distilled from Grain and Pumpkin,,Spirit made from the mash of Flying Dog's The Fear,50% Alc./Vol. (100 Proof),750ML,\"Dragon Distillery, LLC\",\"Frederick, MD\",\n" +
-                    "fear-the-dragon-warning-not-bold-back.jpg,Fear the Dragon,Spirit Distilled from Grain and Pumpkin,,Spirit made from the mash of Flying Dog's The Fear,50% Alc./Vol. (100 Proof),750ML,\"Dragon Distillery, LLC\",\"Frederick, MD\",\n" +
+                    "fear-the-dragon-front.jpg,Dragon Distillery,Spirit Distilled from Grain and Pumpkin,Fear the Dragon,Spirit made from the mash of Flying Dog's The Fear,50% Alc./Vol. (100 Proof),750ML,\"Dragon Distillery, LLC\",\"Frederick, MD\",\n" +
+                    "fear-the-dragon-warning-not-bold-back.jpg,Dragon Distillery,Spirit Distilled from Grain and Pumpkin,Fear the Dragon,Spirit made from the mash of Flying Dog's The Fear,50% Alc./Vol. (100 Proof),750ML,\"Dragon Distillery, LLC\",\"Frederick, MD\",\n" +
                     "jolly-jerrys-front.jpg,Jolly Jerry's,Rum,,,40% Alc/Vol (80 Proof),750 mL,Sea Trader Imports,\"Miami, FL\",Product of Barbados\n" +
                     "granite-peak-front.jpg,Granite Peak,India Pale Ale,,,6.5% Alc/Vol,12 FL OZ,Granite Peak Brewing Co.,\"Portland, OR\",\n" +
                     "bayou-spiced-front.jpg,Bayou,,Spiced Rum,Rum with natural flavors added,35% Alc/Vol (70 Proof),750 mL,Bayou Spirits Co.,\"New Orleans, LA\",\n",

@@ -1193,15 +1193,16 @@
    "id": "fear-the-dragon-front-panel-alone",
    "imageFilename": "fear-the-dragon-front.jpg",
    "claimed": {
-    "brand": "Fear the Dragon",
+    "brand": "Dragon Distillery",
     "classType": "Spirit Distilled from Grain and Pumpkin",
     "beverageClass": "Distilled spirits",
     "alcoholContent": "50% Alc./Vol. (100 Proof)",
-    "netContents": "750 mL"
+    "netContents": "750 mL",
+    "fancifulName": "Fear the Dragon"
    },
    "extracted": {
     "brand": {
-     "value": "Fear the Dragon",
+     "value": "Dragon Distillery",
      "confidence": 0.96
     },
     "classType": {
@@ -1223,6 +1224,10 @@
     "address": {
      "value": "Frederick, MD",
      "confidence": 0.93
+    },
+    "fancifulName": {
+     "value": "Fear the Dragon",
+     "confidence": 0.93
     }
    },
    "expected": {
@@ -1235,21 +1240,22 @@
     },
     "overall": "review"
    },
-   "notes": "DEMO sample, front panel of the real Fear the Dragon pair (Dragon Distillery x Flying Dog; eval/fixtures/images/fear-the-dragon-front.jpg, a REAL raster a live provider reads for real). ALONE it is honestly unapprovable: the statutory warning and the net contents live on the back panel, so this single-panel read must never approve. The demo walkthrough uploads the front+back PAIR on the verify screen (the joint read merges them into the clean approve); the eval harness is single-image, so this case locks the front panel's solo verdict instead."
+   "notes": "DEMO sample, front panel of the real Fear the Dragon pair (Dragon Distillery x Flying Dog; eval/fixtures/images/fear-the-dragon-front.jpg, a REAL raster a live provider reads for real). ALONE it is honestly unapprovable: the statutory warning and the net contents live on the back panel, so this single-panel read must never approve. The demo walkthrough uploads the front+back PAIR on the verify screen (the joint read merges them into the clean approve); the eval harness is single-image, so this case locks the front panel's solo verdict instead. ALLOCATION (measured live, model unanimous at conf 1): the stylized FEAR THE DRAGON calligraphy is the DISTINCTIVE/FANCIFUL name and the producer DRAGON DISTILLERY is the brand, the typical COLA allocation for a collaboration one-off; the claimed application mirrors that."
   },
   {
    "id": "fear-the-dragon-back-panel-alone",
    "imageFilename": "fear-the-dragon-back.jpg",
    "claimed": {
-    "brand": "Fear the Dragon",
+    "brand": "Dragon Distillery",
     "classType": "Spirit Distilled from Grain and Pumpkin",
     "beverageClass": "Distilled spirits",
     "alcoholContent": "50% Alc./Vol. (100 Proof)",
-    "netContents": "750 mL"
+    "netContents": "750 mL",
+    "fancifulName": "Fear the Dragon"
    },
    "extracted": {
     "brand": {
-     "value": "Fear the Dragon",
+     "value": "Dragon Distillery",
      "confidence": 0.9
     },
     "netContents": {
@@ -1273,21 +1279,22 @@
     },
     "overall": "review"
    },
-   "notes": "DEMO sample, back panel of the Fear the Dragon pair. The warning is printed ENTIRELY in caps with a BOLD prefix: the body's case folds in the wording comparison (16.21 has no mixed-case requirement) and only the prefix carries the caps+bold rule, so the warning passes. Net contents prints as 750ML (no space), exercising the parser. Alone, the panel carries no class designation, alcohol statement, or responsibility line, so completeness routes it to review; with the front panel it merges to the clean approve."
+   "notes": "DEMO sample, back panel of the Fear the Dragon pair. The warning is printed ENTIRELY in caps with a BOLD prefix: the body's case folds in the wording comparison (16.21 has no mixed-case requirement) and only the prefix carries the caps+bold rule, so the warning passes. Net contents prints as 750ML (no space), exercising the parser. Alone, the panel carries no class designation, alcohol statement, or responsibility line, so completeness routes it to review; with the front panel it merges to the clean approve. ALLOCATION (measured live, model unanimous at conf 1): the stylized FEAR THE DRAGON calligraphy is the DISTINCTIVE/FANCIFUL name and the producer DRAGON DISTILLERY is the brand, the typical COLA allocation for a collaboration one-off; the claimed application mirrors that."
   },
   {
    "id": "fear-the-dragon-warning-not-bold-reject",
    "imageFilename": "fear-the-dragon-warning-not-bold-back.jpg",
    "claimed": {
-    "brand": "Fear the Dragon",
+    "brand": "Dragon Distillery",
     "classType": "Spirit Distilled from Grain and Pumpkin",
     "beverageClass": "Distilled spirits",
     "alcoholContent": "50% Alc./Vol. (100 Proof)",
-    "netContents": "750 mL"
+    "netContents": "750 mL",
+    "fancifulName": "Fear the Dragon"
    },
    "extracted": {
     "brand": {
-     "value": "Fear the Dragon",
+     "value": "Dragon Distillery",
      "confidence": 0.9
     },
     "netContents": {
@@ -1311,7 +1318,7 @@
     },
     "overall": "reject"
    },
-   "notes": "DEMO defect sample, an EDITED TEST ARTIFACT (scripts/make-fear-the-dragon-demo.cjs re-renders the warning block; the real product's label is compliant): the warning text is verbatim and ALL CAPS, but the GOVERNMENT WARNING: prefix is printed in REGULAR weight. 27 CFR 16.22(a)(2) requires the prefix in bold type, so this is the one defect that hard-fails on format alone: wording pass, caps pass, bold FALSE -> reject. The only fixture isolating the bold rule (title-case and missing-warning cover the other two warning failure modes)."
+   "notes": "DEMO defect sample, an EDITED TEST ARTIFACT (scripts/make-fear-the-dragon-demo.cjs re-renders the warning block; the real product's label is compliant): the warning text is verbatim and ALL CAPS, but the GOVERNMENT WARNING: prefix is printed in REGULAR weight. 27 CFR 16.22(a)(2) requires the prefix in bold type, so this is the one defect that hard-fails on format alone: wording pass, caps pass, bold FALSE -> reject. The only fixture isolating the bold rule (title-case and missing-warning cover the other two warning failure modes). ALLOCATION (measured live, model unanimous at conf 1): the stylized FEAR THE DRAGON calligraphy is the DISTINCTIVE/FANCIFUL name and the producer DRAGON DISTILLERY is the brand, the typical COLA allocation for a collaboration one-off; the claimed application mirrors that."
   }
  ]
 }

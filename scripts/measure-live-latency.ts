@@ -34,7 +34,7 @@ const SAMPLES = [
       { filename: "fear-the-dragon-front.jpg", position: "front" },
       { filename: "fear-the-dragon-back.jpg", position: "back" },
     ],
-    brand: "Fear the Dragon",
+    brand: "Dragon Distillery",
     expect: "approve",
   },
   {
@@ -43,7 +43,7 @@ const SAMPLES = [
       { filename: "fear-the-dragon-front.jpg", position: "front" },
       { filename: "fear-the-dragon-warning-not-bold-back.jpg", position: "back" },
     ],
-    brand: "Fear the Dragon",
+    brand: "Dragon Distillery",
     expect: "reject",
   },
 ] as const;
