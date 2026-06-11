@@ -41,3 +41,19 @@ export interface VerifyApiError {
   error: string;
   detail?: string;
 }
+
+/**
+ * POST /api/verify/focus — the batch second look's focused re-read of named fields. `fields` maps
+ * each recovered channel to its value at review-band confidence (0.65 — surfaced for a person,
+ * never a silent pass); empty when the strong model couldn't find them either.
+ */
+export interface FocusApiResponse {
+  provider: string;
+  /** False when the pass can't run here: the provider has no focused-read capability (the offline
+   *  mock) or SECOND_LOOK=0 disabled it. */
+  supported: boolean;
+  /** True when the pass was supported but the focused read itself failed or timed out — distinct
+   *  from "ran and found nothing", so the row note never claims a look that didn't happen. */
+  failed?: boolean;
+  fields: Record<string, { value: string; confidence: number }>;
+}

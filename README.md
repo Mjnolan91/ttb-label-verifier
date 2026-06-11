@@ -14,8 +14,10 @@ health warning) lead the screen. The same engine also extracts the full TTB fiel
 manual data entry the agents complained about), runs a per-beverage-type completeness check, exports
 JSON/CSV, and handles batch uploads. The approach, design decisions, and trade-offs are written up
 for reviewers in
-[docs/TTB-Label-Verifier-Approach-and-Design.docx](docs/TTB-Label-Verifier-Approach-and-Design.docx)
-(this README covers the same ground with more operational detail).
+[docs/TTB-Label-Verifier-Approach-and-Design.pdf](docs/TTB-Label-Verifier-Approach-and-Design.pdf)
+(viewable right here on GitHub; the same document as
+[.docx](docs/TTB-Label-Verifier-Approach-and-Design.docx)). This README covers the same ground with
+more operational detail.
 
 ## Try it in two minutes
 
@@ -50,7 +52,10 @@ worklist with CSV export. Each row leads with a clickable thumbnail; two rows th
 brand (camera filenames defeat pairing) offer a one-click, human-confirmed combine that re-reads
 them as one product. Transient service failures auto-retry with jittered backoff and adaptive
 pacing, narrating each attempt on the row and ending in an honest error plus a Retry (and a
-"Retry all failed" sweep) rather than a dead end. The review drawer lets you supply or correct
+"Retry all failed" sweep) rather than a dead end. A row that settles cleanly but missing a
+mandatory element gets a background second look after a short delay: one focused re-read of
+exactly the missing fields on the strong model, whose finds surface at review confidence for a
+person to confirm — caught, never silently passed. The review drawer lets you supply or correct
 application values in place, so a batch without a CSV is still fully workable, and rows settle one
 by one, so a 300-label dump is triaged continuously rather than waited on. On the single verify
 screen, a multi-photo selection places itself: filename tokens (name-front, name-back, name-neck)
@@ -187,6 +192,12 @@ headline Approve), and the recommended pairing is **`SELF_CONSISTENCY_SAMPLES=5`
 documented in [`.env.example`](.env.example), including `SELF_CONSISTENCY_ESCALATION` (opt-in extra
 reads on a contested verdict-relevant field; accuracy over tail latency) and the model choice.
 Uploads are downscaled in the browser to keep request sizes inside the budget.
+
+The bundled sample was measured the same way after it shipped (2026-06-11, three sequential rounds
+per product against the deployed demo): the clean Fireball front+back pair read 3 of 3 Approve at
+6.6 to 8.7s, and the defective-warning pair read 3 of 3 Reject at 12.8 to 14.0s. The defect's
+extra seconds are the warning-focus escalation taking its zoomed look before committing to a hard
+fail; the verdict itself is deterministic (the title-case prefix fails from the transcript).
 
 The deployed config was chosen by A/B measurement, not preference: on OpenAI (local dev server,
 real API, 2026-06-10), gpt-4.1 extraction with a gpt-5.5 warning judge measured **6/6 verdicts at

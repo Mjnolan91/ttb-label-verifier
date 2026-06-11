@@ -38,7 +38,7 @@ export {
   applyConfidenceGate,
 } from "./thresholds";
 export { normalizeText, normalizeWarning, similarity, levenshtein } from "./text";
-export { combinedVerdict, worstVerdict, toClaimedFields, type CombinedVerdict } from "./reviewVerdict";
+export { combinedVerdict, worstVerdict, toClaimedFields, COMPLETENESS_VERDICT, type CombinedVerdict } from "./reviewVerdict";
 export {
   requiredInputKeysFor,
   classChoiceFor,

@@ -144,8 +144,10 @@ export function HelpButton() {
             The <a href="/batch" className={linkClass}>batch screen</a> takes a whole folder of label
             images, pairs fronts and backs by filename, and checks each product against an optional
             CSV of application values. It doubles as the review worklist. Busy-service failures retry
-            automatically, your decisions and typed application values save in this browser, and the
-            table downloads as JSON or CSV.
+            automatically; a product that reads cleanly but misses a required element gets a second
+            look at exactly those fields a few seconds later, with anything found flagged for your
+            review. Your decisions and typed application values save in this browser, and the table
+            downloads as JSON or CSV.
           </p>
         </div>
       </Drawer>

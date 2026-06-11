@@ -63,6 +63,16 @@ export {
 export { aggregateBoldVotes, combineBoldSignals, combineViolationSignals } from "./boldJudgment";
 export { rescueEligibleKeys, rescueRawKeys, applyRescue, readFieldsBounded } from "./rescue";
 export {
+  SECOND_LOOK_ALLOWED,
+  SECOND_LOOK_CONFIDENCE,
+  applySecondLook,
+  secondLookKeysFor,
+  secondLookLabel,
+  type SecondLookFindings,
+  type SecondLookKey,
+} from "./secondLook";
+export { resolveSecondLook, runSecondLook } from "./secondLookServer";
+export {
   warningFocusNeeded,
   runWarningFocus,
   applyWarningFocus,

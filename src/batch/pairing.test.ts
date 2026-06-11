@@ -68,4 +68,20 @@ describe("groupImagesByProduct", () => {
     expect(groupImagesByProduct(["p2-neck.jpg"])[0].images[0].position).toBe("neck");
     expect(groupImagesByProduct(["p3-f.jpg"])[0].images[0].position).toBe("front");
   });
+
+  it("pairs 'strip' with its product as the neck (the single screen's own slot name) — a real batch's Casamigos_Tequila_Strip.jpg read ALONE as its own product", () => {
+    const groups = groupImagesByProduct([
+      "Casamigos_Tequila_Front.jpg",
+      "Casamigos_Tequila_Back.jpg",
+      "Casamigos_Tequila_Strip.jpg",
+    ]);
+    expect(groups).toHaveLength(1);
+    expect(groups[0].images.map((i) => i.position).sort()).toEqual(["back", "front", "neck"]);
+  });
+
+  it("recognizes 'full' as the front (the single screen's 'Front / full label' vocabulary)", () => {
+    const g = groupImagesByProduct(["Bluebird_Distilling_Full.jpg"])[0];
+    expect(g.product).toBe("Bluebird_Distilling");
+    expect(g.images[0].position).toBe("front");
+  });
 });

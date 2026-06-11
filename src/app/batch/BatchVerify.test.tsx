@@ -4,11 +4,12 @@
  * per-product Approve/Review/Reject verdict alongside the completeness check.
  */
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, within } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { BatchVerify } from "./BatchVerify";
 import { downloadJson, downloadCsv } from "../ui/download";
 import type { VerifyApiResponse } from "../api/verify/contract";
 import { parseClaimedCsv } from "@/batch/csv";
+import { checkCompleteness } from "@/compare";
 import { CANONICAL_GOVERNMENT_WARNING } from "@/domain";
 
 // Stub the canvas downscale (variable-timing in jsdom) so the read settles deterministically.
@@ -136,6 +137,150 @@ describe("BatchVerify — verify against an application CSV", () => {
     const imageInput = container.querySelector('input[accept="image/*"]') as HTMLInputElement;
     fireEvent.change(imageInput, { target: { files: [new File(["x"], name, { type: "image/png" })] } });
   }
+
+  // --- The background SECOND LOOK: a clean-but-incomplete read retries its missing fields. ---
+
+  /** A read that settled cleanly but MISSED the net contents (it is printed on the label). */
+  const INCOMPLETE: VerifyApiResponse = (() => {
+    const extracted = { ...RESPONSE.extracted, confidence: { ...RESPONSE.extracted.confidence } };
+    delete extracted.netContents;
+    delete extracted.confidence.netContents;
+    return { ...RESPONSE, extracted, completeness: checkCompleteness(extracted) };
+  })();
+
+  /** Branch fetch: the main read returns `verify`; the focused retry returns `focus`. */
+  function mockSecondLookFetch(verify: VerifyApiResponse, focus: unknown): ReturnType<typeof vi.fn> {
+    const fn = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).includes("/api/verify/focus")) return { ok: true, json: async () => focus };
+      return { ok: true, json: async () => verify };
+    });
+    globalThis.fetch = fn as unknown as typeof fetch;
+    return fn;
+  }
+
+  it("SECOND LOOK: an incomplete row retries its missing fields in the background and surfaces the find", { retry: 2 }, async () => {
+    const fetchMock = mockSecondLookFetch(INCOMPLETE, {
+      provider: "openai",
+      supported: true,
+      fields: { netContents: { value: "750 mL", confidence: 0.65 } },
+    });
+    const { container } = render(<BatchVerify secondLookDelayMs={1} />);
+    const q = within(container);
+    uploadOne(container);
+    fireEvent.click(q.getByRole("button", { name: /Read all labels/i }));
+    // The find lands on the row with an honest, review-routing note.
+    expect(await q.findByText(/A second look found: Net contents/i)).toBeTruthy();
+    // Exactly ONE focused call, asking for exactly the missing field.
+    const focusCalls = fetchMock.mock.calls.filter((c) => String(c[0]).includes("/api/verify/focus"));
+    expect(focusCalls).toHaveLength(1);
+    const fd = (focusCalls[0][1] as RequestInit).body as FormData;
+    expect(fd.get("fields")).toBe("netContents");
+    // The recovered value is review-band: the drawer shows it, the verdict never silently passes it.
+    fireEvent.click(q.getByRole("button", { name: /^Review/ }));
+    const drawer = within(await screen.findByRole("dialog"));
+    expect(drawer.getAllByText(/750 mL/).length).toBeGreaterThan(0);
+  });
+
+  it("SECOND LOOK: when the strong model can't find it either, the row says so honestly", { retry: 2 }, async () => {
+    mockSecondLookFetch(INCOMPLETE, { provider: "openai", supported: true, fields: {} });
+    const { container } = render(<BatchVerify secondLookDelayMs={1} />);
+    const q = within(container);
+    uploadOne(container);
+    fireEvent.click(q.getByRole("button", { name: /Read all labels/i }));
+    expect(await q.findByText(/Took a second look; still couldn.t find: Net contents/i)).toBeTruthy();
+  });
+
+  it("SECOND LOOK: an unsupported reader (the offline mock) is reported, never pretended", { retry: 2 }, async () => {
+    mockSecondLookFetch(INCOMPLETE, { provider: "mock", supported: false, fields: {} });
+    const { container } = render(<BatchVerify secondLookDelayMs={1} />);
+    const q = within(container);
+    uploadOne(container);
+    fireEvent.click(q.getByRole("button", { name: /Read all labels/i }));
+    expect(await q.findByText(/A second look isn.t available with this reader/i)).toBeTruthy();
+  });
+
+  it("SECOND LOOK: never fires for a row a person already decided (their review stands)", { retry: 2 }, async () => {
+    window.localStorage.setItem(
+      "ttb-worklist-v1",
+      JSON.stringify({ acme: { overrides: {}, decision: "approve", note: "" } }),
+    );
+    const fetchMock = mockSecondLookFetch(INCOMPLETE, { provider: "openai", supported: true, fields: {} });
+    const { container } = render(<BatchVerify secondLookDelayMs={1} />);
+    const q = within(container);
+    uploadOne(container);
+    fireEvent.click(q.getByRole("button", { name: /Read all labels/i }));
+    expect(await q.findByText("Acme")).toBeTruthy(); // the row settled
+    // Give a would-be second look time to fire, then assert it never did.
+    await new Promise((r) => setTimeout(r, 50));
+    expect(fetchMock.mock.calls.filter((c) => String(c[0]).includes("/api/verify/focus"))).toHaveLength(0);
+  });
+
+  it("SECOND LOOK: a complete row never schedules one (no quiet extra model calls)", { retry: 2 }, async () => {
+    const complete: VerifyApiResponse = { ...RESPONSE, completeness: checkCompleteness(RESPONSE.extracted) };
+    const fetchMock = mockSecondLookFetch(complete, { provider: "openai", supported: true, fields: {} });
+    const { container } = render(<BatchVerify secondLookDelayMs={1} />);
+    const q = within(container);
+    uploadOne(container);
+    fireEvent.click(q.getByRole("button", { name: /Read all labels/i }));
+    expect(await q.findByText("Acme")).toBeTruthy();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(fetchMock.mock.calls.filter((c) => String(c[0]).includes("/api/verify/focus"))).toHaveLength(0);
+  });
+
+  // THE BLOCKER REGRESSION (adversarial review, 2026-06-11): a CSV-matched row whose comparison
+  // passes must STAY at Needs review when the second look fills a mandatory element the CSV never
+  // claimed — the recovered value is review-band evidence nothing else compares, and the old
+  // incomplete-only completeness gate silently released the row to Approve.
+  it("SECOND LOOK: a recovery on a CSV-matched row never flips it to Approve", { retry: 2 }, async () => {
+    mockSecondLookFetch(INCOMPLETE, {
+      provider: "openai",
+      supported: true,
+      fields: { netContents: { value: "750 mL", confidence: 0.65 } },
+    });
+    const { container } = render(<BatchVerify secondLookDelayMs={1} />);
+    const q = within(container);
+    uploadOne(container);
+    const csv = "filename,brand,alcohol\nacme-front.png,Acme,40% Alc./Vol.";
+    const csvFile = new File([csv], "claims.csv", { type: "text/csv" });
+    Object.defineProperty(csvFile, "text", { value: () => Promise.resolve(csv) });
+    fireEvent.change(q.getByLabelText(/Application values CSV/i) as HTMLInputElement, { target: { files: [csvFile] } });
+    await q.findByText(/application rows? loaded/i);
+    fireEvent.click(q.getByRole("button", { name: /Read all labels/i }));
+    expect(await q.findByText(/A second look found: Net contents/i)).toBeTruthy();
+    // The comparison (brand + alcohol) passes, the recovered net contents is review-band: the row
+    // verdict must hold at Needs review. Approve here is the unshippable false-approval class.
+    expect(q.getAllByText("Needs review").length).toBeGreaterThan(0);
+    expect(q.queryByText("Approve")).toBeNull();
+  });
+
+  it("SECOND LOOK: a focused call that couldn't run says so and earns the row a Retry", { retry: 2 }, async () => {
+    mockSecondLookFetch(INCOMPLETE, { provider: "openai", supported: true, failed: true, fields: {} });
+    const { container } = render(<BatchVerify secondLookDelayMs={1} />);
+    const q = within(container);
+    uploadOne(container);
+    fireEvent.click(q.getByRole("button", { name: /Read all labels/i }));
+    expect(await q.findByText(/The second look couldn.t run\./i)).toBeTruthy();
+    // The note's recovery path actually exists on the row (a full re-read).
+    expect(q.getByRole("button", { name: /^Retry$/ })).toBeTruthy();
+  });
+
+  it("SECOND LOOK: changing the image set during the delay cancels the look AND cleans the scheduled note", { retry: 2 }, async () => {
+    const fetchMock = mockSecondLookFetch(INCOMPLETE, { provider: "openai", supported: true, fields: {} });
+    const { container } = render(<BatchVerify secondLookDelayMs={80} />);
+    const q = within(container);
+    uploadOne(container);
+    fireEvent.click(q.getByRole("button", { name: /Read all labels/i }));
+    expect(await q.findByText(/A second look at the missing fields is scheduled/i)).toBeTruthy();
+    // The reviewer adds another image before the look fires: the grouping changed, the look must
+    // stand down — and must not strand its "scheduled…" promise on the row.
+    uploadOne(container, "other-product.png");
+    await waitFor(
+      () => expect(q.queryByText(/A second look at the missing fields is scheduled/i)).toBeNull(),
+      { timeout: 2000 },
+    );
+    await new Promise((r) => setTimeout(r, 150));
+    expect(fetchMock.mock.calls.filter((c) => String(c[0]).includes("/api/verify/focus"))).toHaveLength(0);
+  });
 
   it("auto-retries a transient 502 with backoff, then succeeds (the row never dead-ends)", { retry: 2 }, async () => {
     let calls = 0;

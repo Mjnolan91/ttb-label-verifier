@@ -94,9 +94,11 @@ export function worstVerdict(a: OverallVerdict, b: OverallVerdict): OverallVerdi
 }
 
 /** How a completeness outcome constrains the overall verdict. `incomplete` (a missing/malformed
- *  mandatory element) blocks approval -> `review`; the confirm-to-approve plan later escalates a
- *  human-confirmed missing element to `reject`. */
-const COMPLETENESS_VERDICT: Record<CompletenessOverall, OverallVerdict> = {
+ *  mandatory element) blocks approval -> `review`; `review` (a mandatory element present only at
+ *  LOW read confidence) blocks it too — an element the read can't vouch for must not be approved
+ *  just because the application didn't happen to claim it. Exported as THE one mapping so
+ *  deriveLabelReview's override-aware gate can never be more lenient than this combine. */
+export const COMPLETENESS_VERDICT: Record<CompletenessOverall, OverallVerdict> = {
   complete: "approve",
   review: "review",
   incomplete: "review",

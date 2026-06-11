@@ -743,37 +743,32 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
             path an upload takes (filenames intact, so the offline mock recognizes the files AND a
             live provider reads their real pixels; the pair exercises the joint multi-image read and
             the import path). The defect variant is an EDITED test image (the real label is
-            compliant), bundled so the demo can show a hard Reject. */}
+            compliant), bundled so the demo can show a hard Reject. Deliberately QUIET: inline
+            link-styled buttons in one sentence (the upload slots are the screen's real feature; a
+            pair of large demo buttons upstaged them). */}
         {!slots.front && (
-          <div className="mt-4 text-sm text-ink-muted">
-            <p className="font-medium text-ink">No label handy? Try the built-in sample:</p>
-            <div className="mt-2 flex flex-wrap gap-3">
-              <button
-                type="button"
-                onClick={() => void loadSample("clean")}
-                disabled={sampleLoading !== null}
-                className={secondaryButtonClass}
-              >
-                {sampleLoading === "clean" && <IconSpinner className="h-4 w-4 motion-safe:animate-spin" />}
-                Load the sample label
-              </button>
-              <button
-                type="button"
-                onClick={() => void loadSample("defect")}
-                disabled={sampleLoading !== null}
-                className={secondaryButtonClass}
-              >
-                {sampleLoading === "defect" && <IconSpinner className="h-4 w-4 motion-safe:animate-spin" />}
-                Load the defective-warning version
-              </button>
-            </div>
-            <p className="mt-2">
-              One click places the front and back labels for you. The sample is a real spirits label
-              that verifies clean; the defective version swaps in an edited back whose warning prefix
-              prints &quot;Government Warning:&quot; in title case and regular weight, for a Reject.
-              (The real product&apos;s label is compliant.)
-            </p>
-          </div>
+          <p className="mt-3 text-sm text-ink-muted" aria-busy={sampleLoading !== null}>
+            No label handy?{" "}
+            <button
+              type="button"
+              onClick={() => void loadSample("clean")}
+              disabled={sampleLoading !== null}
+              className={`${linkClass} disabled:cursor-wait disabled:opacity-60`}
+            >
+              Load the sample label
+            </button>{" "}
+            (a real front and back pair, placed for you), or{" "}
+            <button
+              type="button"
+              onClick={() => void loadSample("defect")}
+              disabled={sampleLoading !== null}
+              className={`${linkClass} disabled:cursor-wait disabled:opacity-60`}
+            >
+              load the defective-warning version
+            </button>{" "}
+            to see a Reject. The defective back is an edited test image; the real product&apos;s
+            label is compliant.
+          </p>
         )}
         {/* The read's live status, co-located with the slot the user just dropped into (all other
             processing feedback used to sit below the 9-input application grid, below the fold at

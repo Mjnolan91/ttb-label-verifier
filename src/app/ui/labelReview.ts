@@ -6,7 +6,7 @@
  * concerns (a hard TTB problem on a field whose value matched), and the reviewer notes that seed the
  * applicant email. Pure and deterministic — so it's unit-tested once and both screens stay in lockstep.
  */
-import { overallVerdict, worstVerdict, resolveCompletenessOverall } from "@/compare";
+import { COMPLETENESS_VERDICT, overallVerdict, worstVerdict, resolveCompletenessOverall } from "@/compare";
 import type { CombinedVerdict, VerifyField, VerifyFieldKey } from "@/compare";
 import type { RequirementKey } from "@/domain";
 import type { FieldOverride } from "./ResultView";
@@ -119,10 +119,18 @@ export function deriveLabelReview(
   const effectiveComparison: CombinedVerdict["overall"] = combined?.verify
     ? overallVerdict(combined.verify.fields.map(effStatusOf))
     : null;
-  const completenessGate =
-    combined && resolveCompletenessOverall(combined.completeness, completenessOverrides) === "incomplete"
-      ? "review"
-      : "approve";
+  // The gate maps the override-resolved completeness through THE SAME table combinedVerdict uses
+  // (COMPLETENESS_VERDICT), so this derivation can never be more lenient than the raw combine. It
+  // previously gated on "incomplete" only, which silently RELEASED the hold when a mandatory
+  // element was merely present at LOW confidence ("review") — and an element the application does
+  // not claim is never compared, so nothing else held it: a clean comparison then badged Approve
+  // over an unvouched-for element (adversarial review, 2026-06-11: the batch second look's 0.65
+  // recoveries widened this, but any 0.65 presence-instability read could trigger it). Confirming
+  // the element ("ok", on the card or in the drawer) still clears the gate:
+  // resolveCompletenessOverall excludes confirmed elements from both checks.
+  const completenessGate = combined
+    ? COMPLETENESS_VERDICT[resolveCompletenessOverall(combined.completeness, completenessOverrides)]
+    : "approve";
   const effectiveOverall: CombinedVerdict["overall"] = effectiveComparison
     ? worstVerdict(effectiveComparison, completenessGate)
     : (combined?.overall ?? null);

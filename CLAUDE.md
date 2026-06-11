@@ -114,6 +114,15 @@ pipeline and the "why". As built, the load-bearing pieces are:
   full-jitter backoff, 6 attempts, only 429/502/503/504/network; adaptive AIMD concurrency, honest
   per-row "retrying" notes + "Retry all failed"); ANY re-read (manual Retry, auto-retry, combine)
   calls `worklist.invalidateReview` — stale confirms/decisions must never survive onto a new read.
+  A row that settles CLEANLY but with mandatory elements MISSING gets the SECOND LOOK
+  (`src/extraction/secondLook.ts` + `/api/verify/focus`; `SECOND_LOOK=0` disables): ONE delayed
+  (~12s) background re-read of exactly the missing fields on the strong model's `readFields`,
+  merged FILL-EMPTY-ONLY at review-band confidence 0.65 (caught and surfaced, never silently
+  passed — original-read-missed + focused-read-found is presence instability, the same signal the
+  tiered cap stamps); the merge invalidates review, rows a person already judged are skipped,
+  warning format flags are never set by it, and the row note narrates every outcome (found / still
+  missing / unsupported on the mock). Supersession checks live INSIDE the setRows updaters (the
+  rowsRef mirror can lag a fast timer; a stale mirror must read as "unknown", never "replaced").
   Rows lead with a thumbnail; same-brand rows offer a human-confirmed COMBINE (`groupOverrides` +
   `mergePositions` — never a fuzzy auto-merge). Change the flow here, not in two places.
 - **`src/domain/`** — pre-seeded, CFR-verified, the one hand-written human-trusted module

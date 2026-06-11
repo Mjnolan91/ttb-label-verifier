@@ -86,4 +86,31 @@ describe("deriveLabelReview", () => {
     const r = deriveLabelReview(completenessOnly, {});
     expect(r.effectiveOverall).toBeNull();
   });
+
+  // The adversarially-found false-approval vector (2026-06-11): the application claims only what
+  // the batch gate needs (brand + alcohol), every COMPARED field matches, and a mandatory element
+  // the application never claimed (net contents) is present only at LOW read confidence — e.g. a
+  // presence-instability read or a batch second-look recovery at 0.65. Nothing compares it, so
+  // only the completeness gate can hold it; gating on "incomplete" alone released it to Approve.
+  it("holds the verdict at review when an UNCLAIMED mandatory element is present at low confidence", () => {
+    const lowConfNet: ExtractedFields = {
+      ...extracted,
+      netContents: "750 mL", // authorized size — present and well-formed, just not trusted
+      confidence: { ...extracted.confidence, netContents: 0.65 },
+    };
+    const brandOnlyClaim: ClaimedFields = {
+      brand: "Old Tom Distillery",
+      alcoholContentText: "45% Alc./Vol. (90 Proof)",
+      beverageClass: "distilledSpirits",
+    };
+    const c = combinedVerdict(brandOnlyClaim, lowConfNet);
+    const r = deriveLabelReview(c, {});
+    expect(r.effectiveOverall).toBe("review"); // never approve over an unvouched-for element
+    expect(r.effectiveGatedByCompleteness).toBe(true);
+    // The derivation must never be MORE LENIENT than the raw combine.
+    expect(r.effectiveOverall).toBe(c.overall);
+    // Confirming the element (the card/drawer "ok") still clears the gate — not stranded.
+    const confirmed = deriveLabelReview(c, { netContents: "ok" });
+    expect(confirmed.effectiveOverall).toBe("approve");
+  });
 });

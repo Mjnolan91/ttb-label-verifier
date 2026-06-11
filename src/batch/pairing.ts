@@ -7,8 +7,12 @@
  *   acme-ipa-front.jpg + acme-ipa-back.jpg  ->  product "acme-ipa" with [front, back]
  *   old-tom.jpg                              ->  product "old-tom" with [front]   (no token)
  *
- * Tokens: front|f|brand -> front, back|b -> back, neck|n -> neck, other|o -> other. Unrecognized
- * trailing words (e.g. "clean") are NOT positions — the file is a single-image product.
+ * Tokens: front|f|brand|full -> front, back|b -> back, neck|n|strip -> neck, other|o -> other.
+ * "strip" and "full" mirror the single screen's own slot names ("Neck / strip label",
+ * "Front / full label") — a real reviewer batch named its tequila's third image
+ * Casamigos_Tequila_Strip.jpg and the strip read ALONE as its own product, exactly the
+ * panel-alone "missing fields" failure batch mode exists to avoid. Unrecognized trailing words
+ * (e.g. "clean") are NOT positions — the file is a single-image product.
  */
 import type { LabelPosition } from "@/extraction";
 
@@ -26,10 +30,12 @@ const POSITION_TOKENS: Record<string, LabelPosition> = {
   front: "front",
   f: "front",
   brand: "front",
+  full: "front",
   back: "back",
   b: "back",
   neck: "neck",
   n: "neck",
+  strip: "neck",
   other: "other",
   o: "other",
 };

@@ -10,15 +10,25 @@
  * row lands in a reviewable worklist (localStorage decisions, per-row Review drawer built from the
  * single screen's components) and exports as JSON or CSV, decisions included.
  */
-import { useId, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import type { ExtractedFields } from "@/domain";
 import type { CompletenessResult } from "@/compare";
 import type { LabelPosition } from "@/extraction";
+// Imported from the MODULE, not the @/extraction barrel: this is a CLIENT component, and the
+// barrel's graph reaches warningFocus.ts -> sharp (a server-only native module) — a value import
+// of the barrel here breaks the client bundle ("Can't resolve 'child_process'"). secondLook.ts
+// itself is pure (catalog + rescue helpers + types), safe on both sides.
+import {
+  applySecondLook,
+  secondLookKeysFor,
+  secondLookLabel,
+  type SecondLookFindings,
+} from "@/extraction/secondLook";
 import { groupImagesByProduct } from "@/batch/pairing";
 import { analysisToCsv, parseClaimedCsv, type ClaimedRow } from "@/batch/csv";
 import { resolveClaimedFor } from "@/batch/claimedMatch";
-import { normalizeText, resolveCompletenessOverall, type VerifyResult } from "@/compare";
-import type { VerifyApiResponse, VerifyApiError } from "../api/verify/contract";
+import { checkCompleteness, normalizeText, resolveCompletenessOverall, type VerifyResult } from "@/compare";
+import type { VerifyApiResponse, VerifyApiError, FocusApiResponse } from "../api/verify/contract";
 import type { ImageReadFailure } from "@/pipeline";
 import { downscaleForUpload } from "../imageDownscale";
 import { ErrorAlert } from "../ui/ErrorAlert";
@@ -43,6 +53,12 @@ import { IconZoom } from "../ui/icons";
 // sits far inside a paid OpenAI tier's request limits; the AIMD pacer below discovers any tighter
 // token-per-minute ceiling via costless 429s and converges near it.
 const CONCURRENCY = 8;
+
+// How long a settled-but-incomplete row waits before its background SECOND LOOK (the focused
+// re-read of exactly the missing fields — see src/extraction/secondLook.ts). The delay decorrelates
+// the retry from whatever the first read hit (a provider brownout, a noisy sample batch); long
+// enough to land after the sweep's tail, short enough that the worklist is still being triaged.
+const SECOND_LOOK_DELAY_MS = 12_000;
 
 // Downscaling is main-thread canvas work (decode + draw + encode), so cache it per File: a retry,
 // re-read, or combine never redoes it, and the cache is warmed BEFORE taking a pacer slot so CPU
@@ -80,6 +96,18 @@ interface BatchRow {
   /** Images of the product that dropped out of the read (partial read): caps the derived verdict at
    *  review, surfaces in the drawer + exports, and earns the row a Retry action. */
   imageFailures?: ImageReadFailure[];
+  /** The row's background second look: "ran" once it started (one focused retry per read, never a
+   *  loop — a fresh re-read replaces the row and clears it); "failed" when the focused call itself
+   *  couldn't run, which earns the row a Retry action. */
+  secondLook?: "ran" | "failed";
+}
+
+/** One settled read paired with the EXACT image group it was read from. The second look posts this
+ *  group, never a later re-resolution: the `groups` memo a sweep closure captured goes stale across
+ *  a combine, and the focused retry must examine the same evidence base the read used. */
+interface SettledRead {
+  row: BatchRow;
+  group: ProductImages;
 }
 
 /** Merge a source group's images into a target group, demoting duplicate positions to the first
@@ -259,7 +287,14 @@ const CATEGORY_RANK: Record<RowCategory, number> = {
   decided: 4,
 };
 
-export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
+export function BatchVerify({
+  mockMode = false,
+  secondLookDelayMs = SECOND_LOOK_DELAY_MS,
+}: {
+  mockMode?: boolean;
+  /** Test seam: the background second look's delay (the suite cannot wait 12s). */
+  secondLookDelayMs?: number;
+}) {
   const ids = { images: useId(), help: useId() };
   const [images, setImages] = useState<{ file: File; preview: string }[]>([]);
   // The lightbox shows a SET of images (a product's front+back together — never just the front when
@@ -287,6 +322,24 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
   // Polite announcement channel for row actions (combine/sweep), for screen-reader users.
   const [actionAnnounce, setActionAnnounce] = useState("");
   const resultsRegionRef = useRef<HTMLDivElement>(null);
+  // Live mirrors for the ASYNC second-look sweep (state snapshots in a closure go stale across its
+  // delay): the latest rows + worklist, refreshed after every render.
+  const rowsRef = useRef<BatchRow[]>([]);
+  const worklistRef = useRef(worklist.worklist);
+  useEffect(() => {
+    rowsRef.current = rows;
+    worklistRef.current = worklist.worklist;
+  });
+  // Cancellation for pending second looks: bumped whenever the image set / grouping changes, a new
+  // batch run starts, or the screen unmounts, so a stale sweep can never post or merge against a
+  // regrouped product. Owning actions capture the generation at their START and thread it through.
+  const secondLookGen = useRef(0);
+  useEffect(() => () => {
+    secondLookGen.current++; // unmount: pending sweeps stand down at their next checkpoint
+  }, []);
+  // Latched on the first supported:false answer (mock/OCR readers, SECOND_LOOK=0): scheduling more
+  // second looks would only upload requests the server is guaranteed to refuse.
+  const secondLookUnavailable = useRef(false);
 
   const groups = useMemo(() => groupFiles(images.map((im) => im.file), groupOverrides), [images, groupOverrides]);
   const previewByName = useMemo(() => new Map(images.map((im) => [im.file.name, im.preview])), [images]);
@@ -353,6 +406,9 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
   async function reReadProduct(product: string) {
     const group = groups.find((g) => g.product === product);
     if (!group) return;
+    // Captured at ACTION START: if the image set changes while this read is in flight, the bump
+    // must cancel the follow-up second look (capturing at settle time would absorb it).
+    const gen = secondLookGen.current;
     setRows((prev) =>
       prev.map((p) => (p.product === product ? { product, imageCount: group.images.length, status: "pending" } : p)),
     );
@@ -366,6 +422,181 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
     // comparison is a false approval).
     worklist.invalidateReview(product);
     setRows((prev) => prev.map((p) => (p.product === product ? next : p)));
+    // A manual re-read that STILL settles incomplete earns its own background second look.
+    scheduleSecondLooks([{ row: next, group }], gen);
+  }
+
+  /** The reads among `settled` that finished cleanly but left mandatory fields MISSING — the
+   *  "it was on the label and the read missed it" class a focused retry can recover. */
+  function secondLookCandidates(settled: SettledRead[]): SettledRead[] {
+    return settled.filter(
+      ({ row }) =>
+        row.status === "done" &&
+        row.readable === true &&
+        row.extracted !== undefined &&
+        row.secondLook === undefined &&
+        secondLookKeysFor(row.extracted, row.completeness).length > 0,
+    );
+  }
+
+  /**
+   * The background SECOND LOOK. A row can settle cleanly (every transport retry satisfied) and
+   * still be missing information that IS printed on the label — samples flap on allocation, and
+   * pacing.ts can't help because nothing failed. So after a delay (decorrelating the retry from
+   * whatever the first read hit), each candidate row gets ONE focused re-read of exactly its
+   * missing fields (/api/verify/focus: the strong model's readFields with a prompt built for those
+   * entries), posted against the SAME image group the original read used (carried with the
+   * candidate — re-resolving from the groups closure goes stale across a combine). Recoveries
+   * merge FILL-EMPTY-ONLY at review-band confidence — caught and surfaced for the reviewer, never
+   * silently passed (src/extraction/secondLook.ts). Rows a person judged before OR DURING the look
+   * keep their review untouched; every outcome lands on the row's note, honestly, and a cancelled
+   * sweep cleans its scheduled/taking notes up instead of stranding them.
+   */
+  async function takeSecondLooks(candidates: SettledRead[], gen: number) {
+    // Restore a candidate's row to its pre-second-look note (drop the scheduled/taking text) —
+    // used when the sweep stands down or skips a row after having announced itself on it.
+    const restoreNote = (subset: SettledRead[]) =>
+      setRows((prev) =>
+        prev.map((p) => {
+          const c = subset.find((s) => s.row.product === p.product);
+          if (!c || p.extracted !== c.row.extracted) return p;
+          return {
+            ...p,
+            secondLook: undefined,
+            note: c.row.imageFailures?.length ? partialReadNote(c.row.imageFailures) : undefined,
+          };
+        }),
+      );
+    await new Promise((r) => setTimeout(r, secondLookDelayMs));
+    for (let i = 0; i < candidates.length; i++) {
+      const { row, group } = candidates[i];
+      // Image set / grouping changed, a new run started, or the screen unmounted: stand down, and
+      // clean the remaining candidates' notes so no row keeps a "scheduled…" promise forever.
+      if (gen !== secondLookGen.current) return restoreNote(candidates.slice(i));
+      const product = row.product;
+      if (row.status !== "done" || !row.readable || !row.extracted) continue;
+      const before = row.extracted;
+      // Supersession is detected POSITIVELY only (a settled row whose extraction is a different
+      // object = a completed re-read): the rowsRef mirror refreshes on commit and can LAG this
+      // sweep, so a stale/pending mirror entry must read as "unknown", never as "replaced". The
+      // checks here only save a wasted call — CORRECTNESS lives in the setRows updaters below,
+      // whose predicates compare identities against the LATEST state by construction. The
+      // secondLook flag is a PRE-FLIGHT check only (double-scheduling guard): this sweep sets it
+      // itself before fetching, so testing it after the fetch would abort on our own marker.
+      const superseded = () => {
+        const live = rowsRef.current.find((p) => p.product === product);
+        return Boolean(live && live.status === "done" && live.extracted && live.extracted !== before);
+      };
+      if (superseded() || rowsRef.current.find((p) => p.product === product)?.secondLook) continue;
+      const rec = worklistRef.current[product];
+      // A person already judged this read (decision or per-field calls): their review stands —
+      // and the scheduled note must not linger on a row we are deliberately leaving alone.
+      if (rec?.decision || Object.keys(rec?.overrides ?? {}).length > 0) {
+        restoreNote([candidates[i]]);
+        continue;
+      }
+      const keys = secondLookKeysFor(row.extracted, row.completeness);
+      if (keys.length === 0) continue;
+      const labels = keys.map(secondLookLabel).join(", ");
+      const withBase = (note: string) =>
+        row.imageFailures?.length ? `${partialReadNote(row.imageFailures)} ${note}` : note;
+      const noteRow = (note: string, flag?: BatchRow["secondLook"]) =>
+        setRows((prev) =>
+          prev.map((p) =>
+            p.product === product && p.extracted === before
+              ? { ...p, note: withBase(note), ...(flag ? { secondLook: flag } : {}) }
+              : p,
+          ),
+        );
+      setRows((prev) =>
+        prev.map((p) =>
+          p.product === product && p.extracted === before
+            ? { ...p, secondLook: "ran", note: withBase(`Taking a second look at: ${labels}…`) }
+            : p,
+        ),
+      );
+      let resp: FocusApiResponse | null = null;
+      try {
+        const form = new FormData();
+        for (const img of group.images) {
+          form.append("image", await downscaleCached(img.file));
+          form.append("position", img.position);
+        }
+        form.append("fields", keys.join(","));
+        // Client-side timeout so one hung request can't freeze "Taking a second look…" forever
+        // and starve the remaining candidates (the route itself caps at maxDuration 45s).
+        const res = await fetch("/api/verify/focus", {
+          method: "POST",
+          body: form,
+          signal: AbortSignal.timeout(50_000),
+        });
+        if (res.ok) resp = (await res.json()) as FocusApiResponse;
+      } catch {
+        resp = null;
+      }
+      if (gen !== secondLookGen.current) return restoreNote(candidates.slice(i));
+      if (superseded()) continue; // a re-read settled while we looked: its data wins
+      // A person judged the product WHILE the look ran: their review stands; nothing merges.
+      const recNow = worklistRef.current[product];
+      if (recNow?.decision || Object.keys(recNow?.overrides ?? {}).length > 0) {
+        noteRow("This product was reviewed while the second look ran; nothing was changed.");
+        continue;
+      }
+      if (!resp || resp.failed) {
+        // The "failed" flag earns the row a Retry action (a full re-read is the recovery path).
+        noteRow("The second look couldn't run.", "failed");
+        continue;
+      }
+      if (!resp.supported) {
+        // This reader can't do focused re-reads (the offline mock, the OCR path, SECOND_LOOK=0):
+        // latch it so the rest of the session doesn't schedule and upload doomed requests.
+        secondLookUnavailable.current = true;
+        noteRow("A second look isn't available with this reader.");
+        continue;
+      }
+      const { merged, filled } = applySecondLook(before, resp.fields as SecondLookFindings);
+      if (filled.length === 0) {
+        noteRow(`Took a second look; still couldn't find: ${labels}.`);
+        continue;
+      }
+      const foundLabels = filled.map(secondLookLabel).join(", ");
+      // Fresh data invalidates any not-yet-visible review state — the re-read rule (the judged
+      // case was handled above; this is belt-and-braces for the unobservable race window).
+      worklist.invalidateReview(product);
+      setRows((prev) =>
+        prev.map((p) =>
+          p.product === product && p.extracted === before
+            ? {
+                ...p,
+                extracted: merged,
+                completeness: checkCompleteness(merged),
+                note: withBase(`A second look found: ${foundLabels}. Confirm the value in Review.`),
+              }
+            : p,
+        ),
+      );
+      setActionAnnounce(`Second look found ${foundLabels} for ${product}.`);
+    }
+  }
+
+  /** Schedule the background second look for whichever of these reads settled incomplete. `gen`
+   *  is the generation the OWNING ACTION captured at its start, so an image-set change during the
+   *  read cancels the look instead of being absorbed. */
+  function scheduleSecondLooks(settled: SettledRead[], gen: number) {
+    // The offline mock can't do focused re-reads, and one supported:false answer latches the same
+    // conclusion for real readers — don't schedule (and later upload) requests known to be doomed.
+    if (mockMode || secondLookUnavailable.current) return;
+    const candidates = secondLookCandidates(settled);
+    if (candidates.length === 0) return;
+    const products = candidates.map((c) => c.row.product);
+    setRows((prev) =>
+      prev.map((p) =>
+        products.includes(p.product) && p.status === "done" && p.secondLook === undefined
+          ? { ...p, note: [p.note, "A second look at the missing fields is scheduled…"].filter(Boolean).join(" ") }
+          : p,
+      ),
+    );
+    void takeSecondLooks(candidates, gen);
   }
 
   /** Re-read ONE failed or partially-read product without re-running the whole batch. */
@@ -405,6 +636,8 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
     setActionAnnounce(`Combining ${sourceProduct} into ${targetProduct} and re-reading as one product.`);
     try {
       setGroupOverrides((prev) => ({ ...prev, [sourceProduct.toLowerCase()]: targetProduct.toLowerCase() }));
+      secondLookGen.current++; // the grouping changed: pending second looks would target stale groups
+      const gen = secondLookGen.current; // the combine's own follow-up look rides the new generation
       worklist.reset(sourceProduct);
       worklist.invalidateReview(targetProduct);
       const merged = mergePositions(targetGroup, sourceGroup);
@@ -424,6 +657,8 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
       setRows((prev) => prev.map((p) => (p.product === targetProduct ? row : p)));
       setActionAnnounce(`Combined into ${targetProduct}: one product with ${merged.images.length} images.`);
       resultsRegionRef.current?.focus();
+      // The merged group rides along: the sweep must post BOTH panels, not the pre-combine target.
+      scheduleSecondLooks([{ row, group: merged }], gen);
     } finally {
       setRowActionBusy(false);
     }
@@ -452,9 +687,11 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
     // Adding images satisfies the "add images" validation; a stale error banner over a now-valid
     // form reads as broken. (Other errors, e.g. a rejected CSV, are unrelated to this action.)
     setError((prev) => (prev === ADD_IMAGES_ERROR ? null : prev));
-    // A changed image set is a NEW grouping problem: stale combines must not survive onto it.
+    // A changed image set is a NEW grouping problem: stale combines must not survive onto it,
+    // and neither may a pending second look (it would post a stale group's images).
     setGroupOverrides({});
     setConfirmCombine(null);
+    secondLookGen.current++;
   }
   function removeImage(index: number) {
     setImages((prev) => {
@@ -467,6 +704,7 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
     });
     setGroupOverrides({});
     setConfirmCombine(null);
+    secondLookGen.current++;
   }
 
   async function process() {
@@ -478,9 +716,12 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
     setRows(groups.map((g) => ({ product: g.product, imageCount: g.images.length, status: "pending" })));
     setRunning(true);
     setDone(0);
+    secondLookGen.current++; // a new run supersedes any second look still pending from the last one
+    const gen = secondLookGen.current; // this run's generation, captured at action start
 
     let next = 0;
     let completed = 0;
+    const settled: SettledRead[] = [];
     // ONE pacer per run: any transient failure anywhere in the pool HALVES the in-flight target
     // and opens a bounded cooldown; sustained success ramps it back toward CONCURRENCY.
     const pacer = createPacer({ start: 4, min: 1, max: CONCURRENCY });
@@ -497,12 +738,16 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
           setRows((prev) => prev.map((p) => (p.product === product ? { ...p, note } : p))),
         );
         setRows((prev) => prev.map((p) => (p.product === product ? row : p)));
+        settled.push({ row, group: groups[idx] });
         completed++;
         setDone(completed);
       }
     };
     await Promise.all(Array.from({ length: Math.min(CONCURRENCY, groups.length) }, (_, i) => worker(i)));
     setRunning(false);
+    // Rows that settled cleanly but incomplete get ONE background second look after a delay —
+    // scheduled only now, so the focused retries never compete with the main sweep for the pool.
+    scheduleSecondLooks(settled, gen);
   }
 
   const completedRows = rows.filter((r) => r.status === "done" && r.extracted);
@@ -1019,13 +1264,15 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
                   </div>
                   {/* 4. Action: every settled row has one (review or retry); 44px target, full width
                       on mobile. A PARTIAL read (an image dropped out) gets BOTH: re-read to recover
-                      the missing image, or review what survived. */}
+                      the missing image, or review what survived. A FAILED second look also earns
+                      Retry — a full re-read is its recovery path, and the note must never point at
+                      an action the row doesn't offer. */}
                   <div className="flex flex-col gap-1.5">
                     {!settled ? (
                       <span className="text-ink-muted">…</span>
                     ) : (
                       <>
-                        {(r.status === "error" || (r.imageFailures?.length ?? 0) > 0) && (
+                        {(r.status === "error" || (r.imageFailures?.length ?? 0) > 0 || r.secondLook === "failed") && (
                           <button
                             type="button"
                             onClick={() => void retryProduct(r.product)}
