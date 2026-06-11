@@ -81,6 +81,15 @@ fieldCatalog.ts` — that the mapper, merge, field table, and CSV all derive fro
 - **Reconciliation** (when 2 providers run): fields where providers agree -> high
   confidence; fields where they disagree -> flagged `review`. Disagreement is a feature,
   not a bug — it routes uncertainty to a human.
+- **The batch worklist gets a SECOND LOOK** (`src/extraction/secondLook.ts` +
+  `/api/verify/focus`; default ON, `SECOND_LOOK=0` disables): a row that settles cleanly but with
+  mandatory elements MISSING earns ONE delayed (~12s) background re-read of exactly those fields on
+  the strong model's `readFields`. Finds merge FILL-EMPTY-ONLY at review-band confidence (0.65,
+  below the 0.7 gate) — original-read-missed + focused-read-found is presence instability, so a
+  recovery is caught and human-confirmed, never silently passed. The merge invalidates any stale
+  review, rows a person already judged are skipped, and the warning's format flags are never set by
+  it. Same asymmetry as the rescue and the warning focus: an escalation can clear a false alarm or
+  surface a miss; it can never flip a verdict to pass on its own evidence.
 - **Comparison is deterministic.** All pass/fail/review logic is pure, side-effect-free,
   and unit-tested. Never let a model make the final compliance verdict — in a government
   context the answer to "why was this rejected?" must be rules-based and reproducible.

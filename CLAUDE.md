@@ -258,3 +258,9 @@ pipeline and the "why". As built, the load-bearing pieces are:
 - **The government-warning text is statutory (27 CFR 16.21) and verbatim** — never reword it to pass
   a test. It was re-verified unchanged as of 2026-06 (the 2025 Surgeon General cancer advisory is a
   proposal, not law). It lives once in `src/domain/warning.ts`, guarded by a verbatim unit test.
+- **The reviewer-facing approach document is GENERATED — never hand-edit it.**
+  `docs/TTB-Label-Verifier-Approach-and-Design.docx` (and the `.pdf` exported from it) are built by
+  `scripts/make-submission-doc.cjs`; the `docx` package is deliberately NOT a project dependency
+  (run the script from an out-of-repo scratch dir per its header). Its hardcoded
+  `TEST_COUNT`/`FILE_COUNT`/`EVAL_CASES` constants drift when the suite grows: update them to the
+  current numbers first, regenerate the .docx, re-export the PDF, and commit both together.

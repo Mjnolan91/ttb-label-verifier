@@ -249,11 +249,12 @@ the one judgment that can hard-fail a label.
   no intervening text): extraction merges a label's text and discards layout. Rules that need TTB's
   records rather than the label itself (formula approvals, permit and brewer's-notice matching,
   multi-plant coding systems) are also out: the tool sees only the image and the application values.
-- **No rate limiting on the demo endpoint.** `/api/verify` is unauthenticated and, with a real
-  provider configured, fans out to multiple model calls per request, so a hammering client could
-  exhaust the demo key's quota. Uploads are size- and type-capped, but per-client throttling is
-  left to the platform or an API gateway in a real deployment; documented here rather than
-  hand-rolling middleware into a prototype.
+- **No rate limiting on the demo endpoints.** `/api/verify` and the second look's
+  `/api/verify/focus` (a direct handle on the provider's strongest model; `SECOND_LOOK=0` disables
+  it) are unauthenticated and, with a real provider configured, fan out to model calls per request,
+  so a hammering client could exhaust the demo key's quota. Uploads are size- and type-capped, but
+  per-client throttling is left to the platform or an API gateway in a real deployment; documented
+  here rather than hand-rolling middleware into a prototype.
 - **One build-time network fetch.** `next/font/google` downloads the Inter font during
   `npm run build` only. Dev, tests, and the running app are fully offline; a strictly air-gapped
   build would swap in `next/font/local`.

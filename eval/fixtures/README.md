@@ -32,7 +32,7 @@ placeholders are human-viewable documentation of each scenario; they are not con
 |---|---|
 | [`cases.json`](./cases.json) | The labeled cases: each has `claimed` (what the application asserts), `extracted` (what the mock returns for that image), and `expected` (the deterministic per-field + overall verdict). |
 | [`images/MANIFEST.md`](./images/MANIFEST.md) | Maps each `imageFilename` to its exact path, required look/dimensions, and exactly what the label must depict — plus the "replace placeholders with real images" instructions. |
-| [`images/*.svg`](./images) | One PLACEHOLDER stub per case, clearly marked, depicting that label. |
+| [`images/*.svg`](./images) | A clearly marked PLACEHOLDER stub for each scenario without a real raster (ten cases use real rasters, four later-added cases have no file yet — see the MANIFEST). |
 
 ## The cases (and their expected OVERALL verdict)
 
@@ -224,9 +224,10 @@ at the exact paths and to the exact specs in [`images/MANIFEST.md`](./images/MAN
 only required once a story exercises a real extraction provider (`VISION_PROVIDER=openai` /
 `gemini` / `llm` / `ocr`) or a live demo. Until then, the `.svg` placeholders keep the whole offline suite green. If you replace an
 `.svg` with a raster image, keep the `imageFilename` in `cases.json` and the path in the MANIFEST in
-lockstep — the filename is the only key the mock uses. (One real image is already wired in:
-`abc-single-barrel-clean.jpg`, the ABC clean-pass demo case, plus three generated demo rasters
-(`demo-*.png`); the rest are `.svg` placeholders. Four fixtures — `granite-peak-ipa-fuzzy.svg` plus
+lockstep — the filename is the only key the mock uses. (Ten real rasters are already wired in:
+`abc-single-barrel-clean.jpg` (the ABC clean-pass case), the three generated `demo-*.png` rasters,
+the eval-only `fear-the-dragon-*.jpg` trio, and the `fireball-*.jpg` trio that doubles as the
+in-app demo sample; the rest are `.svg` placeholders. Four fixtures — `granite-peak-ipa-fuzzy.svg` plus
 the three negative-allocation fixtures
 (`cayo-verde-superior-rum.svg`, `northgate-acronym-vodka.svg`, `cayo-verde-spiced-specialty.svg`) —
 still need their placeholder `.svg` + `MANIFEST.md` rows added — the eval and tests pass without them

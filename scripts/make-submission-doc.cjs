@@ -21,7 +21,7 @@ const {
   ShadingType, PageNumber,
 } = require("docx");
 
-const TEST_COUNT = "800";
+const TEST_COUNT = "806";
 const FILE_COUNT = "62";
 const EVAL_CASES = "27";
 

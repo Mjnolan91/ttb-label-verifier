@@ -112,8 +112,11 @@ ones — a title-case warning, an ABV off by a point, a brand typo, a missing wa
 checks are shown catching failures, not just passing clean inputs. The offline suite is
 **hermetic**: the mock provider keys off the fixture **filename** (not pixels), so unit tests,
 the `/api/verify` integration test, and `npm run eval` all run with no real images and no
-network. Real label images are **user-supplied later** at the exact paths in
-`eval/fixtures/images/MANIFEST.md`, needed only when a real Azure provider or a live demo runs.
+network. Real label images **now ship in the repo** at the exact paths in
+`eval/fixtures/images/MANIFEST.md` (ten fixtures are real rasters; the Fireball demo pair + its
+edited defect variant are also byte-mirrored into `public/samples/` for the verify screen's
+one-click sample buttons); the remaining placeholder scenarios accept user-supplied rasters at
+those same paths when a live provider runs.
 
 ## Deliverables
 Source repo + README (approach, tools, assumptions, trade-offs, and a mapping of build
