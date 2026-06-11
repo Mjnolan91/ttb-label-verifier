@@ -166,7 +166,9 @@ pipeline and the "why". As built, the load-bearing pieces are:
   names a REGION ("Imported from the Caribbean") instead of a country routes to review even when
   it matches the application verbatim (`namedCountryIn`; the producer address suggests the likely
   country), and completeness marks it malformed on an import. `toClaimedFields` (also in
-  `reviewVerdict.ts`) is the BATCH screen's "enough to compare?" rule (needs brand AND alcohol); the
+  `reviewVerdict.ts`) is the BATCH screen's "enough to compare?" rule (brand always; alcohol only
+  where the law mandates it for the resolved class — spirits / wine >14% / unknown — so a legal malt
+  or table-wine application without an ABV still gets a verdict); the
   single screen instead gates on the per-type required-input set (`requiredInputKeysFor`,
   `src/compare/requiredInputs.ts`), and `combinedVerdict` keeps a brand-only safety net since alcohol
   is not mandatory for every class. (Historical note: a `confirmVerdict`/`ConfirmPanel` confirm-to-approve layer existed briefly

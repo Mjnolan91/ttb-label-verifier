@@ -12,7 +12,10 @@ labeling rules, and returns an at-a-glance verdict: **Approve / Needs review / R
 Built for the take-home brief: the three core checks (brand name, alcohol content, government
 health warning) lead the screen. The same engine also extracts the full TTB field set (killing the
 manual data entry the agents complained about), runs a per-beverage-type completeness check, exports
-JSON/CSV, and handles batch uploads.
+JSON/CSV, and handles batch uploads. The approach, design decisions, and trade-offs are written up
+for reviewers in
+[docs/TTB-Label-Verifier-Approach-and-Design.docx](docs/TTB-Label-Verifier-Approach-and-Design.docx)
+(this README covers the same ground with more operational detail).
 
 ## Try it in two minutes
 
@@ -121,7 +124,8 @@ image(s) ──> VisionProvider(s) ──> reconciler ──> completeness check
   passing. And when the warning is REQUIRED but still missing or unverified after all of that, a
   WARNING FOCUS escalation runs one strong-model pass that finds the warning in any orientation
   (sideways and upside-down text are normal on bottles), then crops the region, rotates it upright,
-  and upscales it so a second judgment reads the prefix strokes at several times the effective
+  and upscales it (sharp, the project's one image-processing dependency) so a second judgment reads
+  the prefix strokes at several times the effective
   resolution — a recovered warning surfaces at review-band confidence for a human, never as a
   silent pass (`scripts/test-warning-focus-live.ts` measures this path on adversarial renders).
 - **The rules live once, in a CFR-verified module.** The canonical warning text, the per-class
@@ -140,7 +144,7 @@ Every major choice maps to a person from the discovery interviews. (Full require
 
 | Who | Their need | What was built |
 | --- | --- | --- |
-| **Sarah**, Deputy Director | A prior scanner took 30-40s per label and was abandoned: results must come back in about 5 seconds.<br>Agents range from fresh graduates to a 73-year-old benchmark user.<br>Importers dump 200-300 applications at once | A hard latency budget: providers run in parallel with a per-call timeout (~3s mock / ~8s real), reconciling whatever returned instead of blocking on a straggler.<br>One accessibility-first screen (WCAG 2.1 AA targets: 4.5:1 contrast, 44px targets, full keyboard order, visible focus).<br>Batch upload with streaming results and CSV export |
+| **Sarah**, Deputy Director | A prior scanner took 30-40s per label and was abandoned: results must come back in about 5 seconds.<br>Agents range from fresh graduates to a 73-year-old benchmark user.<br>Importers dump 200-300 applications at once | A hard latency budget: providers run in parallel with a per-call timeout (~3s mock / ~8s real), reconciling whatever returned instead of blocking on a straggler.<br>One accessibility-first screen (WCAG 2.1 AA targets: 4.5:1 contrast in both themes, 44px primary targets with everything else at 24px+, full keyboard order, visible focus).<br>Batch upload with streaming results and CSV export |
 | **Marcus**, IT | The outbound firewall blocked the last vendor's ML endpoints. Azure shop. Standalone prototype, no PII | Extraction sits behind a swappable `VisionProvider` interface and the production providers are Azure-native, so the model calls run inside the tenant the firewall trusts. No auth, no PII stored, no COLA integration. Mock mode means the app and full test suite run with zero keys |
 | **Dave**, 28-year agent | "STONE'S THROW" vs "Stone's Throw" is obviously the same product; pure pattern matching creates false rejections | Fuzzy brand comparison: normalize case, whitespace, punctuation, and smart quotes, then compare. Exact after normalization passes; a near-miss goes to review with the discrepancy shown; only a clear mismatch fails |
 | **Jenny**, junior agent | The warning must match word for word, and "GOVERNMENT WARNING:" must be all-caps and bold. Title case gets rejected. Bad photos shouldn't crash the flow | Strict verbatim comparison against the statutory text, plus explicit all-caps and bold checks on the prefix (bold is tri-state: "undetectable" is routed to review, not called a violation). Unreadable images fail gracefully to a re-upload prompt |
@@ -347,7 +351,10 @@ az containerapp up --name ttb-label-verifier --resource-group ttb-label-verifier
 | [`eval/`](eval) | Evaluation harness + labeled fixtures (the CI accuracy gate) |
 | [`AGENTS.md`](AGENTS.md) | The project bible: architecture, the three checks, conventions |
 | [`specs/PROJECT_SPEC.md`](specs/PROJECT_SPEC.md) | Requirements traced to the stakeholder interviews |
+| [`docs/`](docs) | The reviewer-facing design document (.docx) + [`docs/superpowers/`](docs/superpowers/README.md), dated working artifacts (plans, specs, audits) from the AI-assisted, human-verified build, kept for transparency |
 
 **Stack:** Next.js 16 (App Router) + React 19 + TypeScript (strict) + Tailwind 4 + Vitest. No
-database, no other runtime dependencies. AI: OpenAI (hosted demo) / Google Gemini, and Azure OpenAI
-/ Azure AI Document Intelligence (in-tenant target), all behind one interface.
+database; the one runtime dependency beyond Next/React is [sharp](https://sharp.pixelplumbing.com)
+(server-side crop/derotate/upscale for the warning-focus pass). AI: OpenAI (hosted demo) / Google
+Gemini, and Azure OpenAI / Azure AI Document Intelligence (in-tenant target), all behind one
+interface.
