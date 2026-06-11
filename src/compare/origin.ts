@@ -193,6 +193,16 @@ function containsName(normalized: string, names: ReadonlySet<string>): string | 
  * statement can agree with the application and still need a human to fix it to "Product of
  * Barbados". Conservative on purpose: an obscure country missing from the list reads as
  * "names no country" and routes to REVIEW (a person confirms), never to fail.
+ *
+ * WHAT THE LAW ACTUALLY REQUIRES (verified against the CFR text 2026-06-11): no statute mandates
+ * the words "Product of" or "Made in" as such. 19 CFR 134.11 requires only that the ENGLISH NAME
+ * OF THE COUNTRY be marked conspicuously, legibly, and permanently. The familiar prefixes come
+ * from 19 CFR 134.46: when OTHER place names on the article could mislead about origin (and an
+ * imported bottle's mandatory "Imported by X, City, ST" line is exactly such a name), the country
+ * must appear in close proximity, comparably sized, "preceded by 'Made in,' 'Product of,' or
+ * other words of similar meaning". So this check demands a NAMED COUNTRY in any phrasing
+ * ("Barbados", "Product of Barbados", "Imported from Barbados" all qualify) and the UI offers
+ * "Product of X" only as the safe canonical example, never as the required form.
  */
 export function namedCountryIn(text: string | undefined): string | null {
   const norm = normalize(text ?? "");
