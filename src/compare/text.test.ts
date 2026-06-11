@@ -23,14 +23,30 @@ describe("normalizeText (brand normalization)", () => {
   });
 });
 
-describe("normalizeWarning (wording, case-folded)", () => {
+describe("normalizeWarning (wording, case-folded, whitespace-insensitive)", () => {
   it("folds case (prefix caps are judged via the flag, not the text)", () => {
     expect(normalizeWarning("GOVERNMENT WARNING: hi")).toBe(
       normalizeWarning("Government Warning: hi"),
     );
   });
-  it("collapses wrapped whitespace", () => {
-    expect(normalizeWarning("a\n  b   c")).toBe("a b c");
+  it("is insensitive to ALL whitespace, including wrapped line breaks", () => {
+    expect(normalizeWarning("a\n  b   c")).toBe(normalizeWarning("a b c"));
+    expect(normalizeWarning("a\n  b   c")).toBe("abc");
+  });
+  it("a tight-kerned clause marker is spacing, not a rewording (the Mossy Horn case)", () => {
+    // Real approved labels print "(1)According" with no space after the marker; the words are the
+    // statutory words, so the wording comparison must treat it as equal to "(1) According".
+    expect(normalizeWarning("GOVERNMENT WARNING: (1)According to the Surgeon General")).toBe(
+      normalizeWarning("GOVERNMENT WARNING: (1) According to the Surgeon General"),
+    );
+  });
+  it("a genuine rewording still differs (whitespace-stripping cannot mask changed words)", () => {
+    expect(normalizeWarning("women should not drink alcoholic beverages")).not.toBe(
+      normalizeWarning("women must not drink alcoholic beverages"),
+    );
+    expect(normalizeWarning("may cause health problems")).not.toBe(
+      normalizeWarning("may cause severe health problems"),
+    );
   });
 });
 

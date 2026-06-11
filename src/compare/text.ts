@@ -42,7 +42,7 @@ export function normalizeBrandKeepingSymbols(input: string): string {
 
 /**
  * Normalize a government-warning body for WORDING comparison: line-break hyphenation healed,
- * whitespace collapsed, trimmed, lowercased. Case is intentionally folded here because the
+ * whitespace REMOVED entirely, lowercased. Case is intentionally folded here because the
  * prefix's required CAPITALS are judged from the extracted `warningPrefixIsAllCaps` flag, not
  * re-derived from the raw text.
  *
@@ -50,13 +50,20 @@ export function normalizeBrandKeepingSymbols(input: string): string {
  * ("machin-ery") and a verbatim transcription preserves the artifact; the statutory text contains
  * no hyphenated words, so joining "<word>-<whitespace><word>" (and dropping soft hyphens) can
  * never mask a real rewording — any changed WORD still differs after healing.
+ *
+ * Whitespace is STRIPPED, not collapsed, because real approved labels kern the clause markers
+ * tight: a faithful transcription of "(1)According" (no space after the marker — Mossy Horn
+ * Pecan, found 2026-06-11) failed the wording check against the canonical "(1) According" and
+ * hard-failed a compliant label. Spacing is typography, not wording: a genuine rewording adds,
+ * drops, or changes LETTERS, so two texts equal with all whitespace removed print the same
+ * statutory words — stripping can never mask a real violation, while mere collapsing still
+ * failed kerning artifacts.
  */
 export function normalizeWarning(input: string): string {
   return input
     .replace(/­/g, "") // soft hyphens are typography, not text
     .replace(/([a-z])-\s+([a-z])/gi, "$1$2") // heal line-break hyphenation: "machin- ery"
-    .replace(/\s+/g, " ")
-    .trim()
+    .replace(/\s+/g, "")
     .toLowerCase();
 }
 

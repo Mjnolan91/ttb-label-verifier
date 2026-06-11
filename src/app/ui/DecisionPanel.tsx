@@ -8,7 +8,7 @@
  * "Sending" is a DEMO confirmation only — this offline prototype has no mail transport, stores no PII,
  * and has no real COLA system behind it.
  */
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { IconPass, IconFail } from "./icons";
 import { inputClass } from "./fieldStyles";
 import type { OverallVerdict } from "@/compare";
@@ -88,6 +88,43 @@ export function DecisionPanel({
   );
   const fieldNotesChanged = decision !== null && appliedSeed !== null && seedFor(decision) !== appliedSeed;
 
+  // FOCUS FOLLOWS THE FLOW. The email composer mounts BELOW the fold in the batch drawer, so a
+  // reviewer who clicks Approve/Reject can record a decision without ever seeing the applicant
+  // email under their click. Each state change moves focus (and scrolls) to the thing that just
+  // appeared: choose -> the composer, send -> the "Recorded" confirmation (focus doubles as the
+  // announcement; a conditionally-mounted live region alone is routinely missed by screen
+  // readers), change-decision -> back to the Approve/Reject pair. jsdom lacks scrollIntoView and
+  // matchMedia, hence the guards.
+  const composerRef = useRef<HTMLDivElement>(null);
+  const recordedRef = useRef<HTMLDivElement>(null);
+  const buttonsRef = useRef<HTMLDivElement>(null);
+  // Scheduled via a ZERO TIMEOUT, not a render effect and not requestAnimationFrame: React commits
+  // the click's state synchronously before timers run, so the target exists by then — and when the
+  // click changes NOTHING (re-clicking the already-resumed decision) React bails out of rendering
+  // entirely, so a render-driven effect never fires (preview-measured: the resumed drawer's Approve
+  // click left the composer below the fold). rAF is equally unusable: hidden/background tabs pause
+  // animation frames indefinitely. Focus goes FIRST with preventScroll, then the scroll (a focus()
+  // after scrollIntoView cancels an in-flight smooth scroll in Chromium); the scroll animates only
+  // when the page is actually visible — smooth scrolling is frame-driven and would stall hidden.
+  function focusPanelTarget(target: "composer" | "recorded" | "buttons") {
+    setTimeout(() => {
+      const el =
+        target === "composer"
+          ? composerRef.current
+          : target === "recorded"
+            ? recordedRef.current
+            : buttonsRef.current;
+      if (!el) return;
+      const reduceMotion =
+        typeof window !== "undefined" &&
+        typeof window.matchMedia === "function" &&
+        window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const smoothOk = !reduceMotion && typeof document !== "undefined" && document.visibilityState !== "hidden";
+      el.focus({ preventScroll: true });
+      el.scrollIntoView?.({ behavior: smoothOk ? "smooth" : "auto", block: "start" });
+    }, 0);
+  }
+
   function choose(d: Decision) {
     const seeded = seedFor(d);
     setDecision(d);
@@ -95,6 +132,7 @@ export function DecisionPanel({
     setNotes(seeded);
     setAppliedSeed(seeded);
     setSent(false);
+    focusPanelTarget("composer");
   }
 
   function pullFieldNotes() {
@@ -107,6 +145,7 @@ export function DecisionPanel({
   function send() {
     if (decision) onRecord?.(decision, notes);
     setSent(true);
+    focusPanelTarget("recorded");
   }
 
   // The live draft — recomposed from the editable notes so the preview always matches what will "send".
@@ -157,13 +196,25 @@ export function DecisionPanel({
       <p className="mt-1 text-sm text-ink-muted">
         Commit the review and notify the applicant. Demo only: no email actually leaves this prototype.
       </p>
-      <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+      <div
+        ref={buttonsRef}
+        tabIndex={-1}
+        role="group"
+        aria-label="Decision"
+        className="mt-4 flex flex-col gap-3 focus-visible:outline-none sm:flex-row"
+      >
         {decisionButton("approve")}
         {decisionButton("reject")}
       </div>
 
       {decision && !sent && (
-        <div className="mt-5 rounded-card border border-border bg-surface-muted p-4">
+        <div
+          ref={composerRef}
+          tabIndex={-1}
+          role="group"
+          aria-label="Email to the applicant"
+          className="mt-5 scroll-mt-4 rounded-card border border-border bg-surface-muted p-4 focus-visible:outline-none"
+        >
           <p className="text-xs font-semibold uppercase tracking-wide text-ink-muted">Email to the applicant</p>
           <div className="mt-3 flex flex-col gap-3">
             <label className="block text-sm font-medium text-ink">
@@ -224,8 +275,10 @@ export function DecisionPanel({
 
       {sent && decision && (
         <div
+          ref={recordedRef}
+          tabIndex={-1}
           role="status"
-          className="mt-5 flex items-start gap-3 rounded-card border-l-4 border-pass-600 bg-pass-50 p-4 text-pass-900"
+          className="mt-5 flex items-start gap-3 rounded-card border-l-4 border-pass-600 bg-pass-50 p-4 text-pass-900 focus-visible:outline-none"
         >
           <IconPass className="mt-0.5 h-5 w-5 shrink-0" />
           <div>
@@ -240,6 +293,7 @@ export function DecisionPanel({
                 onClick={() => {
                   setSent(false);
                   setDecision(null);
+                  focusPanelTarget("buttons");
                 }}
                 className="font-semibold text-brand-700 underline underline-offset-2 focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700"
               >

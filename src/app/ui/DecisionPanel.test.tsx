@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, test } from "vitest";
-import { cleanup, render, screen, fireEvent } from "@testing-library/react";
+import { cleanup, render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { DecisionPanel } from "./DecisionPanel";
 
 afterEach(() => {
@@ -52,5 +52,69 @@ describe("DecisionPanel decision buttons", () => {
     const { container } = renderPanel();
     fireEvent.click(screen.getByRole("button", { name: /approve cola/i }));
     expect(container.textContent).not.toContain("—");
+  });
+});
+
+/**
+ * Focus follows the flow: the email composer mounts below the fold in the batch drawer, so each
+ * state change must MOVE focus to what just appeared - choosing a decision lands on the composer
+ * (the reviewer can never miss the applicant email), recording lands on the confirmation, and
+ * "Change decision" returns to the decision buttons.
+ */
+describe("DecisionPanel focus management", () => {
+  function renderPanel() {
+    return render(
+      <DecisionPanel
+        verdict="approve"
+        brand="Old Tom Distillery"
+        approveNotes=""
+        rejectNotes=""
+        onRecord={() => {}}
+      />,
+    );
+  }
+
+  test("choosing a decision moves focus to the email composer", async () => {
+    renderPanel();
+    fireEvent.click(screen.getByRole("button", { name: /approve cola/i }));
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole("group", { name: /email to the applicant/i })),
+    );
+  });
+
+  test("recording the decision moves focus to the confirmation banner", async () => {
+    renderPanel();
+    fireEvent.click(screen.getByRole("button", { name: /approve cola/i }));
+    fireEvent.click(screen.getByRole("button", { name: /record decision & send email/i }));
+    const recorded = screen.getByRole("status");
+    expect(recorded.textContent).toContain("Recorded: Approved");
+    await waitFor(() => expect(document.activeElement).toBe(recorded));
+  });
+
+  test("'Change decision' returns focus to the decision buttons", async () => {
+    renderPanel();
+    fireEvent.click(screen.getByRole("button", { name: /approve cola/i }));
+    fireEvent.click(screen.getByRole("button", { name: /record decision & send email/i }));
+    fireEvent.click(screen.getByRole("button", { name: /change decision/i }));
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("group", { name: /^decision$/i })));
+  });
+
+  test("RE-CLICKING the already-resumed decision still brings up the composer (React bails out of the render)", async () => {
+    // A worklist re-review resumes with initialDecision set; clicking the same decision changes no
+    // state, so a render-driven focus would never fire. The frame-scheduled focus must still run.
+    render(
+      <DecisionPanel
+        verdict="approve"
+        brand="Old Tom Distillery"
+        approveNotes=""
+        rejectNotes=""
+        onRecord={() => {}}
+        initialDecision="approve"
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /approve cola/i }));
+    await waitFor(() =>
+      expect(document.activeElement).toBe(screen.getByRole("group", { name: /email to the applicant/i })),
+    );
   });
 });

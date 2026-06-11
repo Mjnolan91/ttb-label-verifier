@@ -67,6 +67,15 @@ describe("compareWarning", () => {
   it("PASS: canonical text, all-caps bold prefix", () => {
     expect(compareWarning(ok).status).toBe("pass");
   });
+  it("PASS: a tight-kerned '(1)According' transcription is spacing, not a rewording (Mossy Horn)", () => {
+    // A real approved label prints no space after the clause marker; the faithful transcription
+    // must not hard-fail the wording check (found 2026-06-11: it did).
+    const r = compareWarning({
+      ...ok,
+      warningText: CANONICAL_GOVERNMENT_WARNING.replace("(1) According", "(1)According"),
+    });
+    expect(r.status).toBe("pass");
+  });
   it("REVIEW: bold undetectable (null) is surfaced for a human, never a silent verified pass", () => {
     // Not a violation (no evidence of one), but not a verification either: the pass message claims a
     // "correctly formatted prefix", so an unverifiable bold flag must route to review instead.
