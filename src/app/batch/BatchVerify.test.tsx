@@ -300,8 +300,13 @@ describe("BatchVerify — verify against an application CSV", () => {
     fireEvent.click(q.getByRole("button", { name: /Confirm combine/i }));
     // The merged row's meta says "2 images" (the live region announces it too).
     expect((await q.findAllByText(/2 images/i)).length).toBeGreaterThan(0);
-    expect(q.getAllByText("Acme")).toHaveLength(1); // ONE merged row carrying both photos
-    expect(calls).toBe(3); // two initial reads + one merged re-read
+    // The "2 images" marker renders on the merged row while it is still PENDING its re-read, so the
+    // settled-state assertions must wait for the re-read to land (a sync query here was a race that
+    // only slow CI runners lost).
+    await vi.waitFor(() => {
+      expect(q.getAllByText("Acme")).toHaveLength(1); // ONE merged row carrying both photos
+      expect(calls).toBe(3); // two initial reads + one merged re-read
+    });
     expect(lastBody && (lastBody as FormData).getAll("position")).toEqual(["front", "back"]); // the duplicate front demoted
   });
 
