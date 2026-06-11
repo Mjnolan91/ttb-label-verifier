@@ -67,7 +67,11 @@ export const FIELD_CATALOG: readonly FieldDescriptor[] = [
     key: "brand", rawKey: "brand", confKey: "brand", label: "Brand name", csvColumn: "brand", group: "headline",
     description:
       "The BRAND NAME — in TTB's terms, the name under which the product (or line of products) is SOLD, shown " +
-      "in the primary masthead / wordmark, e.g. \"Stone's Throw\", \"Jolly Jerry's\". Per TTB, if the product is " +
+      "in the primary masthead / wordmark, e.g. \"Stone's Throw\", \"Jolly Jerry's\". Craft labels often render " +
+      "the masthead as large STYLIZED artwork, calligraphy, or hand lettering rather than plain type — the " +
+      "biggest decorated words on the label are still TEXT: transcribe them as the brand. A small producer " +
+      "logo, crest, or seal naming the company is NOT the masthead when a larger sold-under name is present. " +
+      "Per TTB, if the product is " +
       "NOT sold under a separate brand name, the bottler / distiller / importer COMPANY NAME is treated as the " +
       "brand: so when the only prominent name is e.g. \"OLD TOM DISTILLERY\", populate BOTH `brand` and `name` " +
       "with it. Do NOT fold any of these into the brand: (a) the class/type designation (e.g. \"Rum\", " +
