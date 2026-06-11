@@ -103,8 +103,8 @@ const LABELS = {
 };
 
 // These rasters are filename-keyed EVAL FIXTURES only. (They were also the in-app sample
-// downloads until 2026-06-11; the demo now ships the Fear the Dragon pair — see
-// scripts/make-fear-the-dragon-demo.cjs — so nothing is written to public/samples here.)
+// downloads until 2026-06-11; the demo now ships the Fireball pair — see
+// scripts/make-fireball-demo.cjs — so nothing is written to public/samples here.)
 const outDirs = [path.join(__dirname, "..", "eval", "fixtures", "images")];
 
 (async () => {

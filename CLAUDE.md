@@ -222,16 +222,20 @@ pipeline and the "why". As built, the load-bearing pieces are:
   runs a real provider (OpenAI gpt-4.1 + gpt-5.5 warning judge, via env vars; switched from Gemini
   2026-06-10); Azure is the documented in-tenant production target;
   the deployed URL runs a real provider. The verify screen offers the demo SAMPLE PRODUCT — the
-  Fear the Dragon front/back pair (real artwork) plus its non-bold-warning back (an EDITED test
-  artifact; the real label is compliant) — as plain download links ("No label handy?") served from
-  `public/samples/` — byte-copies of `eval/fixtures/images/fear-the-dragon-*.jpg` kept in lockstep
-  by `scripts/make-fear-the-dragon-demo.cjs` (writes BOTH directories; its SOURCE artwork lives
+  Fireball front/back pair (real artwork from the public TTB COLA registry; an IMPORT, so it also
+  exercises the importer-line + "Product of Canada" origin path) plus its non-bold-warning back
+  (an EDITED test artifact; the real label is compliant) — via one-click "Load the sample label" /
+  "Load the defective-warning version" BUTTONS ("No label handy?") that fetch from
+  `public/samples/` and run the files through the SAME `placeFiles` path an upload takes
+  (filenames intact, both slots placed at once, one read; the help panel still offers the files as
+  downloads). The served files are byte-copies of `eval/fixtures/images/fireball-*.jpg` kept in
+  lockstep by `scripts/make-fireball-demo.cjs` (writes BOTH directories; its SOURCE artwork lives
   OUTSIDE the repo) and guarded by `src/app/samples.test.ts` (byte-equality). They ARE fixtures
   (filename-keyed; the eval covers each panel ALONE, the demo pair merges to approve on the verify
   screen), so the mock reads them locally, and it tolerates a browser download-rename like
-  `fear-the-dragon-front (1).jpg`. The old `demo-*.png` trio (generate-demo-labels.cjs) remains as
-  eval fixtures only. Rename a sample and you must update `eval/fixtures/cases.json` + the
-  README walkthrough together.
+  `fireball-front (1).jpg`. The old `demo-*.png` trio (generate-demo-labels.cjs) and the Fear the
+  Dragon trio (make-fear-the-dragon-demo.cjs) remain as eval fixtures only. Rename a sample and
+  you must update `eval/fixtures/cases.json` + the README walkthrough together.
 - **Uploads are downscaled in the browser first.** `src/app/imageDownscale.ts` shrinks phone photos
   to ~2000px longest edge (JPEG) to fit the latency/token budget. It NEVER throws (falls back to the
   original) and PRESERVES the filename — so the filename-keyed mock still resolves. Don't rename the

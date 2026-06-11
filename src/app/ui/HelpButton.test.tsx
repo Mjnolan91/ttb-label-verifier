@@ -36,7 +36,7 @@ describe("HelpButton", () => {
     }
     for (const name of [/front label/i, /^back label/i, /edited back label/i]) {
       const link = dialog.getByRole("link", { name }) as HTMLAnchorElement;
-      expect(link.getAttribute("href")).toMatch(/^\/samples\/fear-the-dragon-/);
+      expect(link.getAttribute("href")).toMatch(/^\/samples\/fireball-/);
       expect(link.hasAttribute("download")).toBe(true);
     }
     expect(dialog.getByRole("link", { name: /batch screen/i })).toBeTruthy();

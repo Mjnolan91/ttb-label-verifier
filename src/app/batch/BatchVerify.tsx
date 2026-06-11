@@ -723,12 +723,13 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
                   // class/type DESIGNATION only (e.g. "Rum", not "Superior Caribbean Rum"); `fanciful` +
                   // `composition` apply to specialties (no standard of identity); leave a cell blank if it
                   // doesn't apply.
-                  // The first rows target the BUNDLED sample product (downloadable from the
-                  // single screen's "No label handy?" links; fronts and backs pair by filename),
-                  // so template + samples demo end to end — offline mock and live provider alike.
+                  // The first rows target the BUNDLED sample product (the single screen's
+                  // "No label handy?" buttons load it; the help panel offers the same files as
+                  // downloads; fronts and backs pair by filename), so template + samples demo end
+                  // to end — offline mock and live provider alike.
                   "filename,brand,class,fanciful,composition,alcohol,net,name,address,country\n" +
-                    "fear-the-dragon-front.jpg,Dragon Distillery,Spirit Distilled from Grain and Pumpkin,Fear the Dragon,Spirit made from the mash of Flying Dog's The Fear,50% Alc./Vol. (100 Proof),750ML,\"Dragon Distillery, LLC\",\"Frederick, MD\",\n" +
-                    "fear-the-dragon-warning-not-bold-back.jpg,Dragon Distillery,Spirit Distilled from Grain and Pumpkin,Fear the Dragon,Spirit made from the mash of Flying Dog's The Fear,50% Alc./Vol. (100 Proof),750ML,\"Dragon Distillery, LLC\",\"Frederick, MD\",\n" +
+                    "fireball-front.jpg,Fireball,Whisky with Natural Cinnamon Flavor,Cinnamon Whisky,Whisky with Natural Cinnamon Flavor,33% Alc./Vol. (66 Proof),750 mL,\"Sazerac Co., Inc.\",\"Louisville, KY\",Product of Canada\n" +
+                    "fireball-warning-not-bold-back.jpg,Fireball,Whisky with Natural Cinnamon Flavor,Cinnamon Whisky,Whisky with Natural Cinnamon Flavor,33% Alc./Vol. (66 Proof),750 mL,\"Sazerac Co., Inc.\",\"Louisville, KY\",Product of Canada\n" +
                     "jolly-jerrys-front.jpg,Jolly Jerry's,Rum,,,40% Alc/Vol (80 Proof),750 mL,Sea Trader Imports,\"Miami, FL\",Product of Barbados\n" +
                     "granite-peak-front.jpg,Granite Peak,India Pale Ale,,,6.5% Alc/Vol,12 FL OZ,Granite Peak Brewing Co.,\"Portland, OR\",\n" +
                     "bayou-spiced-front.jpg,Bayou,,Spiced Rum,Rum with natural flavors added,35% Alc/Vol (70 Proof),750 mL,Bayou Spirits Co.,\"New Orleans, LA\",\n",

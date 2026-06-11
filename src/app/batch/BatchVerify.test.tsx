@@ -419,9 +419,10 @@ describe("BatchVerify — verify against an application CSV", () => {
     fireEvent.click(within(container).getByRole("button", { name: /Download CSV template/i }));
     const content = (downloadCsv as unknown as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[1] as string;
     const map = parseClaimedCsv(content);
-    expect(map.get("fear-the-dragon-front.jpg")?.brand).toBe("Dragon Distillery");
-    expect(map.get("fear-the-dragon-front.jpg")?.alcoholContent).toBe("50% Alc./Vol. (100 Proof)");
-    expect(map.get("fear-the-dragon-warning-not-bold-back.jpg")?.brand).toBe("Dragon Distillery");
+    expect(map.get("fireball-front.jpg")?.brand).toBe("Fireball");
+    expect(map.get("fireball-front.jpg")?.alcoholContent).toBe("33% Alc./Vol. (66 Proof)");
+    expect(map.get("fireball-front.jpg")?.countryOfOrigin).toBe("Product of Canada");
+    expect(map.get("fireball-warning-not-bold-back.jpg")?.brand).toBe("Fireball");
     expect(map.get("jolly-jerrys-front.jpg")?.classType).toBe("Rum"); // the varied examples stay
   });
 

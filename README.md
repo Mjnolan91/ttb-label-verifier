@@ -20,12 +20,12 @@ for reviewers in
 ## Try it in two minutes
 
 1. Open the [live demo](https://ttb-label-verifier-matthew-nolan-s-projects.vercel.app).
-2. Grab the sample product: the demo's upload screen offers it as one-click downloads ("No label
-   handy?"), or use the links in the table below (on GitHub, open the link and use the
-   "Download raw file" button). It is a real spirits label, a front/back pair, so the read
-   exercises the joint multi-image path. Any bottle photo of your own works too.
-3. Select BOTH files at once: the -front/-back filenames place themselves into the slots. The AI
-   reads the pair as one product and pre-fills "The application" inputs with gray
+2. Click **Load the sample label** ("No label handy?"): the bundled sample is a real spirits
+   label (Fireball Cinnamon Whisky, from the public TTB COLA registry), a front/back pair placed
+   into both slots with one click, so the read exercises the joint multi-image path and the
+   import checks (importer line + "Product of Canada"). Any bottle photo of your own works too
+   (uploads accept multi-select: -front/-back filenames place themselves).
+3. The AI reads the pair as one product and pre-fills "The application" inputs with gray
    suggestions; press Tab to accept one, or click **Accept all AI suggestions**. (In real use the
    agent would type what the COLA (Certificate of Label Approval) application claims. Accepting
    the suggestions simulates an application that matches the label.)
@@ -33,8 +33,8 @@ for reviewers in
 
 | Sample product | The defect on the label | What to enter | Expected verdict |
 | --- | --- | --- | --- |
-| Fear the Dragon, clean pair: [front](eval/fixtures/images/fear-the-dragon-front.jpg) + [back](eval/fixtures/images/fear-the-dragon-back.jpg) | none (brand and alcohol on the front; net contents and the warning on the back) | accept all suggestions | **Approve** |
-| The same front + the [defective-warning back](eval/fixtures/images/fear-the-dragon-warning-not-bold-back.jpg) | the prefix prints "Government Warning:" in title case and regular weight (an edited test image; the real label is compliant) | accept all suggestions | **Reject**. 27 CFR 16.22(a)(2) requires the all-caps bold prefix |
+| **Load the sample label**: the clean pair ([front](eval/fixtures/images/fireball-front.jpg) + [back](eval/fixtures/images/fireball-back.jpg)) | none (brand and alcohol on the front; net contents, importer line, warning, and origin on the back) | accept all suggestions | **Approve** |
+| **Load the defective-warning version**: the same front + the [edited back](eval/fixtures/images/fireball-warning-not-bold-back.jpg) | the prefix prints "Government Warning:" in title case and regular weight (an edited test image; the real label is compliant) | accept all suggestions | **Reject**. 27 CFR 16.22(a)(2) requires the all-caps bold prefix |
 
 You never type the government warning: the tool compares the label's warning text word for word
 against the statutory text automatically. (Live model reads can occasionally vary; locally, the
@@ -169,7 +169,8 @@ ship.
 
 The offline latency it prints is sub-millisecond because the mock skips the model call; it measures
 the pipeline, not a vision model. Real-deployment latency is measured too:
-[`scripts/measure-live-latency.ts`](scripts/measure-live-latency.ts) posts the three sample labels
+[`scripts/measure-live-latency.ts`](scripts/measure-live-latency.ts) posts the bundled sample
+products (both are two-image front+back pairs, so the numbers measure the real multi-image path)
 to a deployed `/api/verify` end to end and checks each verdict. Against the live demo (OpenAI on
 Vercel, gpt-4.1 extraction + a gpt-5.5 warning judge, a 7-wide self-consistency vote under a 5s
 straggler cap, 15 sequential reads, 2026-06-10): **p50 3.1s, p95 5.2s, 15/15 verdicts correct, no

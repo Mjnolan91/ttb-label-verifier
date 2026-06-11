@@ -1,9 +1,10 @@
 /* eslint-disable @typescript-eslint/no-require-imports -- CommonJS build-time script (not app code) */
 /*
- * make-fear-the-dragon-demo.cjs — build the Fear the Dragon demo labels from the source artwork.
+ * make-fear-the-dragon-demo.cjs — build the Fear the Dragon labels from the source artwork.
  *
- * The demo's sample product is a REAL label (Dragon Distillery x Flying Dog, Frederick MD): a
- * front/back pair, so the walkthrough exercises the joint multi-image read. Three derived files:
+ * EVAL FIXTURES ONLY since 2026-06-11 (the in-app demo sample is now the Fireball pair — see
+ * scripts/make-fireball-demo.cjs). A REAL label (Dragon Distillery x Flying Dog, Frederick MD):
+ * a front/back pair whose panel-alone fixtures stay in the eval. Three derived files:
  *
  *   fear-the-dragon-front.jpg              the front panel, upscaled 2x (lanczos) so the live
  *   fear-the-dragon-back.jpg               provider gets real stroke detail on the fine print
@@ -22,8 +23,8 @@
  * demo can show a hard Reject.
  *
  * Sources are the original artwork JPGs, kept OUTSIDE the repo (real-brand images are not
- * committed; see SOURCE_DIR). Output goes to eval/fixtures/images/ — copy to public/samples/ in
- * lockstep (src/app/samples.test.ts enforces byte-equality).
+ * committed; see SOURCE_DIR). Output goes to eval/fixtures/images/ ONLY (nothing is written to
+ * public/samples since the demo switched to Fireball).
  *
  * Run from the repo root:  node scripts/make-fear-the-dragon-demo.cjs [sourceDir]
  */
@@ -33,7 +34,6 @@ const fs = require("fs");
 
 const SOURCE_DIR = process.argv[2] || "C:/Users/Matt/Downloads/COLA Labels";
 const OUT_DIR = path.join(__dirname, "..", "eval", "fixtures", "images");
-const SAMPLES_DIR = path.join(__dirname, "..", "public", "samples");
 
 const WARNING_LINES = [
   "GOVERNMENT WARNING: (1) ACCORDING TO THE SURGEON GENERAL, WOMEN SHOULD NOT",
@@ -48,7 +48,6 @@ function esc(s) {
 
 async function main() {
   fs.mkdirSync(OUT_DIR, { recursive: true });
-  fs.mkdirSync(SAMPLES_DIR, { recursive: true });
 
   // Front: upscale 600x600 -> 1200x1200.
   const front = await sharp(path.join(SOURCE_DIR, "FEAR_THE_DRAGON_FRONT.jpg"))
@@ -98,14 +97,12 @@ async function main() {
     fs.writeFileSync(path.join(OUT_DIR, file), out);
   }
 
-  // Byte-mirror all three into public/samples (the verify screen's download links).
   for (const f of [
     "fear-the-dragon-front.jpg",
     "fear-the-dragon-back.jpg",
     "fear-the-dragon-warning-not-bold-back.jpg",
   ]) {
-    fs.copyFileSync(path.join(OUT_DIR, f), path.join(SAMPLES_DIR, f));
-    console.log("wrote", f);
+    console.log("wrote (eval fixture)", f);
   }
 }
 

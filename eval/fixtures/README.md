@@ -59,9 +59,12 @@ placeholders are human-viewable documentation of each scenario; they are not con
 | `specialty-spiced-rum-approve` | `cayo-verde-spiced-specialty.svg` | pass | pass | pass | **approve** |
 | `sangria-import-no-country-review` | `sangria-import-no-country.svg` | pass | pass | pass | **review** |
 | `region-origin-not-country-review` | `jolly-jerrys-region-origin.svg` | pass | pass | pass | **review** |
-| `fear-the-dragon-front-panel-alone` | `fear-the-dragon-front.jpg` (real demo artwork) | pass | pass | **review** | **review** |
-| `fear-the-dragon-back-panel-alone` | `fear-the-dragon-back.jpg` (real demo artwork) | pass | review | pass | **review** |
-| `fear-the-dragon-warning-not-bold-reject` | `fear-the-dragon-warning-not-bold-back.jpg` (EDITED demo artifact) | pass | review | **fail** | **reject** |
+| `fear-the-dragon-front-panel-alone` | `fear-the-dragon-front.jpg` (real artwork, eval-only) | pass | pass | **review** | **review** |
+| `fear-the-dragon-back-panel-alone` | `fear-the-dragon-back.jpg` (real artwork, eval-only) | pass | review | pass | **review** |
+| `fear-the-dragon-warning-not-bold-reject` | `fear-the-dragon-warning-not-bold-back.jpg` (EDITED artifact, eval-only) | pass | review | **fail** | **reject** |
+| `fireball-front-panel-alone` | `fireball-front.jpg` (real demo artwork) | pass | pass | **review** | **review** |
+| `fireball-back-panel-alone` | `fireball-back.jpg` (real demo artwork) | pass | review | pass | **review** |
+| `fireball-warning-not-bold-reject` | `fireball-warning-not-bold-back.jpg` (EDITED demo artifact) | pass | review | **fail** | **reject** |
 
 The sangria case is the origin-inference fixture: every claimed-vs-label comparison passes, but the
 label carries an importer line and a foreign producer address with NO "Product of Spain" statement,
@@ -70,6 +73,12 @@ The Jolly Jerry's case is its sibling: the origin statement IS printed and match
 verbatim, but "Imported from the Caribbean" names a region, not a country, so match-is-not-compliance
 routes it to review with "Product of Barbados" suggested from the producer address.
 The `cayo-verde`/`northgate` trio are NEGATIVE-ALLOCATION fixtures — see "Per-field metrics and allocation fixtures" below.
+The Fear the Dragon and Fireball trios are the PANEL-ALONE fixtures for the two real products
+(the Fireball pair is the verify screen's bundled demo sample since 2026-06-11; Fear the Dragon
+stays eval-only): each panel alone must route to review — the statutory warning, net contents, and
+responsibility line live on the back; brand/class/alcohol on the front — while the pair merges to
+the clean approve on the verify screen. The Fireball back also exercises the IMPORT path for a
+real label (importer line + "Product of Canada" matching the application's country of origin).
 (The Brand/Alcohol/Warning columns are the three CFR-core checks; the eval also scores four more
 per-field metrics — `classType`, `netContents`, `fancifulName`, `statementOfComposition` — not shown
 here to keep the table narrow. Each case's full per-field expectation lives in its `expected.perField`

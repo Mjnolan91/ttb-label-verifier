@@ -15,29 +15,32 @@ import { Drawer } from "./Drawer";
 import { IconHelp } from "./icons";
 import { linkClass } from "./fieldStyles";
 
-/** The bundled sample product (a real front/back spirits pair) and its one defect variant. */
+/** The bundled sample product (a real front/back spirits pair) and its one defect variant. The
+ *  verify screen loads these with one click ("Load the sample label"); the links here download the
+ *  same files for anyone who wants to upload them by hand. */
 const SAMPLES: { name: string; expect: string; detail: string; files: { href: string; label: string }[] }[] = [
   {
-    name: "Fear the Dragon, the clean pair",
+    name: "Fireball, the clean pair",
     expect: "Approve",
     files: [
-      { href: "/samples/fear-the-dragon-front.jpg", label: "front label" },
-      { href: "/samples/fear-the-dragon-back.jpg", label: "back label" },
+      { href: "/samples/fireball-front.jpg", label: "front label" },
+      { href: "/samples/fireball-back.jpg", label: "back label" },
     ],
     detail:
-      "A real spirits label read as one product: select both files at once and they place " +
-      "themselves. The brand and alcohol read from the front, the net contents and the government " +
-      "warning from the back, and every field matches the application.",
+      "A real spirits label read as one product: the verify screen's Load the sample label " +
+      "button places both at once. The brand and alcohol read from the front; the net contents, " +
+      "importer line, government warning, and Product of Canada origin read from the back; every " +
+      "field matches the application.",
   },
   {
     name: "Defective warning prefix",
     expect: "Reject",
-    files: [{ href: "/samples/fear-the-dragon-warning-not-bold-back.jpg", label: "edited back label" }],
+    files: [{ href: "/samples/fireball-warning-not-bold-back.jpg", label: "edited back label" }],
     detail:
-      'Upload the same front with this back: the warning wording is correct, but the prefix is ' +
-      'printed "Government Warning:" in title case and regular weight. 27 CFR 16.22(a)(2) ' +
-      "requires it in capital letters and bold type, a hard fail. (An edited test image; the " +
-      "real product's label is compliant.)",
+      'The same front with this back (the verify screen\'s Load the defective-warning version ' +
+      'button): the warning wording is correct, but the prefix is printed "Government Warning:" ' +
+      "in title case and regular weight. 27 CFR 16.22(a)(2) requires it in capital letters and " +
+      "bold type, a hard fail. (An edited test image; the real product's label is compliant.)",
   },
 ];
 

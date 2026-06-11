@@ -33,8 +33,8 @@ import { ExtractedFieldsView } from "./ui/ExtractedFieldsView";
 import { CompletenessView } from "./ui/CompletenessView";
 import { ResultView, type FieldOverride } from "./ui/ResultView";
 import { deriveLabelReview, toggleOverride, setFieldNote, capVerdictForPartialRead, type FieldNotes } from "./ui/labelReview";
-import { DecisionPanel } from "./ui/DecisionPanel";
-import { PipelineSteps } from "./ui/PipelineSteps";
+import { DecisionPanel, type Decision } from "./ui/DecisionPanel";
+import { PipelineSteps, PipelineProgressPill } from "./ui/PipelineSteps";
 import { CLASS_DISPLAY_LABEL } from "./ui/beverageClass";
 import { AppValueField } from "./ui/AppValueField";
 import { downscaleForUpload } from "./imageDownscale";
@@ -202,8 +202,17 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
   // an effect below to land the user on the verdict that click just produced. Never set on the
   // typing path: stealing focus mid-keystroke would be hostile, the live region covers it.
   const pendingVerdictFocus = useRef(false);
-  // Completes the spine's final stage when DecisionPanel records a decision; restarts per read.
-  const [decided, setDecided] = useState(false);
+  // Tracks the DecisionPanel for the spine's final stage: the Approve/Reject CHOICE the moment it
+  // is made (outlined disc) and whether it was RECORDED (solid disc — completes the stage). Both
+  // transitions move the spine, so every decision click visibly updates it; restarts per read.
+  const [decisionProgress, setDecisionProgress] = useState<{ choice: Decision | null; recorded: boolean }>(
+    { choice: null, recorded: false },
+  );
+  // True while the bundled sample pair is being fetched into the upload slots ("No label handy?").
+  const [sampleLoading, setSampleLoading] = useState<"clean" | "defect" | null>(null);
+  // Whether the spine has scrolled out of view — the floating progress pill renders only then.
+  const spineRef = useRef<HTMLDivElement>(null);
+  const [spineOffscreen, setSpineOffscreen] = useState(false);
   // Honest reassurance for long reads (rescue/warning-focus escalations): flips the visible loading
   // line's copy after ~6s. Most reads finish inside the ~5s budget and never show it.
   const [slowRead, setSlowRead] = useState(false);
@@ -218,6 +227,31 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
   useEffect(() => {
     if (neckRevealed && !slots.neck) neckInputRef.current?.focus();
   }, [neckRevealed, slots.neck]);
+
+  // The floating progress pill appears only while the spine is scrolled out of view. jsdom has no
+  // IntersectionObserver, so tests (and any browser without it) simply never show the pill.
+  useEffect(() => {
+    const el = spineRef.current;
+    if (!el || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(([entry]) => setSpineOffscreen(!entry.isIntersecting));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  // The pill's click: back to the spine. Focus FIRST with preventScroll, then scroll (a focus()
+  // after scrollIntoView cancels an in-flight smooth scroll in Chromium — same pattern as the
+  // DecisionPanel's focus-follows-flow); smooth only when motion is allowed and the page is visible.
+  function jumpToSpine() {
+    const el = spineRef.current;
+    if (!el) return;
+    const reduceMotion =
+      typeof window !== "undefined" &&
+      typeof window.matchMedia === "function" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const smoothOk = !reduceMotion && typeof document !== "undefined" && document.visibilityState !== "hidden";
+    el.focus({ preventScroll: true });
+    el.scrollIntoView?.({ behavior: smoothOk ? "smooth" : "auto", block: "start" });
+  }
 
   const readable = state === "done" && Boolean(response?.readable);
   const extracted = readable && response ? response.extracted : undefined;
@@ -335,7 +369,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
     setFormError(null);
     setFieldOverrides({}); // a fresh read re-evaluates; drop the prior verdict's human overrides
     setFieldNotes({}); // and the notes that went with them
-    setDecided(false); // the spine's Decision stage restarts with the new read
+    setDecisionProgress({ choice: null, recorded: false }); // the spine's Decision stage restarts with the new read
     pendingVerdictFocus.current = false;
     setSlowRead(false);
     const slowTimer = setTimeout(() => {
@@ -425,6 +459,34 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
     setSlots(next);
     void read(orderedImagesOf(next));
   }
+  /**
+   * "No label handy?" — fetch the bundled sample pair from /public/samples and run it through the
+   * SAME placeFiles path an upload takes (filenames intact, so the -front/-back tokens place both
+   * slots at once, the offline mock recognizes the files, and a live provider reads real pixels).
+   * The defect variant swaps in the edited non-bold-warning back for the Reject walkthrough.
+   */
+  async function loadSample(variant: "clean" | "defect") {
+    if (sampleLoading) return;
+    setSampleLoading(variant);
+    setFormError(null);
+    try {
+      const names = ["fireball-front.jpg", variant === "clean" ? "fireball-back.jpg" : "fireball-warning-not-bold-back.jpg"];
+      const files = await Promise.all(
+        names.map(async (name) => {
+          const res = await fetch(`/samples/${name}`);
+          if (!res.ok) throw new Error(`sample fetch failed: ${res.status}`);
+          const blob = await res.blob();
+          return new File([blob], name, { type: blob.type || "image/jpeg" });
+        }),
+      );
+      placeFiles("front", files);
+    } catch {
+      setFormError("The sample labels couldn't be loaded. Please try again.");
+    } finally {
+      setSampleLoading(null);
+    }
+  }
+
   function clearSlot(key: SlotKey) {
     const target = slots[key];
     if (target) {
@@ -540,10 +602,26 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
       {/* The order-of-operations spine: ONE step model for the whole screen (its stages mirror the
           section headings 1:1; the AI read is stage 1's spinner, not a numbered step). It lives at
           the top so the reading state is in the same viewport as the upload slot the user just acted
-          on, and so it orients a first-time user before the first upload. */}
-      <div className="mt-5">
-        <PipelineSteps stage={pipelineStage} verdict={shownOverall ?? undefined} decided={decided} />
+          on, and so it orients a first-time user before the first upload. While it is scrolled out
+          of view (the application grid + results run long), the SAME model condenses into a fixed
+          progress pill top-left — mirroring the Help/Theme controls top-right — that jumps back here. */}
+      <div ref={spineRef} tabIndex={-1} className="mt-5 scroll-mt-4 focus-visible:outline-none">
+        <PipelineSteps
+          stage={pipelineStage}
+          verdict={shownOverall ?? undefined}
+          decision={decisionProgress.choice}
+          decided={decisionProgress.recorded}
+        />
       </div>
+      {spineOffscreen && pipelineStage !== "idle" && (
+        <PipelineProgressPill
+          stage={pipelineStage}
+          verdict={shownOverall ?? undefined}
+          decision={decisionProgress.choice}
+          decided={decisionProgress.recorded}
+          onJump={jumpToSpine}
+        />
+      )}
 
       {mockMode && (
         <p className="mt-3 rounded-field border border-border bg-surface-muted px-3 py-2.5 text-sm text-ink-muted">
@@ -660,29 +738,42 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
           </p>
         )}
         {/* Self-sufficient demo: a cold visitor has no label image on hand. The bundled sample is a
-            REAL front/back pair (Fear the Dragon, Dragon Distillery x Flying Dog) served from
-            /public/samples with filenames intact, so the offline mock recognizes them AND a live
-            provider reads their real pixels; the pair exercises the joint multi-image read. The
-            defect variant is an EDITED test image (the real label is compliant). Plain download
-            links keep the upload flow honest (no special in-app path). */}
+            REAL product (Fireball Cinnamon Whisky; artwork from the public TTB COLA registry) served
+            from /public/samples. One click fetches the pair and places it through the SAME placeFiles
+            path an upload takes (filenames intact, so the offline mock recognizes the files AND a
+            live provider reads their real pixels; the pair exercises the joint multi-image read and
+            the import path). The defect variant is an EDITED test image (the real label is
+            compliant), bundled so the demo can show a hard Reject. */}
         {!slots.front && (
-          <p className="mt-3 text-sm text-ink-muted">
-            No label handy? Download the sample pair, then select both files at once (they place
-            themselves):{" "}
-            <a href="/samples/fear-the-dragon-front.jpg" download className={linkClass}>
-              front label
-            </a>
-            {" and "}
-            <a href="/samples/fear-the-dragon-back.jpg" download className={linkClass}>
-              back label
-            </a>
-            . To see a Reject, swap in the{" "}
-            <a href="/samples/fear-the-dragon-warning-not-bold-back.jpg" download className={linkClass}>
-              defective-warning back
-            </a>{" "}
-            (its prefix prints &quot;Government Warning:&quot; in title case and regular weight; an
-            edited test image, the real label is compliant).
-          </p>
+          <div className="mt-4 text-sm text-ink-muted">
+            <p className="font-medium text-ink">No label handy? Try the built-in sample:</p>
+            <div className="mt-2 flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={() => void loadSample("clean")}
+                disabled={sampleLoading !== null}
+                className={secondaryButtonClass}
+              >
+                {sampleLoading === "clean" && <IconSpinner className="h-4 w-4 motion-safe:animate-spin" />}
+                Load the sample label
+              </button>
+              <button
+                type="button"
+                onClick={() => void loadSample("defect")}
+                disabled={sampleLoading !== null}
+                className={secondaryButtonClass}
+              >
+                {sampleLoading === "defect" && <IconSpinner className="h-4 w-4 motion-safe:animate-spin" />}
+                Load the defective-warning version
+              </button>
+            </div>
+            <p className="mt-2">
+              One click places the front and back labels for you. The sample is a real spirits label
+              that verifies clean; the defective version swaps in an edited back whose warning prefix
+              prints &quot;Government Warning:&quot; in title case and regular weight, for a Reject.
+              (The real product&apos;s label is compliant.)
+            </p>
+          </div>
         )}
         {/* The read's live status, co-located with the slot the user just dropped into (all other
             processing feedback used to sit below the 9-input application grid, below the fold at
@@ -899,7 +990,8 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
                 brand={claimBrand}
                 approveNotes={approveNotes}
                 rejectNotes={rejectNotes}
-                onRecord={() => setDecided(true)}
+                onRecord={(d) => setDecisionProgress({ choice: d, recorded: true })}
+                onDecisionChange={(choice) => setDecisionProgress({ choice, recorded: false })}
               />
             </>
           ) : (

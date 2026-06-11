@@ -13,7 +13,7 @@ import { IconPass, IconFail } from "./icons";
 import { inputClass } from "./fieldStyles";
 import type { OverallVerdict } from "@/compare";
 
-type Decision = "approve" | "reject";
+export type Decision = "approve" | "reject";
 
 /** Compose the applicant email from the decision and the (editable) reviewer notes. The notes are the
  *  one place the tool's status reaches the applicant, so they are woven into the body verbatim. */
@@ -54,6 +54,7 @@ export function DecisionPanel({
   approveNotes,
   rejectNotes,
   onRecord,
+  onDecisionChange,
   initialDecision = null,
   initialNote,
   step,
@@ -66,6 +67,9 @@ export function DecisionPanel({
   rejectNotes: string;
   /** Called when the reviewer commits (sends) — lets a worklist record the decision + note. */
   onRecord?: (decision: Decision, note: string) => void;
+  /** Called when the Approve/Reject CHOICE changes (chosen or cleared via "Change decision"),
+   *  before any recording — lets the verify screen's spine track the panel live. */
+  onDecisionChange?: (decision: Decision | null) => void;
   /** A previously recorded decision to resume (e.g. reopening a worklist item). */
   initialDecision?: Decision | null;
   /** The note captured with a previously recorded decision. */
@@ -134,6 +138,7 @@ export function DecisionPanel({
     setNotes(seeded);
     setAppliedSeed(seeded);
     setSent(false);
+    onDecisionChange?.(d);
     focusPanelTarget("composer");
   }
 
@@ -294,6 +299,7 @@ export function DecisionPanel({
                 onClick={() => {
                   setSent(false);
                   setDecision(null);
+                  onDecisionChange?.(null);
                   focusPanelTarget("buttons");
                 }}
                 className="font-semibold text-brand-700 underline underline-offset-2 focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700"

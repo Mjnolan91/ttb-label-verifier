@@ -10,7 +10,7 @@
  * computed by the real pure combinedVerdict.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, waitFor, within } from "@testing-library/react";
 import { VerifyForm } from "./VerifyForm";
 import type { VerifyApiResponse } from "./api/verify/contract";
 import { CANONICAL_GOVERNMENT_WARNING, type ExtractedFields } from "@/domain";
@@ -476,22 +476,126 @@ describe("VerifyForm — verify against the application", () => {
     expect(q.getByRole("button", { name: /^Remove Front/i })).toBeTruthy();
   });
 
-  it("offers sample label downloads while the front slot is empty, hidden once an image is in", ASYNC, async () => {
+  // The "No label handy?" buttons fetch the bundled pair and run it through the SAME placeFiles
+  // path an upload takes; the filename tokens place front + back together with ONE read.
+  function mockSampleFetch(response: VerifyApiResponse): void {
+    globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      if (String(input).startsWith("/samples/")) {
+        return { ok: true, blob: async () => new Blob(["jpeg-bytes"], { type: "image/jpeg" }) };
+      }
+      return { ok: true, json: async () => response };
+    }) as unknown as typeof fetch;
+  }
+
+  it("SAMPLE: one click places the bundled front + back into their slots with ONE read", ASYNC, async () => {
+    mockSampleFetch(READ_OK());
+    const { container } = render(<VerifyForm />);
+    const q = within(container);
+    fireEvent.click(q.getByRole("button", { name: /Load the sample label/i }));
+    await q.findByText("Complete the application to verify");
+    expect(q.getByRole("button", { name: /^Remove Front/ })).toBeTruthy();
+    expect(q.getByRole("button", { name: /^Remove Back/ })).toBeTruthy();
+    // The canonical filenames survive (the mock provider and a live provider both key off them).
+    expect(q.getByText("fireball-front.jpg")).toBeTruthy();
+    expect(q.getByText("fireball-back.jpg")).toBeTruthy();
+    const calls = (globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls;
+    const apiCalls = calls.filter((c) => String(c[0]) === "/api/verify");
+    expect(apiCalls).toHaveLength(1); // one placement, one read
+    const fd = (apiCalls[0][1] as RequestInit).body as FormData;
+    expect(fd.getAll("position")).toEqual(["front", "back"]);
+    // The sample offer hides once the front slot is filled.
+    expect(q.queryByRole("button", { name: /Load the sample label/i })).toBeNull();
+  });
+
+  it("SAMPLE: the defective-warning version loads the same front with the edited back", ASYNC, async () => {
+    mockSampleFetch(READ_OK());
+    const { container } = render(<VerifyForm />);
+    const q = within(container);
+    fireEvent.click(q.getByRole("button", { name: /Load the defective-warning version/i }));
+    await q.findByText("Complete the application to verify");
+    expect(q.getByText("fireball-front.jpg")).toBeTruthy();
+    expect(q.getByText("fireball-warning-not-bold-back.jpg")).toBeTruthy();
+  });
+
+  it("SAMPLE: a failed sample fetch surfaces an actionable error, never half-placed slots", ASYNC, async () => {
+    globalThis.fetch = vi.fn(async () => ({ ok: false, status: 404 })) as unknown as typeof fetch;
+    const { container } = render(<VerifyForm />);
+    const q = within(container);
+    fireEvent.click(q.getByRole("button", { name: /Load the sample label/i }));
+    expect(await q.findByText(/sample labels couldn.t be loaded/i)).toBeTruthy();
+    expect(q.queryByRole("button", { name: /^Remove Front/ })).toBeNull();
+    // The offer stays available for a retry.
+    expect(q.getByRole("button", { name: /Load the sample label/i })).toBeTruthy();
+  });
+
+  // The floating progress pill is driven by an IntersectionObserver on the spine (jsdom has none,
+  // so the pill never renders in the other tests). Install a controllable observer and drive it.
+  it("shows the floating progress pill while the spine is scrolled out of view, hidden again in view", ASYNC, async () => {
+    const callbacks: IntersectionObserverCallback[] = [];
+    class MockIntersectionObserver {
+      constructor(cb: IntersectionObserverCallback) {
+        callbacks.push(cb);
+      }
+      observe() {}
+      disconnect() {}
+      unobserve() {}
+    }
+    vi.stubGlobal("IntersectionObserver", MockIntersectionObserver);
+    try {
+      mockFetch(READ_OK());
+      const { container } = render(<VerifyForm />);
+      const q = within(container);
+      const fire = (isIntersecting: boolean) =>
+        act(() => {
+          for (const cb of callbacks)
+            cb([{ isIntersecting } as IntersectionObserverEntry], {} as IntersectionObserver);
+        });
+      // Idle stage: even with the spine offscreen there is no progress to pin — no pill.
+      fire(false);
+      expect(q.queryByRole("button", { name: /Verification progress/i })).toBeNull();
+      dropLabelImage(container);
+      await q.findByText("Complete the application to verify");
+      fire(false);
+      const pill = q.getByRole("button", { name: /Verification progress/i });
+      expect(pill.getAttribute("aria-label")).toMatch(/Complete the application/i);
+      // The verdict re-labels the pill live.
+      fireEvent.click(q.getByRole("button", { name: /Accept all AI suggestions/i }));
+      await q.findByRole("region", { name: "Verification result" });
+      expect(
+        q.getByRole("button", { name: /Verification progress/i }).getAttribute("aria-label"),
+      ).toMatch(/Verdict: Approve/i);
+      // Clicking it jumps back to the spine (focus moves to the spine container).
+      fireEvent.click(q.getByRole("button", { name: /Verification progress/i }));
+      const spineWrap = q.getByRole("list", { name: /How this verification works/i }).parentElement!;
+      expect(document.activeElement).toBe(spineWrap);
+      // Back in view -> the pill withdraws.
+      fire(true);
+      expect(q.queryByRole("button", { name: /Verification progress/i })).toBeNull();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("the spine's Decision step updates when a decision is CHOSEN and completes when RECORDED", ASYNC, async () => {
     mockFetch(READ_OK());
     const { container } = render(<VerifyForm />);
     const q = within(container);
-    const front = q.getByRole("link", { name: /front label/i }) as HTMLAnchorElement;
-    expect(front.getAttribute("href")).toBe("/samples/fear-the-dragon-front.jpg");
-    expect(front.hasAttribute("download")).toBe(true);
-    expect(
-      (q.getByRole("link", { name: /^back label/i }) as HTMLAnchorElement).getAttribute("href"),
-    ).toBe("/samples/fear-the-dragon-back.jpg");
-    expect(
-      (q.getByRole("link", { name: /defective-warning back/i }) as HTMLAnchorElement).getAttribute("href"),
-    ).toBe("/samples/fear-the-dragon-warning-not-bold-back.jpg");
     dropLabelImage(container);
     await q.findByText("Complete the application to verify");
-    expect(q.queryByRole("link", { name: /front label/i })).toBeNull();
+    fireEvent.click(q.getByRole("button", { name: /Accept all AI suggestions/i }));
+    await q.findByRole("region", { name: "Verification result" });
+    const spine = within(q.getByRole("list", { name: /How this verification works/i }));
+    expect(spine.queryByText(/Decision chosen/i)).toBeNull(); // nothing chosen yet
+    // Choosing Approve moves the spine immediately (outlined disc), before any recording.
+    fireEvent.click(q.getByRole("button", { name: /Approve COLA/i }));
+    expect(spine.getByText(/Decision chosen, not yet recorded: Approve COLA/i)).toBeTruthy();
+    // Recording completes the stage (solid disc).
+    fireEvent.click(q.getByRole("button", { name: /Record decision & send email/i }));
+    expect(spine.getByText(/Decision recorded: Approve COLA/i)).toBeTruthy();
+    // "Change decision" reopens the stage: the spine must not keep claiming a recorded decision.
+    fireEvent.click(q.getByRole("button", { name: /Change decision/i }));
+    expect(spine.queryByText(/Decision recorded/i)).toBeNull();
+    expect(spine.queryByText(/Decision chosen/i)).toBeNull();
   });
 
   it("a failed read shows Try again, which retries WITHOUT wiping typed application values", ASYNC, async () => {

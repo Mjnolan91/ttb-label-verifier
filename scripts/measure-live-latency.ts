@@ -29,25 +29,25 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..
 /** The bundled demo products (front+back pairs) with the application values the README uses. */
 const SAMPLES = [
   {
-    name: "fear-the-dragon (clean pair)",
+    name: "fireball (clean pair)",
     files: [
-      { filename: "fear-the-dragon-front.jpg", position: "front" },
-      { filename: "fear-the-dragon-back.jpg", position: "back" },
+      { filename: "fireball-front.jpg", position: "front" },
+      { filename: "fireball-back.jpg", position: "back" },
     ],
-    brand: "Dragon Distillery",
+    brand: "Fireball",
     expect: "approve",
   },
   {
-    name: "fear-the-dragon (non-bold warning back)",
+    name: "fireball (non-bold warning back)",
     files: [
-      { filename: "fear-the-dragon-front.jpg", position: "front" },
-      { filename: "fear-the-dragon-warning-not-bold-back.jpg", position: "back" },
+      { filename: "fireball-front.jpg", position: "front" },
+      { filename: "fireball-warning-not-bold-back.jpg", position: "back" },
     ],
-    brand: "Dragon Distillery",
+    brand: "Fireball",
     expect: "reject",
   },
 ] as const;
-const ALCOHOL = "50% Alc./Vol. (100 Proof)";
+const ALCOHOL = "33% Alc./Vol. (66 Proof)";
 
 interface Run {
   ms: number;
