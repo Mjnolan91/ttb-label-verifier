@@ -38,7 +38,25 @@ import { applicationFromCsv, deriveProductVerdict, mergeApplication, type Produc
 import { useWorklist } from "./useWorklist";
 import { IconZoom } from "../ui/icons";
 
-const CONCURRENCY = 4;
+// Rows in flight at once. Cost-neutral throughput lever: concurrency changes WHEN the same model
+// calls happen, never how many. At 8, the steady-state upstream rate (~9-12 calls per ~4.5s row)
+// sits far inside a paid OpenAI tier's request limits; the AIMD pacer below discovers any tighter
+// token-per-minute ceiling via costless 429s and converges near it.
+const CONCURRENCY = 8;
+
+// Downscaling is main-thread canvas work (decode + draw + encode), so cache it per File: a retry,
+// re-read, or combine never redoes it, and the cache is warmed BEFORE taking a pacer slot so CPU
+// work stops occupying read concurrency. Same function, same filename: the uploaded bytes are
+// identical, so model inputs and the filename-keyed mock are untouched.
+const downscaleCache = new WeakMap<File, Promise<File>>();
+function downscaleCached(file: File): Promise<File> {
+  let pending = downscaleCache.get(file);
+  if (!pending) {
+    pending = downscaleForUpload(file);
+    downscaleCache.set(file, pending);
+  }
+  return pending;
+}
 
 interface ProductImages {
   product: string;
@@ -146,7 +164,7 @@ async function analyzeOnce(
   try {
     const form = new FormData();
     for (const img of group.images) {
-      form.append("image", await downscaleForUpload(img.file));
+      form.append("image", await downscaleCached(img.file));
       form.append("position", img.position);
     }
     const res = await fetch("/api/verify", { method: "POST", body: form });
@@ -199,6 +217,9 @@ async function analyzeProductWithRetry(
   onRetryNote: (note: string) => void,
 ): Promise<BatchRow> {
   let last: BatchRow | null = null;
+  // Warm the downscale cache off the paced slot (parallel per image; identical bytes either way),
+  // so the slot is spent on the network call, not on canvas CPU work.
+  await Promise.all(group.images.map((im) => downscaleCached(im.file)));
   for (let attempt = 0; attempt < MAX_READ_ATTEMPTS; attempt++) {
     await pacer.acquire();
     let out: { row: BatchRow; retryable: boolean };
@@ -460,12 +481,13 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
 
     let next = 0;
     let completed = 0;
-    // ONE pacer per run: any transient failure anywhere in the pool drops the in-flight target to 1
-    // and opens a cooldown; sustained success ramps it back toward CONCURRENCY.
-    const pacer = createPacer({ start: 3, min: 1, max: CONCURRENCY });
+    // ONE pacer per run: any transient failure anywhere in the pool HALVES the in-flight target
+    // and opens a bounded cooldown; sustained success ramps it back toward CONCURRENCY.
+    const pacer = createPacer({ start: 4, min: 1, max: CONCURRENCY });
     const worker = async (workerIndex: number) => {
-      // Stagger worker starts so the per-product request bursts don't align at t=0.
-      if (workerIndex > 0) await new Promise((r) => setTimeout(r, Math.floor(Math.random() * 300) * workerIndex));
+      // Stagger worker starts so the per-product request bursts don't align at t=0. Flat jitter:
+      // scaling the delay by worker index gave the last worker ~2s of dead time at 8 workers.
+      if (workerIndex > 0) await new Promise((r) => setTimeout(r, workerIndex * 100 + Math.random() * 200));
       while (next < groups.length) {
         const idx = next++;
         const product = groups[idx].product;
@@ -614,8 +636,11 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
           {images.length > 0 && (
             <>
               <p className="mt-2 text-sm text-ink-muted">
-                {images.length} image(s) → <strong className="text-ink">{groups.length} product(s)</strong>{" "}
-                {groups.some((g) => g.images.length > 1) ? "(some paired front/back)" : ""}
+                {images.length} {images.length === 1 ? "image" : "images"} grouped into{" "}
+                <strong className="text-ink">
+                  {groups.length} {groups.length === 1 ? "product" : "products"}
+                </strong>
+                {groups.some((g) => g.images.length > 1) ? ", some paired front and back" : ""}
               </p>
               <ul className="mt-3 flex flex-wrap gap-3">
                 {images.map((img, i) => (
@@ -677,7 +702,7 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
                 // silent: with no feedback the agent burns a whole batch run before noticing.
                 setError(
                   map.size === 0
-                    ? "No usable rows found in that CSV. Each row needs a filename column matching an uploaded image; download the template below for the expected format."
+                    ? "No usable rows found in that CSV. Each row needs a filename column matching an uploaded image; use the Download CSV template button above for the expected format."
                     : null,
                 );
               }
@@ -715,7 +740,7 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
             </button>
             {claimed.size > 0 && (
               <span className="text-sm text-ink-muted">
-                {claimed.size} application row(s) loaded. Matched products get an Approve / Needs review /
+                {claimed.size} application {claimed.size === 1 ? "row" : "rows"} loaded. Matched products get an Approve / Needs review /
                 Reject verdict once the row carries a brand (plus alcohol content where TTB requires it
                 for the type).
               </span>
@@ -828,7 +853,7 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
           </div>
           <ul className="divide-y divide-border text-sm">
             {visibleRows.length === 0 && (
-              <li className="px-3 py-4 text-ink-muted">No products in this view. Pick another chip above.</li>
+              <li className="px-3 py-4 text-ink-muted">No products in this view. Pick another filter above.</li>
             )}
             {visibleRows.map(({ r, i, d }) => {
               const { verdict, resolvedCompleteness, decision, category, pv, matchedClaim } = d;

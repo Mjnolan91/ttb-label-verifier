@@ -1,9 +1,9 @@
 /**
  * pacing.test.ts — the batch read's resilience math: which failures are worth retrying, the
  * full-jitter backoff schedule, and the adaptive concurrency gate (AIMD: any transient failure
- * drops the in-flight target to the floor and opens a cooldown; sustained success ramps back up).
+ * HALVES the target and opens a bounded cooldown; sustained success ramps back up).
  */
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createPacer, isRetryableStatus, retryDelayMs, MAX_READ_ATTEMPTS } from "./pacing";
 
 describe("isRetryableStatus", () => {
@@ -32,11 +32,11 @@ describe("MAX_READ_ATTEMPTS", () => {
 });
 
 describe("createPacer", () => {
-  it("drops the concurrency target to the floor on failure and ramps back after 3 successes", () => {
+  it("halves the concurrency target on failure (TCP-style) and ramps back after 3 successes", () => {
     const pacer = createPacer({ start: 3, min: 1, max: 4 });
     expect(pacer.target).toBe(3);
     pacer.reportFailure(50);
-    expect(pacer.target).toBe(1);
+    expect(pacer.target).toBe(1); // floor(3/2), clamped to min
     pacer.reportSuccess();
     pacer.reportSuccess();
     expect(pacer.target).toBe(1);
@@ -44,6 +44,35 @@ describe("createPacer", () => {
     expect(pacer.target).toBe(2);
     for (let i = 0; i < 9; i++) pacer.reportSuccess();
     expect(pacer.target).toBe(4); // never above max
+  });
+
+  it("halves rather than cratering: one 429 must not collapse a wide pool to 1", () => {
+    const pacer = createPacer({ start: 8, min: 1, max: 8 });
+    pacer.reportFailure(50);
+    expect(pacer.target).toBe(4);
+    pacer.reportFailure(50);
+    expect(pacer.target).toBe(2);
+    pacer.reportFailure(50);
+    expect(pacer.target).toBe(1); // sustained failure still reaches the floor fast
+  });
+
+  it("caps the pool-wide cooldown even when the failing row's backoff is far longer", async () => {
+    vi.useFakeTimers();
+    try {
+      const pacer = createPacer({ start: 2, min: 1, max: 8 });
+      pacer.reportFailure(60_000); // the row sleeps this; the POOL must not
+      let acquired = false;
+      const p = pacer.acquire().then(() => {
+        acquired = true;
+      });
+      await vi.advanceTimersByTimeAsync(4_900);
+      expect(acquired).toBe(false); // still inside the capped window
+      await vi.advanceTimersByTimeAsync(200);
+      await p;
+      expect(acquired).toBe(true); // free after ~5s, not 60s
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("acquire blocks while in-flight is at the target, and unblocks on release", async () => {

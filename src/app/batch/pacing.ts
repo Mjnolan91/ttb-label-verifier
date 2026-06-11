@@ -10,8 +10,11 @@
  *  - retryDelayMs: full-jitter exponential backoff (AWS-style). Jitter is load-bearing: four rows
  *    failing together must not re-burst together.
  *  - createPacer: an adaptive concurrency gate (AIMD). Any transient failure anywhere in the pool
- *    drops the in-flight target to the floor and opens a cooldown window (a lightweight circuit
- *    breaker); sustained success ramps the target back up one step per 3 consecutive successes.
+ *    HALVES the in-flight target (TCP-style multiplicative decrease, so the pool converges near the
+ *    provider's sustainable rate instead of cratering to 1) and opens a bounded cooldown window (a
+ *    lightweight circuit breaker; the failing row still sleeps its full jittered backoff, but the
+ *    REST of the pool resumes within seconds); sustained success ramps the target back up one step
+ *    per 3 consecutive successes.
  *
  * "It should never fail, it should try until it gets it right" is implemented as BOUNDED
  * persistence: 6 total attempts (~1 minute of full-jitter backoff) + an honest terminal state +
@@ -39,7 +42,7 @@ export interface Pacer {
   release(): void;
   /** A completed read: ramp the target up one step per 3 consecutive successes. */
   reportSuccess(): void;
-  /** A transient failure: drop the target to the floor and pause new dispatches for `cooldownMs`. */
+  /** A transient failure: halve the target and pause new dispatches for a bounded cooldown. */
   reportFailure(cooldownMs: number): void;
   readonly target: number;
 }
@@ -79,9 +82,13 @@ export function createPacer(
       }
     },
     reportFailure(cooldownMs: number) {
-      target = min;
+      // Halve, don't floor: three consecutive failures still reach the floor, but a single 429 no
+      // longer costs the whole pool ~30-60s (floor-to-1 + a full jittered backoff as a global pause
+      // + a 3-successes-per-step climb). The failing ROW still sleeps its entire backoff; only the
+      // pool-wide dispatch pause is capped.
+      target = Math.max(min, Math.floor(target / 2));
       successStreak = 0;
-      cooldownUntil = Math.max(cooldownUntil, Date.now() + cooldownMs);
+      cooldownUntil = Math.max(cooldownUntil, Date.now() + Math.min(cooldownMs, 5_000));
     },
   };
 }

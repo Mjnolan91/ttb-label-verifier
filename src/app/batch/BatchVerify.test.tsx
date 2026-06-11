@@ -68,7 +68,7 @@ describe("BatchVerify — verify against an application CSV", () => {
     fireEvent.change(csvInput, { target: { files: [csvFile] } });
 
     // Wait for the async CSV parse to commit (so process() sees the loaded claimed values).
-    await q.findByText(/application row\(s\) loaded/i);
+    await q.findByText(/application rows? loaded/i);
     fireEvent.click(q.getByRole("button", { name: /Read all labels/i }));
 
     // The product matches a claimed row, so verifyLabel runs and a verdict badge appears (human label).
@@ -119,7 +119,7 @@ describe("BatchVerify — verify against an application CSV", () => {
     const csvFile = new File([csv], "claims.csv", { type: "text/csv" });
     Object.defineProperty(csvFile, "text", { value: () => Promise.resolve(csv) });
     fireEvent.change(q.getByLabelText(/Application values CSV/i) as HTMLInputElement, { target: { files: [csvFile] } });
-    await q.findByText(/application row\(s\) loaded/i);
+    await q.findByText(/application rows? loaded/i);
     fireEvent.click(q.getByRole("button", { name: /Read all labels/i }));
     // The row badge is capped: Needs review, not Approve.
     expect(await q.findByText("Needs review")).toBeTruthy();
@@ -353,7 +353,7 @@ describe("BatchVerify — verify against an application CSV", () => {
     const csvFile = new File([csv], "claims.csv", { type: "text/csv" });
     Object.defineProperty(csvFile, "text", { value: () => Promise.resolve(csv) });
     fireEvent.change(q.getByLabelText(/Application values CSV/i) as HTMLInputElement, { target: { files: [csvFile] } });
-    await q.findByText(/application row\(s\) loaded/i);
+    await q.findByText(/application rows? loaded/i);
     fireEvent.click(q.getByRole("button", { name: /Read all labels/i }));
     return q;
   }
@@ -428,7 +428,7 @@ describe("BatchVerify — verify against an application CSV", () => {
     Object.defineProperty(csvFile, "text", { value: () => Promise.resolve(csv) });
     fireEvent.change(q.getByLabelText(/Application values CSV/i), { target: { files: [csvFile] } });
     expect(await q.findByText(/No usable rows/i)).toBeTruthy();
-    expect(q.queryByText(/application row\(s\) loaded/i)).toBeNull();
+    expect(q.queryByText(/application rows? loaded/i)).toBeNull();
   });
 
   it("the 'add images' validation error clears once images are added", { retry: 2 }, async () => {
@@ -713,7 +713,7 @@ describe("BatchVerify — verify against an application CSV", () => {
     const csvFile = new File([csv], "claims.csv", { type: "text/csv" });
     Object.defineProperty(csvFile, "text", { value: () => Promise.resolve(csv) });
     fireEvent.change(q.getByLabelText(/Application values CSV/i), { target: { files: [csvFile] } });
-    await q.findByText(/application row\(s\) loaded/i);
+    await q.findByText(/application rows? loaded/i);
     fireEvent.click(q.getByRole("button", { name: /Read all labels/i }));
     expect(await q.findByText("Couldn't read")).toBeTruthy();
     expect(await q.findByText("Approve")).toBeTruthy();
