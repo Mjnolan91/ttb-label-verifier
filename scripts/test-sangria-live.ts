@@ -1,10 +1,11 @@
 /**
- * test-sangria-live.ts — run the user's Sailor Sally's Sangria scenario against a LIVE /api/verify.
+ * test-sangria-live.ts — replay a reported import-origin scenario against a LIVE /api/verify.
  *
- * Renders a faithful raster of the reported label (front + back panels: dual responsibility lines,
+ * Renders a faithful raster of the reported label, a sangria whose back panel carries an importer
+ * line but no country-of-origin statement (front + back panels: dual responsibility lines,
  * "PRODUCED & BOTTLED BY … VALENCIA, SPAIN." + "IMPORTED BY: SEA TRADER IMPORTS, MIAMI, FL.",
  * deliberately NO "Product of Spain" statement), POSTs it with the application values from the
- * user's screenshot, and reports what the live model read, what completeness flagged, the combined
+ * reported case, and reports what the live model read, what completeness flagged, the combined
  * verdict, and the wall-clock time.
  *
  *   npx tsx scripts/test-sangria-live.ts [baseUrl] [rounds]
