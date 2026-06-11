@@ -198,6 +198,15 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
   const headlineRef = useRef<HTMLHeadingElement>(null);
   const readToken = useRef(0);
   const neckInputRef = useRef<HTMLInputElement>(null);
+  // Set by the explicit Accept-all click when the fill will complete the required set; consumed by
+  // an effect below to land the user on the verdict that click just produced. Never set on the
+  // typing path: stealing focus mid-keystroke would be hostile, the live region covers it.
+  const pendingVerdictFocus = useRef(false);
+  // Completes the spine's final stage when DecisionPanel records a decision; restarts per read.
+  const [decided, setDecided] = useState(false);
+  // Honest reassurance for long reads (rescue/warning-focus escalations): flips the visible loading
+  // line's copy after ~6s. Most reads finish inside the ~5s budget and never show it.
+  const [slowRead, setSlowRead] = useState(false);
 
   useEffect(() => {
     if (state !== "done") return;
@@ -303,9 +312,18 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
   }
   // Fill every still-empty field that has a suggestion, in one click.
   function acceptAllSuggestions() {
+    // Will this click complete the required set? Then it deserves to land on the verdict it is
+    // about to produce (the verdict renders far below the button); a partial fill stays put.
+    const willComplete =
+      requiredKeys.length > 0 &&
+      requiredKeys.every((k) => {
+        const f = appInputs.find((x) => x.key === k);
+        return Boolean(f && (f.value.trim() || f.suggestion?.trim()));
+      });
     for (const f of appInputs) {
       if (f.value.trim() === "" && f.suggestion && f.suggestion.trim()) f.set(f.suggestion.trim());
     }
+    if (willComplete) pendingVerdictFocus.current = true;
   }
   const hasUnacceptedSuggestions = appInputs.some((f) => f.value.trim() === "" && f.suggestion?.trim());
   const hasAnySuggestion = appInputs.some((f) => f.suggestion?.trim());
@@ -317,6 +335,12 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
     setFormError(null);
     setFieldOverrides({}); // a fresh read re-evaluates; drop the prior verdict's human overrides
     setFieldNotes({}); // and the notes that went with them
+    setDecided(false); // the spine's Decision stage restarts with the new read
+    pendingVerdictFocus.current = false;
+    setSlowRead(false);
+    const slowTimer = setTimeout(() => {
+      if (token === readToken.current) setSlowRead(true);
+    }, 6000);
     try {
       const body = new FormData();
       for (const img of imgs) {
@@ -338,6 +362,8 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
         setFormError("Could not reach the label reader. Please try again.");
         setState("error");
       }
+    } finally {
+      clearTimeout(slowTimer);
     }
   }
 
@@ -393,7 +419,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
     if (frontReplaced) resetApplication();
     setPlacementNotice(
       leftovers.length > 0
-        ? `${leftovers.length} ${leftovers.length === 1 ? "file was" : "files were"} not used. This screen verifies one product (front, back, and neck labels); Batch mode reads many products at once.`
+        ? `${leftovers.length} ${leftovers.length === 1 ? "file was" : "files were"} not used. This screen verifies one product (front, back, and neck labels); batch mode reads many products at once.`
         : null,
     );
     setSlots(next);
@@ -460,11 +486,16 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
   }
 
   const missingLabels = missingKeys.map((k) => KEY_LABEL[k]);
-  const announce = !extracted
-    ? ""
-    : combined?.verify
-      ? `Verdict: ${VERDICT_LABEL[shownOverall ?? "review"]}.`
-      : `Label read. Complete the required application fields to verify: ${missingLabels.join(", ")}.`;
+  // One persistent live region carries every phase (a region that MOUNTS with its text is routinely
+  // missed by screen readers, so the loading message lives here, not in a conditional block).
+  const announce =
+    state === "loading"
+      ? "Reading the label. This takes a few seconds."
+      : !extracted
+        ? ""
+        : combined?.verify
+          ? `Verdict: ${VERDICT_LABEL[shownOverall ?? "review"]}.`
+          : `Label read. Complete the required application fields to verify: ${missingLabels.join(", ")}.`;
 
   // The lightbox carries EVERY uploaded image (front first) so "confirm it on the label" never
   // means the front only — the government warning usually lives on the back. Slot labels name
@@ -475,8 +506,18 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
   }));
   const viewLabelImages = lightboxImages.length > 0 ? () => setZoom(lightboxImages[0]) : undefined;
 
-  const pipelineStage: "reading" | "awaiting" | "done" | null =
-    state === "loading" ? "reading" : readable ? (combined?.verify ? "done" : "awaiting") : null;
+  const pipelineStage: "idle" | "reading" | "awaiting" | "done" =
+    state === "loading" ? "reading" : readable ? (combined?.verify ? "done" : "awaiting") : "idle";
+
+  // Land on the verdict the explicit Accept-all click just produced. The flag is only ever set on
+  // that click path, so a verdict that appears while the user is typing never steals focus; the
+  // effect runs every render and is gated by the ref, avoiding dependency-identity churn.
+  useEffect(() => {
+    if (combined?.verify && pendingVerdictFocus.current) {
+      pendingVerdictFocus.current = false;
+      headlineRef.current?.focus();
+    }
+  });
 
   const neckVisible = neckRevealed || Boolean(slots.neck);
   const slotKeys: readonly SlotKey[] = neckVisible ? ["front", "back", "neck"] : ["front", "back"];
@@ -491,11 +532,18 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
         Read &amp; verify a label
       </h2>
       <p className="mt-1 text-ink-muted">
-        Upload the product&apos;s front label (plus the back or neck, if you have them). The AI reads it, then you
-        confirm what the application claims. The screen checks the label against the application
-        field-by-field and the statutory government warning, and flags every mismatch as Approve / Needs
-        review / Reject.
+        Upload the product&apos;s labels and confirm what the application claims. The screen checks the
+        label against the application field by field, plus the statutory government warning, and gives
+        a clear verdict: Approve, Needs review, or Reject.
       </p>
+
+      {/* The order-of-operations spine: ONE step model for the whole screen (its stages mirror the
+          section headings 1:1; the AI read is stage 1's spinner, not a numbered step). It lives at
+          the top so the reading state is in the same viewport as the upload slot the user just acted
+          on, and so it orients a first-time user before the first upload. */}
+      <div className="mt-5">
+        <PipelineSteps stage={pipelineStage} verdict={shownOverall ?? undefined} decided={decided} />
+      </div>
 
       {mockMode && (
         <p className="mt-3 rounded-field border border-border bg-surface-muted px-3 py-2.5 text-sm text-ink-muted">
@@ -632,6 +680,17 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
             .
           </p>
         )}
+        {/* The read's live status, co-located with the slot the user just dropped into (all other
+            processing feedback used to sit below the 9-input application grid, below the fold at
+            exactly the moment the user wonders whether anything is happening). */}
+        {state === "loading" && (
+          <p className="mt-3 flex items-center gap-2 text-sm text-ink-muted">
+            <IconSpinner className="h-5 w-5 shrink-0 motion-safe:animate-spin" />
+            {slowRead
+              ? "Still reading. Large or multi-image products take a little longer."
+              : "Reading the label… usually a few seconds."}
+          </p>
+        )}
       </div>
 
       {/* Step 2 — the application: the reference the label is verified against. The AI's reading is
@@ -657,7 +716,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
         <p className="mb-3 mt-1 text-sm text-ink-muted">
           {extracted ? (
             <>
-              The AI&apos;s reading is suggested in grey. Press <kbd className="rounded border border-border bg-surface-muted px-1 font-sans text-xs">Tab</kbd> to accept a field, or use{" "}
+              The AI&apos;s reading is suggested in gray. Press <kbd className="rounded border border-border bg-surface-muted px-1 font-sans text-xs">Tab</kbd> to accept a field, or use{" "}
               <strong className="text-ink">Accept all</strong>. Fields TTB requires for this type are
               marked <span className="font-bold text-fail-900">*</span> and must be filled to verify.
             </>
@@ -780,13 +839,6 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
         </div>
       </div>
 
-      {/* The order-of-operations spine: read the label → AI confidence → compare → verdict. */}
-      {pipelineStage && (
-        <div className="mt-8 border-t border-border pt-6">
-          <PipelineSteps stage={pipelineStage} verdict={shownOverall ?? undefined} />
-        </div>
-      )}
-
       <p role="status" aria-live="polite" className="sr-only">
         {announce}
       </p>
@@ -809,18 +861,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
         </div>
       )}
 
-      {state === "loading" && (
-        <>
-          <p role="status" aria-live="polite" className="sr-only">
-            Reading the label…
-          </p>
-          <div className="mt-4 flex items-center gap-2 text-ink-muted">
-            <IconSpinner className="h-5 w-5 motion-safe:animate-spin" /> Reading the label… this takes a
-            few seconds.
-          </div>
-          <ResultSkeleton />
-        </>
-      )}
+      {state === "loading" && <ResultSkeleton />}
 
       {/* Results — the headline IS the label-vs-application comparison, shown once every required field
           for the beverage type is supplied. Until then, the screen lists exactly what's still needed
@@ -854,6 +895,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
                 brand={claimBrand}
                 approveNotes={approveNotes}
                 rejectNotes={rejectNotes}
+                onRecord={() => setDecided(true)}
               />
             </>
           ) : (
@@ -869,8 +911,9 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
                     Complete the application to verify
                   </h2>
                   <p className="mt-1.5 text-sm text-ink">
-                    The label was read. TTB requires {missingKeys.length === 1 ? "this field" : "these fields"} for a{" "}
-                    <strong>{CLASS_DISPLAY_LABEL[beverageClass]}</strong> before a verdict:
+                    The label was read, and this product reads as{" "}
+                    <strong>{CLASS_DISPLAY_LABEL[beverageClass]}</strong>. TTB requires{" "}
+                    {missingKeys.length === 1 ? "this field" : "these fields"} before a verdict:
                   </p>
                   <ul className="mt-2 flex flex-wrap gap-2">
                     {missingKeys.map((k) => (
@@ -883,7 +926,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
                     ))}
                   </ul>
                   <p className="mt-2.5 text-sm text-ink-muted">
-                    Accept the grey suggestions above (Tab or <strong className="text-ink">Accept all</strong>), or
+                    Accept the gray suggestions above (Tab or <strong className="text-ink">Accept all</strong>), or
                     type the application&apos;s values.
                   </p>
                 </div>

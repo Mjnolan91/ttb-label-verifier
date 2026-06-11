@@ -3,20 +3,21 @@ import { TONE_ICON, TONE_SOLID_VAR, VERDICT_LABEL, toneForStatus } from "./statu
 import type { OverallVerdict } from "@/compare";
 
 /**
- * PipelineSteps — a compact, always-visible spine that makes the ORDER OF OPERATIONS legible:
- * Upload → AI reads the label (with a confidence score) → Compare to the application → Verdict.
- *
- * The final "Verdict" step reflects the OUTCOME: once a verdict is reached it turns green (Approve),
- * amber (Needs review), or red (Reject) and shows the verdict word, so the spine mirrors the headline
- * (and re-colors live as a reviewer resolves flags). Presentational only; the active stage + verdict
- * are passed in. Rendered as an ordered list with aria-current on the active step.
+ * PipelineSteps — the compact spine at the TOP of the verify card, and the screen's ONE step model:
+ * its four stages mirror the section headings 1:1 (Label images / The application / Label vs.
+ * application / Your decision), so the spine's numbers and the "Step N ·" eyebrows always agree.
+ * The AI read is deliberately NOT a numbered stage: it is machine work inside stage 1 finishing
+ * (the marker spins while reading; the status line under the upload slots narrates it). Stage 3
+ * shows the traffic-light verdict disc once a verdict exists (the verdict IS the comparison's
+ * output) and re-colors live as a reviewer resolves flags; stage 4 completes when a decision is
+ * recorded. Presentational only; rendered as an ordered list with aria-current on the active step.
  */
 
-type Stage = "reading" | "awaiting" | "done";
+type Stage = "idle" | "reading" | "awaiting" | "done";
 
-const STEPS = ["Upload label", "AI reads label", "Compare to application", "Verdict"] as const;
+const STEPS = ["Label images", "The application", "Label vs. application", "Your decision"] as const;
 
-function StepMarker({ state, n }: { state: "done" | "active" | "pending"; n: number }) {
+function StepMarker({ state, n, spinning }: { state: "done" | "active" | "pending"; n: number; spinning?: boolean }) {
   const base =
     "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold transition";
   const srState =
@@ -31,15 +32,10 @@ function StepMarker({ state, n }: { state: "done" | "active" | "pending"; n: num
     );
   }
   if (state === "active") {
-    return n === 2 ? (
+    return (
       <span className={`${base} border-2 border-brand-600 bg-brand-50 text-brand-700`}>
         {sr}
-        <IconSpinner className="h-4 w-4 motion-safe:animate-spin" />
-      </span>
-    ) : (
-      <span className={`${base} border-2 border-brand-600 bg-brand-50 text-brand-700`}>
-        {sr}
-        <span aria-hidden="true">{n}</span>
+        {spinning ? <IconSpinner className="h-4 w-4 motion-safe:animate-spin" /> : <span aria-hidden="true">{n}</span>}
       </span>
     );
   }
@@ -51,7 +47,7 @@ function StepMarker({ state, n }: { state: "done" | "active" | "pending"; n: num
   );
 }
 
-/** The final step once a verdict exists: a filled disc in the verdict's traffic-light color. */
+/** Stage 3 once a verdict exists: a filled disc in the verdict's traffic-light color. */
 function VerdictMarker({ verdict }: { verdict: OverallVerdict }) {
   const tone = toneForStatus(verdict);
   const Icon = TONE_ICON[tone];
@@ -66,28 +62,41 @@ function VerdictMarker({ verdict }: { verdict: OverallVerdict }) {
   );
 }
 
-export function PipelineSteps({ stage, verdict }: { stage: Stage; verdict?: OverallVerdict }) {
-  // Index of the currently-active step: reading -> "AI reads", awaiting -> "Compare", done -> "Verdict".
-  const activeIndex = stage === "reading" ? 1 : stage === "awaiting" ? 2 : 3;
+export function PipelineSteps({
+  stage,
+  verdict,
+  decided = false,
+}: {
+  stage: Stage;
+  verdict?: OverallVerdict;
+  decided?: boolean;
+}) {
+  // Index of the currently-active step. idle AND reading sit on step 1 (the read is stage 1
+  // finishing, not a step of its own); awaiting -> step 2; a verdict -> step 4 until decided.
+  const activeIndex = stage === "awaiting" ? 1 : stage === "done" ? (decided ? 4 : 3) : 0;
   return (
     <ol aria-label="How this verification works, in order" className="flex items-start">
       {STEPS.map((label, i) => {
         const state = i < activeIndex ? "done" : i === activeIndex ? "active" : "pending";
-        const isVerdictStep = i === STEPS.length - 1;
-        const showVerdict = isVerdictStep && stage === "done" && verdict !== undefined;
+        // The comparison step carries the verdict disc instead of a plain check once a verdict exists.
+        const showVerdict = i === 2 && stage === "done" && verdict !== undefined;
         const isFirst = i === 0;
-        const isLast = isVerdictStep;
+        const isLast = i === STEPS.length - 1;
         return (
           <li
             key={label}
             className="flex flex-1 flex-col items-center text-center"
-            aria-current={state === "active" && !showVerdict ? "step" : undefined}
+            aria-current={state === "active" ? "step" : undefined}
           >
             <div className="flex w-full items-center">
               <span
                 className={`h-0.5 flex-1 ${isFirst ? "opacity-0" : i <= activeIndex ? "bg-brand-500" : "bg-border"}`}
               />
-              {showVerdict ? <VerdictMarker verdict={verdict} /> : <StepMarker state={state} n={i + 1} />}
+              {showVerdict ? (
+                <VerdictMarker verdict={verdict} />
+              ) : (
+                <StepMarker state={state} n={i + 1} spinning={i === 0 && stage === "reading"} />
+              )}
               <span
                 className={`h-0.5 flex-1 ${isLast ? "opacity-0" : i < activeIndex ? "bg-brand-500" : "bg-border"}`}
               />

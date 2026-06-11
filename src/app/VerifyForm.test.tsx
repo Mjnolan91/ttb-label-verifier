@@ -73,7 +73,9 @@ describe("VerifyForm — verify against the application", () => {
     const q = within(container);
     dropLabelImage(container);
     expect(await q.findByText("Complete the application to verify")).toBeTruthy();
-    expect(q.queryByText(/Label vs\. application/)).toBeNull();
+    // The results section itself must not render yet (the spine at the top always names the steps,
+    // so probe the ResultView region, not its heading text).
+    expect(q.queryByRole("region", { name: "Verification result" })).toBeNull();
   });
 
   it("accepting the AI suggestions completes the application and leads with an Approve comparison", ASYNC, async () => {
@@ -83,7 +85,7 @@ describe("VerifyForm — verify against the application", () => {
     dropLabelImage(container);
     await q.findByText("Complete the application to verify");
     fireEvent.click(q.getByRole("button", { name: /Accept all AI suggestions/i }));
-    expect(await q.findByText(/Label vs\. application/)).toBeTruthy();
+    expect(await q.findByRole("region", { name: "Verification result" })).toBeTruthy();
     expect(q.getByText("Approve")).toBeTruthy();
   });
 
@@ -96,7 +98,7 @@ describe("VerifyForm — verify against the application", () => {
     // Brand + alcohol alone is NOT enough for distilled spirits (also needs class/type, net, name, address).
     fireEvent.change(q.getByLabelText(/^Brand/i), { target: { value: "Old Tom Distillery" } });
     fireEvent.change(q.getByLabelText(/^Alcohol content/i), { target: { value: "45% Alc./Vol." } });
-    expect(q.queryByText(/Label vs\. application/)).toBeNull(); // still blocked
+    expect(q.queryByRole("region", { name: "Verification result" })).toBeNull(); // still blocked
     expect(q.getByText("Complete the application to verify")).toBeTruthy();
   });
 
@@ -120,8 +122,7 @@ describe("VerifyForm — verify against the application", () => {
     await q.findByText("Complete the application to verify");
     fireEvent.click(q.getByRole("button", { name: /Accept all AI suggestions/i }));
     fireEvent.change(q.getByLabelText(/^Net contents/i), { target: { value: "375 mL" } }); // label says 750 mL
-    await q.findByText(/Label vs\. application/);
-    const panel = within(q.getByRole("region", { name: "Verification result" }));
+    const panel = within(await q.findByRole("region", { name: "Verification result" }));
     expect(panel.getByText("Net contents")).toBeTruthy();
     expect(panel.getByText("No match")).toBeTruthy();
     expect(q.getByText("Reject")).toBeTruthy();
@@ -284,7 +285,7 @@ describe("VerifyForm — verify against the application", () => {
     expect(fanciful.required).toBe(false);
     // Accepting the AI suggestions (which carry no fanciful/SoC for a standard bourbon) still verifies.
     fireEvent.click(q.getByRole("button", { name: /Accept all AI suggestions/i }));
-    expect(await q.findByText(/Label vs\. application/)).toBeTruthy();
+    expect(await q.findByRole("region", { name: "Verification result" })).toBeTruthy();
     expect(q.getByText("Approve")).toBeTruthy();
   });
 
@@ -580,7 +581,7 @@ describe("VerifyForm — verify against the application", () => {
     const q = within(container);
     dropLabelImage(container);
     expect(await q.findByText(/Couldn.t read the label/i)).toBeTruthy();
-    expect(q.queryByText(/Label vs\. application/)).toBeNull();
+    expect(q.queryByRole("region", { name: "Verification result" })).toBeNull();
     expect(q.queryByText("Complete the application to verify")).toBeNull();
   });
 });
