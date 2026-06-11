@@ -47,6 +47,7 @@ import { ResultSkeleton } from "./ui/ResultSkeleton";
 import { inputClass, linkClass, secondaryButtonClass } from "./ui/fieldStyles";
 import { downloadJson, downloadCsv } from "./ui/download";
 import { analysisToCsv } from "@/batch/csv";
+import { parsePositionToken } from "@/batch/pairing";
 import { ImageLightbox } from "./ui/ImageLightbox";
 import { ForwardLookingNote } from "./ui/ForwardLookingNote";
 import { VERDICT_LABEL } from "./ui/status";
@@ -121,6 +122,8 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
   // The neck/strip slot is hidden until asked for (most products have none). It stays open while a
   // neck image is loaded and collapses back to the disclosure button when that image is removed.
   const [neckRevealed, setNeckRevealed] = useState(false);
+  // A multi-select placed more files than the three slots hold: say so, never lose files silently.
+  const [placementNotice, setPlacementNotice] = useState<string | null>(null);
   const [state, setState] = useState<SubmitState>("idle");
   const [formError, setFormError] = useState<string | null>(null);
   const [response, setResponse] = useState<VerifyApiResponse | null>(null);
@@ -344,13 +347,55 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
   // the setSlots call: React Strict Mode double-invokes setState UPDATER functions in dev, so an
   // updater with a fetch inside fires every upload twice (doubled vision-API cost) and leaks one
   // object URL per upload. Updaters must be pure; the new state is computed from the current render.
-  function setSlot(key: SlotKey, file: File) {
-    const old = slots[key];
-    if (old) {
+  /**
+   * Place a multi-file selection in ONE state update + ONE read. Files with an explicit filename
+   * position token (-front/-back/-neck, see parsePositionToken) claim their slot — replacing what
+   * is there, since the user just said which label this is; the first claimant wins a token
+   * collision and later claimants join the tokenless pool. Tokenless files fill EMPTY slots only:
+   * the zone they were dropped on first, then front, back, neck. Anything beyond three images
+   * surfaces an honest notice (this screen verifies ONE product) — never silent loss. Replacing
+   * the FRONT is a product change, so the typed application resets (clearSlot's rule).
+   */
+  function placeFiles(slotHint: SlotKey, files: File[]) {
+    if (files.length === 0) return;
+    const next: Slots = { ...slots };
+    const replaced: LabelImage[] = [];
+    let frontReplaced = false;
+    const put = (key: SlotKey, file: File) => {
+      const old = next[key];
+      if (old) replaced.push(old);
+      if (key === "front" && slots.front) frontReplaced = true;
+      next[key] = { file, preview: URL.createObjectURL(file), position: key as LabelPosition };
+    };
+    const tokenless: File[] = [];
+    const claimed = new Set<SlotKey>();
+    for (const file of files) {
+      const { position } = parsePositionToken(file.name);
+      if (position && position !== "other" && !claimed.has(position)) {
+        claimed.add(position);
+        put(position, file);
+      } else {
+        tokenless.push(file);
+      }
+    }
+    const fillOrder: SlotKey[] = [slotHint, "front", "back", "neck"];
+    const leftovers: File[] = [];
+    for (const file of tokenless) {
+      const empty = fillOrder.find((k) => !next[k]);
+      if (empty) put(empty, file);
+      else leftovers.push(file);
+    }
+    for (const old of replaced) {
       if (zoom?.src === old.preview) setZoom(null);
       URL.revokeObjectURL(old.preview);
     }
-    const next = { ...slots, [key]: { file, preview: URL.createObjectURL(file), position: key as LabelPosition } };
+    if (next.neck) setNeckRevealed(true);
+    if (frontReplaced) resetApplication();
+    setPlacementNotice(
+      leftovers.length > 0
+        ? `${leftovers.length} ${leftovers.length === 1 ? "file was" : "files were"} not used. This screen verifies one product (front, back, and neck labels); Batch mode reads many products at once.`
+        : null,
+    );
     setSlots(next);
     void read(orderedImagesOf(next));
   }
@@ -460,8 +505,9 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
       <div className="mt-6">
         <h3 className="mb-1.5 block font-medium text-ink">Step 1 · Label images</h3>
         <p id={ids.imageHelp} className="sr-only">
-          Upload the front label (required) and optionally the back and neck or strip labels. Click an
-          image to enlarge it.
+          Upload the front label (required) and optionally the back and neck or strip labels. You can
+          select several photos at once: filenames like name-front and name-back place themselves, and
+          the rest fill the open slots in order. Click an image to enlarge it.
         </p>
         <div className="grid gap-4 sm:grid-cols-2">
           {slotKeys.map((key) => {
@@ -504,11 +550,10 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
                 ) : (
                   <DropZone
                     id={`${ids.image}-${key}`}
-                    multiple={false}
                     required={required}
                     ariaLabel={ariaLabel}
                     inputRef={key === "neck" ? neckInputRef : undefined}
-                    onFiles={(files) => files[0] && setSlot(key, files[0])}
+                    onFiles={(files) => placeFiles(key, files)}
                     describedById={ids.imageHelp}
                   />
                 )}
@@ -516,6 +561,22 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
             );
           })}
         </div>
+        {/* A multi-select bigger than the three slots: say what was left out, offer no silent loss. */}
+        {placementNotice && (
+          <p
+            role="status"
+            className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-field border border-border bg-surface-muted px-3 py-2 text-sm text-ink"
+          >
+            <span className="min-w-[14rem] flex-1">{placementNotice}</span>
+            <button
+              type="button"
+              onClick={() => setPlacementNotice(null)}
+              className="min-h-[36px] shrink-0 rounded-field border border-border-strong px-2.5 text-xs font-semibold text-ink transition hover:border-brand-600 hover:text-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700"
+            >
+              Dismiss
+            </button>
+          </p>
+        )}
         {/* A PARTIAL read warns loudly: the merge proceeded from the surviving images, so the
             extracted fields below are honest but incomplete — never let that look like a clean read. */}
         {readable && response?.imageFailures && response.imageFailures.length > 0 && (

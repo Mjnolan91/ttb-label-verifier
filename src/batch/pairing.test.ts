@@ -2,7 +2,25 @@
  * pairing.test.ts — the batch front/back/neck grouping convention.
  */
 import { describe, it, expect } from "vitest";
-import { groupImagesByProduct } from "./pairing";
+import { groupImagesByProduct, parsePositionToken } from "./pairing";
+
+describe("parsePositionToken", () => {
+  it("reports an EXPLICIT position token, and null when the filename carries none", () => {
+    // The single screen's multi-file placement needs the difference: an explicit "-back" claims the
+    // Back slot; a tokenless file fills empty slots in order. groupImagesByProduct's tokenless
+    // default ("front") cannot express that distinction.
+    expect(parsePositionToken("acme-back.jpg")).toEqual({ product: "acme", position: "back" });
+    expect(parsePositionToken("acme_n.png")).toEqual({ product: "acme", position: "neck" });
+    expect(parsePositionToken("IMG_1234.jpg")).toEqual({ product: "IMG_1234", position: null });
+    expect(parsePositionToken("demo-old-tom-clean.png")).toEqual({ product: "demo-old-tom-clean", position: null });
+  });
+
+  it("strips download and copy suffixes before parsing the token", () => {
+    expect(parsePositionToken("acme-back (1).jpg").position).toBe("back");
+    expect(parsePositionToken("acme-back(1).jpg").position).toBe("back");
+    expect(parsePositionToken("acme-back - Copy.jpg").position).toBe("back");
+  });
+});
 
 describe("groupImagesByProduct", () => {
   it("pairs front + back of one product by shared base name", () => {
@@ -37,6 +55,11 @@ describe("groupImagesByProduct", () => {
     expect(groups).toHaveLength(1);
     expect(groups[0].product).toBe("acme");
     expect(groups[0].images.map((i) => i.position)).toEqual(["front", "back"]);
+  });
+
+  it("pairs Windows Explorer ' - Copy' and no-space '(n)' duplicates with their product", () => {
+    expect(groupImagesByProduct(["acme-front.jpg", "acme-back - Copy.jpg"])).toHaveLength(1);
+    expect(groupImagesByProduct(["acme-front.jpg", "acme-back(1).jpg"])).toHaveLength(1);
   });
 
   it("recognizes _, space, and short-form tokens, and neck", () => {

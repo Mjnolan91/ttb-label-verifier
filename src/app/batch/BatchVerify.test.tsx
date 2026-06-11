@@ -15,6 +15,11 @@ import { CANONICAL_GOVERNMENT_WARNING } from "@/domain";
 vi.mock("../imageDownscale", () => ({
   downscaleForUpload: (file: File) => Promise.resolve(file),
 }));
+// Collapse the retry backoff to ~1ms so the bounded-persistence flows settle fast under test.
+vi.mock("./pacing", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./pacing")>()),
+  retryDelayMs: () => 1,
+}));
 // Stub the file-download side effect so the export payload can be inspected without a real download.
 vi.mock("../ui/download", () => ({ downloadJson: vi.fn(), downloadCsv: vi.fn() }));
 
@@ -127,6 +132,194 @@ describe("BatchVerify — verify against an application CSV", () => {
     expect(drawer.getByText(/couldn.t be read/i)).toBeTruthy();
   });
 
+  function uploadOne(container: HTMLElement, name = "acme-front.png"): void {
+    const imageInput = container.querySelector('input[accept="image/*"]') as HTMLInputElement;
+    fireEvent.change(imageInput, { target: { files: [new File(["x"], name, { type: "image/png" })] } });
+  }
+
+  it("auto-retries a transient 502 with backoff, then succeeds (the row never dead-ends)", { retry: 2 }, async () => {
+    let calls = 0;
+    globalThis.fetch = vi.fn(async () => {
+      calls++;
+      if (calls <= 2) {
+        return { ok: false, status: 502, json: async () => ({ error: "The label reader is temporarily unavailable. Please try again." }) };
+      }
+      return { ok: true, json: async () => RESPONSE };
+    }) as unknown as typeof fetch;
+    const { container } = render(<BatchVerify />);
+    const q = within(container);
+    uploadOne(container);
+    fireEvent.click(q.getByRole("button", { name: /Read all labels/i }));
+    expect(await q.findByText("Acme")).toBeTruthy(); // the row settled with the extraction
+    expect(calls).toBe(3);
+  });
+
+  it("a persistently-busy service lands on an HONEST terminal error after 6 bounded attempts", { retry: 2 }, async () => {
+    const failing = vi.fn(async () => ({
+      ok: false,
+      status: 503,
+      json: async () => ({ error: "The label reader is temporarily unavailable. Please try again." }),
+    }));
+    globalThis.fetch = failing as unknown as typeof fetch;
+    const { container } = render(<BatchVerify />);
+    const q = within(container);
+    uploadOne(container);
+    fireEvent.click(q.getByRole("button", { name: /Read all labels/i }));
+    expect(await q.findByText(/after 6 attempts/i)).toBeTruthy();
+    expect(failing).toHaveBeenCalledTimes(6);
+    expect(q.getByRole("button", { name: /^Retry$/ })).toBeTruthy(); // manual escape stays
+  });
+
+  it("NEVER auto-retries a non-transient failure (validation/config errors surface immediately)", { retry: 2 }, async () => {
+    const rejecting = vi.fn(async () => ({
+      ok: false,
+      status: 415,
+      json: async () => ({ error: "Only image files are accepted." }),
+    }));
+    globalThis.fetch = rejecting as unknown as typeof fetch;
+    const { container } = render(<BatchVerify />);
+    const q = within(container);
+    uploadOne(container);
+    fireEvent.click(q.getByRole("button", { name: /Read all labels/i }));
+    expect(await q.findByText(/Only image files are accepted/i)).toBeTruthy();
+    expect(rejecting).toHaveBeenCalledTimes(1);
+  });
+
+  it("a per-row re-read DROPS the recorded decision and overrides (fresh read invalidates)", { retry: 2 }, async () => {
+    // The product key for acme-front.png is the stem "acme"; seed a stale Approved record for it.
+    window.localStorage.setItem(
+      "ttb-worklist-v1",
+      JSON.stringify({ acme: { decision: "approve", note: "", overrides: { brand: "ok" } } }),
+    );
+    const partial: VerifyApiResponse = {
+      ...RESPONSE,
+      imageFailures: [{ filename: "acme-back.png", position: "back", reason: "timeout" }],
+    };
+    globalThis.fetch = vi.fn(async () => ({ ok: true, json: async () => partial })) as unknown as typeof fetch;
+    const { container } = render(<BatchVerify />);
+    const q = within(container);
+    uploadOne(container);
+    fireEvent.click(q.getByRole("button", { name: /Read all labels/i }));
+    expect(await q.findByText("Approved")).toBeTruthy(); // the stale decision resurfaced
+    fireEvent.click(q.getByRole("button", { name: /^Retry$/ })); // partial rows are retryable
+    expect(await q.findByText("Undecided")).toBeTruthy(); // the re-read invalidated it
+    expect(q.queryByText("Approved")).toBeNull();
+  });
+
+  it("each settled row shows a clickable thumbnail that opens the lightbox", { retry: 2 }, async () => {
+    globalThis.fetch = vi.fn(async () => ({ ok: true, json: async () => RESPONSE })) as unknown as typeof fetch;
+    const { container } = render(<BatchVerify />);
+    const q = within(container);
+    uploadOne(container);
+    fireEvent.click(q.getByRole("button", { name: /Read all labels/i }));
+    await q.findByText("Acme");
+    const thumb = q.getByRole("button", { name: /Show acme label larger/i });
+    fireEvent.click(thumb);
+    expect(screen.getByRole("dialog")).toBeTruthy(); // the shared ImageLightbox
+  });
+
+  it("'Retry all failed' re-runs every terminal-error row in one click", { retry: 2 }, async () => {
+    let calls = 0;
+    globalThis.fetch = vi.fn(async () => {
+      calls++;
+      if (calls <= 2) return { ok: false, status: 415, json: async () => ({ error: "Only image files are accepted." }) };
+      return { ok: true, json: async () => RESPONSE };
+    }) as unknown as typeof fetch;
+    const { container } = render(<BatchVerify />);
+    const q = within(container);
+    const imageInput = container.querySelector('input[accept="image/*"]') as HTMLInputElement;
+    fireEvent.change(imageInput, {
+      target: {
+        files: [
+          new File(["x"], "acme-front.png", { type: "image/png" }),
+          new File(["y"], "zenith-front.png", { type: "image/png" }),
+        ],
+      },
+    });
+    fireEvent.click(q.getByRole("button", { name: /Read all labels/i }));
+    const retryAll = await q.findByRole("button", { name: /Retry all failed \(2\)/i });
+    fireEvent.click(retryAll);
+    expect((await q.findAllByText("Acme")).length).toBeGreaterThan(0); // both rows re-read clean
+    expect(calls).toBe(4);
+  });
+
+  it("suggests combining two rows that read the SAME brand, and re-reads them as one product", { retry: 2 }, async () => {
+    // Camera filenames (IMG_001/IMG_002) defeat filename pairing, so the photos land as two rows.
+    // Both read brand "Acme": the worklist offers a deterministic, human-confirmed combine — never
+    // a silent auto-merge (a wrong merge contaminates two products' verdicts).
+    let lastBody: FormData | null = null;
+    let calls = 0;
+    globalThis.fetch = vi.fn(async (_url: unknown, init?: RequestInit) => {
+      calls++;
+      lastBody = (init?.body as FormData) ?? null;
+      return { ok: true, json: async () => RESPONSE };
+    }) as unknown as typeof fetch;
+    const { container } = render(<BatchVerify />);
+    const q = within(container);
+    const imageInput = container.querySelector('input[accept="image/*"]') as HTMLInputElement;
+    fireEvent.change(imageInput, {
+      target: {
+        files: [
+          new File(["x"], "IMG_001.png", { type: "image/png" }),
+          new File(["y"], "IMG_002.png", { type: "image/png" }),
+        ],
+      },
+    });
+    fireEvent.click(q.getByRole("button", { name: /Read all labels/i }));
+    expect((await q.findAllByText("Acme")).length).toBe(2); // two rows, same brand
+    // Row actions stay disabled until the whole run settles (mutual exclusion); wait for enabled.
+    await vi.waitFor(() => {
+      const b = q.getByRole("button", { name: /Combine and re-read/i }) as HTMLButtonElement;
+      expect(b.disabled).toBe(false);
+    });
+    // Combining drops both rows' review records, so it takes a deliberate second click.
+    fireEvent.click(q.getByRole("button", { name: /Combine and re-read/i }));
+    expect(q.getByText(/clears their reviews/i)).toBeTruthy();
+    fireEvent.click(q.getByRole("button", { name: /Confirm combine/i }));
+    // The merged row's meta says "2 images" (the live region announces it too).
+    expect((await q.findAllByText(/2 images/i)).length).toBeGreaterThan(0);
+    expect(q.getAllByText("Acme")).toHaveLength(1); // ONE merged row carrying both photos
+    expect(calls).toBe(3); // two initial reads + one merged re-read
+    expect(lastBody && (lastBody as FormData).getAll("position")).toEqual(["front", "back"]); // the duplicate front demoted
+  });
+
+  it("changing the image set CLEARS stale combine overrides (no silent merges in a later batch)", { retry: 2 }, async () => {
+    globalThis.fetch = vi.fn(async () => ({ ok: true, json: async () => RESPONSE })) as unknown as typeof fetch;
+    const { container } = render(<BatchVerify />);
+    const q = within(container);
+    const imageInput = container.querySelector('input[accept="image/*"]') as HTMLInputElement;
+    fireEvent.change(imageInput, {
+      target: {
+        files: [
+          new File(["x"], "IMG_001.png", { type: "image/png" }),
+          new File(["y"], "IMG_002.png", { type: "image/png" }),
+        ],
+      },
+    });
+    fireEvent.click(q.getByRole("button", { name: /Read all labels/i }));
+    await q.findAllByText("Acme");
+    await vi.waitFor(() => {
+      const b = q.getByRole("button", { name: /Combine and re-read/i }) as HTMLButtonElement;
+      expect(b.disabled).toBe(false);
+    });
+    fireEvent.click(q.getByRole("button", { name: /Combine and re-read/i }));
+    fireEvent.click(q.getByRole("button", { name: /Confirm combine/i }));
+    expect((await q.findAllByText(/2 images/i)).length).toBeGreaterThan(0);
+    // A new file arrives: the combine override must NOT survive onto the recomputed grouping.
+    fireEvent.change(imageInput, {
+      target: { files: [new File(["z"], "solo-front.png", { type: "image/png" })] },
+    });
+    fireEvent.click(q.getByRole("button", { name: /Read all labels/i }));
+    await waitForRowCount(q, 3); // IMG_001 and IMG_002 are separate products again, plus solo
+  });
+
+  async function waitForRowCount(q: ReturnType<typeof within>, n: number): Promise<void> {
+    await vi.waitFor(() => {
+      const metas = q.getAllByText(/1 image$/);
+      expect(metas.length).toBe(n);
+    });
+  }
+
   async function run(csv: string, fetchImpl?: typeof fetch): Promise<ReturnType<typeof within>> {
     globalThis.fetch = (fetchImpl ??
       (vi.fn(async () => ({ ok: true, json: async () => RESPONSE })) as unknown as typeof fetch));
@@ -153,14 +346,17 @@ describe("BatchVerify — verify against an application CSV", () => {
     expect(await q.findByText(/no application row/i)).toBeTruthy();
   });
 
-  it("surfaces a request failure as an error note, not a fabricated verdict", { retry: 2 }, async () => {
+  it("surfaces a persistent request failure as an honest error note, not a fabricated verdict", { retry: 2 }, async () => {
+    // A dead network is transient-shaped, so it gets the bounded auto-retry — and then an honest
+    // terminal state, never a made-up verdict.
     const q = await run(
       "filename,brand,alcohol\nacme-front.png,Acme,40% Alc./Vol.",
       vi.fn(async () => {
         throw new Error("network down");
       }) as unknown as typeof fetch,
     );
-    expect(await q.findByText(/Request failed/i)).toBeTruthy();
+    expect(await q.findByText(/after 6 attempts/i)).toBeTruthy();
+    expect(q.getByText("Read failed")).toBeTruthy();
   });
 
   it("includes the application-match verdict in the JSON export (parity with the CSV + single screen)", { retry: 2 }, async () => {
@@ -322,8 +518,8 @@ describe("BatchVerify — verify against an application CSV", () => {
     expect(Object.values(stored).some((r) => (r as { decision?: string }).decision === "reject")).toBe(true);
   });
 
-  it("an ERRORED product offers a per-row Retry that re-reads just that product", { retry: 2 }, async () => {
-    // First call fails, the retry succeeds — without re-running the whole batch.
+  it("a one-off network blip SELF-HEALS via auto-retry — no manual step, no error state", { retry: 2 }, async () => {
+    // First call fails, the automatic retry succeeds: the row settles to its verdict directly.
     let calls = 0;
     const flaky = vi.fn(async () => {
       calls++;
@@ -331,9 +527,9 @@ describe("BatchVerify — verify against an application CSV", () => {
       return { ok: true, json: async () => RESPONSE };
     }) as unknown as typeof fetch;
     const q = await run("filename,brand,alcohol\nacme-front.png,Acme,40% Alc./Vol.", flaky);
-    expect(await q.findByText("Read failed")).toBeTruthy();
-    fireEvent.click(q.getByRole("button", { name: /^Retry$/i }));
-    expect(await q.findByText("Approve")).toBeTruthy(); // the retried read verdicts normally
+    expect(await q.findByText("Approve")).toBeTruthy(); // healed without any human action
+    expect(q.queryByText("Read failed")).toBeNull();
+    expect(calls).toBe(2);
   });
 
   it("a NO-CSV product gets an honest completeness-only review with resolvable concern cards", { retry: 2 }, async () => {

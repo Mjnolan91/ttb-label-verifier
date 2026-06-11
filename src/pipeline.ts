@@ -6,7 +6,7 @@
  * evaluation measures the exact production pipeline.
  */
 import type { ClaimedFields, ExtractedFields } from "@/domain";
-import { selfConsistentExtract, resolveSelfConsistencySamples, resolveWarningJudgeSamples, resolveRescueTimeoutMs, resolveTimeoutMs, mergeExtracted, isAbortOrTimeout, aggregateBoldVotes, combineBoldSignals, resolveLowConfidenceRescue, rescueEligibleKeys, rescueRawKeys, applyRescue, readFieldsBounded, type ImageInput, type LabelPosition, type VisionProvider } from "@/extraction";
+import { selfConsistentExtract, resolveSelfConsistencySamples, resolveWarningJudgeSamples, resolveRescueTimeoutMs, resolveTimeoutMs, mergeExtracted, harvestOriginStatement, isAbortOrTimeout, aggregateBoldVotes, combineBoldSignals, resolveLowConfidenceRescue, rescueEligibleKeys, rescueRawKeys, applyRescue, readFieldsBounded, type ImageInput, type LabelPosition, type VisionProvider } from "@/extraction";
 import { verifyLabel, isExtractionReadable, type VerifyResult } from "@/compare";
 
 /** One image of the product that could not be read while at least one other image succeeded. */
@@ -119,6 +119,10 @@ export async function runExtraction(
   });
 
   const extracted = reads.reduce((acc, cur) => mergeExtracted(acc, cur));
+
+  // Deterministic origin harvesting: a printed "PRODUCT OF <country>" the samples misallocated to a
+  // sibling field fills an EMPTY countryOfOrigin (plain code over already-read text — see harvest.ts).
+  harvestOriginStatement(extracted);
 
   // Apply the dedicated bold judgment ONLY when a warning was read AND a judge actually ran. The warning
   // may be on the back label, so take the first non-null verdict across images. COMBINE it with the

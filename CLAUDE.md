@@ -80,9 +80,21 @@ pipeline and the "why". As built, the load-bearing pieces are:
   the same fast-extracts/strong-judges split holds on OpenAI (gpt-4.1 + gpt-5.5 judge). `runVerification()` adds the claimed comparison. `/api/verify`
   always extracts + runs the TTB **completeness** check (`src/compare/completeness.ts` over
   `src/domain/labelRequirements.ts`); it also returns a claimed-comparison verdict when
-  `brand`+`alcoholContent` are posted. Batch pairs front/back by filename (`src/batch/pairing.ts`) and
-  resolves each product's claimed values from an optional CSV (`src/batch/claimedMatch.ts`). Change the
-  flow here, not in two places.
+  `brand`+`alcoholContent` are posted. Batch pairs front/back by filename (`src/batch/pairing.ts`;
+  `parsePositionToken` is the exported per-filename parser — null means NO explicit token, which the
+  single screen's multi-file `placeFiles` distribution needs) and resolves each product's claimed
+  values from an optional CSV (`src/batch/claimedMatch.ts`). After the merge a deterministic ORIGIN
+  HARVEST (`src/extraction/harvest.ts`) fills an EMPTY countryOfOrigin from a printed
+  "PRODUCT OF <named country>" the samples misallocated to a sibling field (samples flap on field
+  allocation; plain code over already-read text, never a model call). The presence-instability cap
+  is TIERED (`selfConsistency.ts`): a supermajority dropout (>=75% of samples agree, the rest dropped
+  the field) lands at 0.65 — review-gated but rescue-eligible — while genuine and numeric splits keep
+  the hard 0.3. Batch reads run through `src/app/batch/pacing.ts` (bounded-persistent auto-retry:
+  full-jitter backoff, 6 attempts, only 429/502/503/504/network; adaptive AIMD concurrency, honest
+  per-row "retrying" notes + "Retry all failed"); ANY re-read (manual Retry, auto-retry, combine)
+  calls `worklist.invalidateReview` — stale confirms/decisions must never survive onto a new read.
+  Rows lead with a thumbnail; same-brand rows offer a human-confirmed COMBINE (`groupOverrides` +
+  `mergePositions` — never a fuzzy auto-merge). Change the flow here, not in two places.
 - **`src/domain/`** — pre-seeded, CFR-verified, the one hand-written human-trusted module
   (canonical warning, tolerance matrix, label-requirements matrix, standards-of-fill enumerations,
   proof helper). Treat its constants

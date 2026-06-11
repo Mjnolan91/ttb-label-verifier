@@ -10,14 +10,14 @@
  * row lands in a reviewable worklist (localStorage decisions, per-row Review drawer built from the
  * single screen's components) and exports as JSON or CSV, decisions included.
  */
-import { useId, useMemo, useState } from "react";
+import { useId, useMemo, useRef, useState } from "react";
 import type { ExtractedFields } from "@/domain";
 import type { CompletenessResult } from "@/compare";
 import type { LabelPosition } from "@/extraction";
 import { groupImagesByProduct } from "@/batch/pairing";
 import { analysisToCsv, parseClaimedCsv, type ClaimedRow } from "@/batch/csv";
 import { resolveClaimedFor } from "@/batch/claimedMatch";
-import { resolveCompletenessOverall, type VerifyResult } from "@/compare";
+import { normalizeText, resolveCompletenessOverall, type VerifyResult } from "@/compare";
 import type { VerifyApiResponse, VerifyApiError } from "../api/verify/contract";
 import type { ImageReadFailure } from "@/pipeline";
 import { downscaleForUpload } from "../imageDownscale";
@@ -32,6 +32,7 @@ import { ImageLightbox } from "../ui/ImageLightbox";
 import { Drawer } from "../ui/Drawer";
 import { ProductReview } from "../ui/ProductReview";
 import { deriveLabelReview, toggleOverride, setFieldNote, capVerdictForPartialRead } from "../ui/labelReview";
+import { createPacer, isRetryableStatus, retryDelayMs, MAX_READ_ATTEMPTS, type Pacer } from "./pacing";
 import type { AppInputKey } from "../ui/fieldHelpCopy";
 import { applicationFromCsv, deriveProductVerdict, mergeApplication, type ProductVerdict } from "./productVerdict";
 import { useWorklist } from "./useWorklist";
@@ -63,12 +64,50 @@ interface BatchRow {
   imageFailures?: ImageReadFailure[];
 }
 
-function groupFiles(files: File[]): ProductImages[] {
+/** Merge a source group's images into a target group, demoting duplicate positions to the first
+ *  open one (front -> back -> neck -> other) so a two-front merge reads as front + back. */
+function mergePositions(target: ProductImages, source: ProductImages): ProductImages {
+  const taken = new Set(target.images.map((im) => im.position));
+  const order: LabelPosition[] = ["front", "back", "neck", "other"];
+  const images = [...target.images];
+  for (const im of source.images) {
+    const position = !taken.has(im.position) ? im.position : (order.find((p) => !taken.has(p)) ?? "other");
+    taken.add(position);
+    images.push({ file: im.file, position });
+  }
+  return { product: target.product, images };
+}
+
+/** Filename grouping, then the reviewer's explicit combine overrides (source product key ->
+ *  target product key, lowercased) folded in. Deterministic and human-confirmed by design:
+ *  a fuzzy auto-merge that guessed wrong would contaminate two products' verdicts. */
+function groupFiles(files: File[], overrides: Record<string, string> = {}): ProductImages[] {
   const byName = new Map(files.map((f) => [f.name, f]));
-  return groupImagesByProduct(files.map((f) => f.name)).map((g) => ({
+  const base = groupImagesByProduct(files.map((f) => f.name)).map((g) => ({
     product: g.product,
     images: g.images.map((im) => ({ file: byName.get(im.filename) as File, position: im.position })),
   }));
+  if (Object.keys(overrides).length === 0) return base;
+  const merged = new Map<string, ProductImages>();
+  const order: string[] = [];
+  for (const g of base) {
+    let key = g.product.toLowerCase();
+    const seen = new Set([key]);
+    while (overrides[key] && !seen.has(overrides[key])) {
+      key = overrides[key];
+      seen.add(key);
+    }
+    const existing = merged.get(key);
+    if (!existing) {
+      merged.set(key, { product: g.product, images: [...g.images] });
+      order.push(key);
+    } else {
+      const combined = mergePositions(existing, g);
+      // The TARGET product's own name wins the display key, whichever side arrived first.
+      merged.set(key, g.product.toLowerCase() === key ? { ...combined, product: g.product } : combined);
+    }
+  }
+  return order.map((k) => merged.get(k) as ProductImages);
 }
 
 /** Human name for a failed image's slot in the partial-read row note. */
@@ -87,11 +126,11 @@ function partialReadNote(failures: ImageReadFailure[]): string {
   return `${names.join(" and ")} ${plural} couldn't be read${timedOut ? " (the read timed out)" : ""}; the results reflect the remaining images.`;
 }
 
-async function analyzeProduct(
+async function analyzeOnce(
   group: ProductImages,
   claimedMap: Map<string, ClaimedRow>,
   previewByName: Map<string, string>,
-): Promise<BatchRow> {
+): Promise<{ row: BatchRow; retryable: boolean }> {
   const images = group.images.map((im) => ({ src: previewByName.get(im.file.name) ?? "", alt: im.file.name }));
   const base: BatchRow = { product: group.product, imageCount: group.images.length, status: "error", images };
   try {
@@ -102,7 +141,11 @@ async function analyzeProduct(
     }
     const res = await fetch("/api/verify", { method: "POST", body: form });
     const json: VerifyApiResponse | VerifyApiError = await res.json();
-    if (!res.ok) return { ...base, note: (json as VerifyApiError).error };
+    if (!res.ok) {
+      // Throttling/transient gateway failures are worth retrying; validation 4xx and the 500
+      // "reader not configured" operator error must surface immediately.
+      return { row: { ...base, note: (json as VerifyApiError).error }, retryable: isRetryableStatus(res.status) };
+    }
     const r = json as VerifyApiResponse;
     // Attach the matched application CSV row (by image filename or product stem). The verdict is NOT
     // computed here: it derives at render from this row + the reviewer's drawer edits (one shared
@@ -114,18 +157,63 @@ async function analyzeProduct(
       ) ?? null;
     const failNote = r.imageFailures && r.imageFailures.length > 0 ? partialReadNote(r.imageFailures) : undefined;
     return {
-      ...base,
-      status: "done",
-      extracted: r.extracted,
-      completeness: r.completeness,
-      claimedRow,
-      readable: r.readable,
-      note: r.readable ? failNote : r.message,
-      imageFailures: r.imageFailures,
+      row: {
+        ...base,
+        status: "done",
+        extracted: r.extracted,
+        completeness: r.completeness,
+        claimedRow,
+        readable: r.readable,
+        note: r.readable ? failNote : r.message,
+        imageFailures: r.imageFailures,
+      },
+      retryable: false,
     };
   } catch {
-    return { ...base, note: "Request failed." };
+    // A thrown fetch / non-JSON body is the network or the platform's own error page — transient.
+    return { row: { ...base, note: "Request failed." }, retryable: true };
   }
+}
+
+/**
+ * One product read with BOUNDED persistence: transient failures (429/502/503/504/network) retry up
+ * to MAX_READ_ATTEMPTS with full-jitter backoff, pacing the whole pool down through the shared
+ * pacer; everything else surfaces immediately. The row narrates each wait ("Service busy,
+ * retrying...") and the terminal state stays honest — the manual Retry button is the escape hatch.
+ */
+async function analyzeProductWithRetry(
+  group: ProductImages,
+  claimedMap: Map<string, ClaimedRow>,
+  previewByName: Map<string, string>,
+  pacer: Pacer,
+  onRetryNote: (note: string) => void,
+): Promise<BatchRow> {
+  let last: BatchRow | null = null;
+  for (let attempt = 0; attempt < MAX_READ_ATTEMPTS; attempt++) {
+    await pacer.acquire();
+    let out: { row: BatchRow; retryable: boolean };
+    try {
+      out = await analyzeOnce(group, claimedMap, previewByName);
+    } finally {
+      pacer.release();
+    }
+    last = out.row;
+    if (out.row.status !== "error") {
+      pacer.reportSuccess();
+      return out.row;
+    }
+    if (!out.retryable) return out.row;
+    const delay = retryDelayMs(attempt);
+    pacer.reportFailure(delay);
+    if (attempt < MAX_READ_ATTEMPTS - 1) {
+      onRetryNote(`Service busy, retrying (attempt ${attempt + 2} of ${MAX_READ_ATTEMPTS})…`);
+      await new Promise((r) => setTimeout(r, delay));
+    }
+  }
+  return {
+    ...(last as BatchRow),
+    note: `Couldn't read after ${MAX_READ_ATTEMPTS} attempts. The reading service stayed busy. Use Retry to try again.`,
+  };
 }
 
 const ADD_IMAGES_ERROR = "Add one or more label images.";
@@ -154,8 +242,20 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
   const [reviewIndex, setReviewIndex] = useState<number | null>(null);
   // Triage filter, driven by the roll-up chips ("all" shows everything).
   const [filter, setFilter] = useState<"all" | RowCategory>("all");
+  // Reviewer-confirmed combines (source product key -> target), folded into the derived grouping.
+  // CLEARED whenever the image set changes: a stale override must never silently merge two
+  // unrelated products that happen to reuse the same filenames in a later batch.
+  const [groupOverrides, setGroupOverrides] = useState<Record<string, string>>({});
+  // ONE row action (retry / sweep / combine) at a time, and none while a batch is running: the
+  // worker writes and the grouping both assume the row set is stable underneath them.
+  const [rowActionBusy, setRowActionBusy] = useState(false);
+  // The combine drops both rows' review records, so it takes a deliberate second click.
+  const [confirmCombine, setConfirmCombine] = useState<string | null>(null);
+  // Polite announcement channel for row actions (combine/sweep), for screen-reader users.
+  const [actionAnnounce, setActionAnnounce] = useState("");
+  const resultsRegionRef = useRef<HTMLDivElement>(null);
 
-  const groups = useMemo(() => groupFiles(images.map((im) => im.file)), [images]);
+  const groups = useMemo(() => groupFiles(images.map((im) => im.file), groupOverrides), [images, groupOverrides]);
   const previewByName = useMemo(() => new Map(images.map((im) => [im.file.name, im.preview])), [images]);
 
   /** Everything the table derives per row, override-aware (parity with the single screen): the
@@ -215,14 +315,103 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
     worklist.invalidateReview(product);
   }
 
-  /** Re-read ONE failed product without re-running the whole batch. */
-  async function retryRow(index: number) {
-    const row = rows[index];
-    const group = groups.find((g) => g.product === row?.product);
-    if (!row || !group) return;
-    setRows((prev) => prev.map((p, i) => (i === index ? { product: p.product, imageCount: p.imageCount, status: "pending" } : p)));
-    const next = await analyzeProduct(group, claimed, previewByName);
-    setRows((prev) => prev.map((p, i) => (i === index ? next : p)));
+  /** The core re-read of one product, addressed BY PRODUCT (row indices shift when rows merge, so
+   *  by-index writes can clobber the wrong row). The callers own the mutual-exclusion guard. */
+  async function reReadProduct(product: string) {
+    const group = groups.find((g) => g.product === product);
+    if (!group) return;
+    setRows((prev) =>
+      prev.map((p) => (p.product === product ? { product, imageCount: group.images.length, status: "pending" } : p)),
+    );
+    const pacer = createPacer({ start: 1, min: 1, max: 2 });
+    const next = await analyzeProductWithRetry(group, claimed, previewByName, pacer, (note) =>
+      setRows((prev) => prev.map((p) => (p.product === product ? { ...p, note } : p))),
+    );
+    // A re-read REPLACES the extraction: every confirm/flag and any recorded decision was made
+    // against the old read, so none of it may survive onto the new one (the same fresh-read-
+    // invalidates rule application edits follow — a stale "Approved" force-passing a recomputed
+    // comparison is a false approval).
+    worklist.invalidateReview(product);
+    setRows((prev) => prev.map((p) => (p.product === product ? next : p)));
+  }
+
+  /** Re-read ONE failed or partially-read product without re-running the whole batch. */
+  async function retryProduct(product: string) {
+    if (running || rowActionBusy) return;
+    setRowActionBusy(true);
+    try {
+      await reReadProduct(product);
+    } finally {
+      setRowActionBusy(false);
+    }
+  }
+
+  /** Re-run every terminal-error row, one at a time (the gentlest pace after a rough run). */
+  async function retryAllFailed() {
+    if (running || rowActionBusy) return;
+    setRowActionBusy(true);
+    try {
+      const products = rows.filter((r) => r.status === "error").map((r) => r.product);
+      for (const p of products) await reReadProduct(p);
+      setActionAnnounce(`Retried ${products.length} failed ${products.length === 1 ? "product" : "products"}.`);
+      resultsRegionRef.current?.focus();
+    } finally {
+      setRowActionBusy(false);
+    }
+  }
+
+  /** Two rows the reviewer confirmed are ONE product: fold the groups, drop both rows' review
+   *  records (fresh read invalidates), and re-read the merged set as one product. */
+  async function combineRows(sourceProduct: string, targetProduct: string) {
+    if (running || rowActionBusy) return;
+    const sourceGroup = groups.find((g) => g.product === sourceProduct);
+    const targetGroup = groups.find((g) => g.product === targetProduct);
+    if (!sourceGroup || !targetGroup) return;
+    setRowActionBusy(true);
+    setConfirmCombine(null);
+    setActionAnnounce(`Combining ${sourceProduct} into ${targetProduct} and re-reading as one product.`);
+    try {
+      setGroupOverrides((prev) => ({ ...prev, [sourceProduct.toLowerCase()]: targetProduct.toLowerCase() }));
+      worklist.reset(sourceProduct);
+      worklist.invalidateReview(targetProduct);
+      const merged = mergePositions(targetGroup, sourceGroup);
+      setRows((prev) =>
+        prev
+          .filter((p) => p.product !== sourceProduct)
+          .map((p) =>
+            p.product === targetProduct
+              ? { product: targetProduct, imageCount: merged.images.length, status: "pending" as const }
+              : p,
+          ),
+      );
+      const pacer = createPacer({ start: 1, min: 1, max: 2 });
+      const row = await analyzeProductWithRetry(merged, claimed, previewByName, pacer, (note) =>
+        setRows((prev) => prev.map((p) => (p.product === targetProduct ? { ...p, note } : p))),
+      );
+      setRows((prev) => prev.map((p) => (p.product === targetProduct ? row : p)));
+      setActionAnnounce(`Combined into ${targetProduct}: one product with ${merged.images.length} images.`);
+      resultsRegionRef.current?.focus();
+    } finally {
+      setRowActionBusy(false);
+    }
+  }
+
+  /** The earlier settled, readable row sharing this row's normalized brand (a combine candidate),
+   *  bounded by the API's four-images-per-product cap. */
+  function combineTargetFor(row: BatchRow, index: number): BatchRow | undefined {
+    if (row.status !== "done" || !row.readable || !row.extracted?.brand) return undefined;
+    const brandKey = normalizeText(row.extracted.brand);
+    if (!brandKey) return undefined;
+    return rows.find(
+      (other, i) =>
+        i < index &&
+        other.product !== row.product &&
+        other.status === "done" &&
+        other.readable === true &&
+        other.extracted?.brand !== undefined &&
+        normalizeText(other.extracted.brand) === brandKey &&
+        other.imageCount + row.imageCount <= 4,
+    );
   }
 
   function addFiles(newFiles: File[]) {
@@ -230,6 +419,9 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
     // Adding images satisfies the "add images" validation; a stale error banner over a now-valid
     // form reads as broken. (Other errors, e.g. a rejected CSV, are unrelated to this action.)
     setError((prev) => (prev === ADD_IMAGES_ERROR ? null : prev));
+    // A changed image set is a NEW grouping problem: stale combines must not survive onto it.
+    setGroupOverrides({});
+    setConfirmCombine(null);
   }
   function removeImage(index: number) {
     setImages((prev) => {
@@ -240,6 +432,8 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
       }
       return prev.filter((_, i) => i !== index);
     });
+    setGroupOverrides({});
+    setConfirmCombine(null);
   }
 
   async function process() {
@@ -254,20 +448,26 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
 
     let next = 0;
     let completed = 0;
-    const worker = async () => {
+    // ONE pacer per run: any transient failure anywhere in the pool drops the in-flight target to 1
+    // and opens a cooldown; sustained success ramps it back toward CONCURRENCY.
+    const pacer = createPacer({ start: 3, min: 1, max: CONCURRENCY });
+    const worker = async (workerIndex: number) => {
+      // Stagger worker starts so the per-product request bursts don't align at t=0.
+      if (workerIndex > 0) await new Promise((r) => setTimeout(r, Math.floor(Math.random() * 300) * workerIndex));
       while (next < groups.length) {
         const idx = next++;
-        const row = await analyzeProduct(groups[idx], claimed, previewByName);
-        setRows((prev) => {
-          const copy = prev.slice();
-          copy[idx] = row;
-          return copy;
-        });
+        const product = groups[idx].product;
+        // All row writes are BY PRODUCT, never by index: indices shift when rows merge or filter,
+        // and a by-index write from an in-flight worker would clobber the wrong row.
+        const row = await analyzeProductWithRetry(groups[idx], claimed, previewByName, pacer, (note) =>
+          setRows((prev) => prev.map((p) => (p.product === product ? { ...p, note } : p))),
+        );
+        setRows((prev) => prev.map((p) => (p.product === product ? row : p)));
         completed++;
         setDone(completed);
       }
     };
-    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, groups.length) }, worker));
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, groups.length) }, (_, i) => worker(i)));
     setRunning(false);
   }
 
@@ -576,8 +776,29 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
         </div>
       )}
 
+      {/* After a rough run, one click re-reads every terminal failure at the gentlest pace. */}
+      {!running && rows.some((r) => r.status === "error") && (
+        <p className="mt-4">
+          <button
+            type="button"
+            onClick={() => void retryAllFailed()}
+            disabled={rowActionBusy}
+            className={secondaryButtonClass}
+          >
+            Retry all failed ({rows.filter((r) => r.status === "error").length})
+          </button>
+        </p>
+      )}
+
+      {/* Row actions (combine, retry sweep) announce here; focus moves to the results region when
+          the acted-on control unmounts, so keyboard users are never dropped to the page body. */}
+      <p role="status" aria-live="polite" className="sr-only">
+        {actionAnnounce}
+      </p>
+
       {rows.length > 0 && (
         <div
+          ref={resultsRegionRef}
           tabIndex={0}
           role="region"
           aria-label="Batch extraction results"
@@ -600,6 +821,17 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
             {visibleRows.map(({ r, i, d }) => {
               const { verdict, resolvedCompleteness, decision, category, pv, matchedClaim } = d;
               const settled = r.status !== "pending";
+              // The row's thumbnail: the analyzed previews when settled, else derived from the
+              // upload list so pending/retrying rows show their image too.
+              const thumb =
+                r.images?.[0] ??
+                (() => {
+                  const g = groups.find((grp) => grp.product === r.product);
+                  const fn = g?.images[0]?.file.name;
+                  const src = fn ? previewByName.get(fn) : undefined;
+                  return src ? { src, alt: fn ?? r.product } : undefined;
+                })();
+              const combineTarget = combineTargetFor(r, i);
               // Attention rows get a left accent + soft tint (red for hard failures, amber for the
               // rest); decided rows dim so the open remainder pops. State is never color-only: every
               // tinted row also carries a badge with an icon + label.
@@ -623,12 +855,63 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
                   key={`${r.product}-${i}`}
                   className={`grid items-start gap-y-2 px-3 py-3 hover:bg-brand-50 sm:items-center ${ROW_GRID} ${accent}`}
                 >
-                  {/* 1. Product identity (the only flexible track) */}
-                  <div className="min-w-0 text-ink">
-                    <span className="block break-all font-mono text-xs">{r.product}</span>
-                    {r.extracted?.brand && <span className="block text-sm font-medium">{r.extracted.brand}</span>}
-                    <span className="block text-xs text-ink-muted">{settled ? meta : "…"}</span>
-                    {r.note && <span className="mt-0.5 block text-sm text-ink-muted">{r.note}</span>}
+                  {/* 1. Product identity (the only flexible track), led by a thumbnail of the
+                      product's first image (derived from the upload previews for pending rows). */}
+                  <div className="flex min-w-0 items-start gap-2.5 text-ink">
+                    {thumb && (
+                      <button
+                        type="button"
+                        onClick={() => setZoom(thumb)}
+                        aria-label={`Show ${r.product} label larger`}
+                        className="h-12 w-12 shrink-0 cursor-zoom-in overflow-hidden rounded-field border border-border bg-surface-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2"
+                      >
+                        {/* object-contain: a tall strip label must stay recognizable, not crop to a sliver */}
+                        {/* eslint-disable-next-line @next/next/no-img-element -- local object URL preview */}
+                        <img src={thumb.src} alt="" className="h-full w-full object-contain" />
+                      </button>
+                    )}
+                    <div className="min-w-0">
+                      <span className="block break-all font-mono text-xs">{r.product}</span>
+                      {r.extracted?.brand && <span className="block text-sm font-medium">{r.extracted.brand}</span>}
+                      <span className="block text-xs text-ink-muted">{settled ? meta : "…"}</span>
+                      {r.note && <span className="mt-0.5 block text-sm text-ink-muted">{r.note}</span>}
+                      {combineTarget &&
+                        /* Two rows read the same brand: offer a deterministic, human-confirmed merge
+                           (camera filenames defeat pairing; a silent auto-merge could contaminate
+                           two different products). It drops both rows' review records, so it takes
+                           a deliberate second click. */
+                        (confirmCombine === r.product ? (
+                          <span className="mt-1 flex flex-wrap items-center gap-1.5">
+                            <span className="text-xs text-ink">
+                              Re-reads both as one product and clears their reviews.
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => void combineRows(r.product, combineTarget.product)}
+                              disabled={running || rowActionBusy}
+                              className="min-h-[36px] rounded-field border border-brand-600 bg-brand-600 px-2.5 text-xs font-semibold text-white transition hover:bg-brand-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2 disabled:opacity-50"
+                            >
+                              Confirm combine
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setConfirmCombine(null)}
+                              className="min-h-[36px] rounded-field border border-border-strong px-2.5 text-xs font-semibold text-ink transition hover:border-brand-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2"
+                            >
+                              Cancel
+                            </button>
+                          </span>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => setConfirmCombine(r.product)}
+                            disabled={running || rowActionBusy}
+                            className="mt-1 min-h-[36px] rounded-field border border-brand-600 px-2.5 text-xs font-semibold text-brand-700 transition hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2 disabled:opacity-50"
+                          >
+                            Same brand as {combineTarget.product}. Combine and re-read
+                          </button>
+                        ))}
+                    </div>
                   </div>
                   {/* 2. Result (sr-only label is a SIBLING of the badge, never inside it) */}
                   <div className="min-w-0">
@@ -695,8 +978,9 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
                         {(r.status === "error" || (r.imageFailures?.length ?? 0) > 0) && (
                           <button
                             type="button"
-                            onClick={() => void retryRow(i)}
-                            className="inline-flex min-h-[44px] w-full items-center justify-center rounded-field border border-brand-600 bg-surface px-3 py-1.5 text-sm font-semibold text-brand-700 transition hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2 sm:w-auto"
+                            onClick={() => void retryProduct(r.product)}
+                            disabled={running || rowActionBusy}
+                            className="inline-flex min-h-[44px] w-full items-center justify-center rounded-field border border-brand-600 bg-surface px-3 py-1.5 text-sm font-semibold text-brand-700 transition hover:bg-brand-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2 disabled:opacity-50 sm:w-auto"
                           >
                             Retry
                           </button>

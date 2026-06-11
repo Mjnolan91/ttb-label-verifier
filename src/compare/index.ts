@@ -56,6 +56,7 @@ export {
   isUsAddress,
   isForeignAddress,
   suggestedCountryOfOrigin,
+  namedCountryIn,
   type OriginInference,
   type OriginEvidence,
 } from "./origin";

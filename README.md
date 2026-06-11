@@ -40,9 +40,15 @@ For the batch workflow (the brief's importers dumping 200 to 300 applications at
 [/batch](https://ttb-label-verifier-matthew-nolan-s-projects.vercel.app/batch): drop many images,
 fronts and backs pair by filename, optionally attach a CSV of claimed values (the downloadable
 template ships ready-made rows for the three sample labels), and results stream into a reviewable
-worklist with CSV export. The review drawer lets you supply or correct application values in
-place, so a batch without a CSV is still fully workable, and rows settle one by one, so a
-300-label dump is triaged continuously rather than waited on.
+worklist with CSV export. Each row leads with a clickable thumbnail; two rows that read the same
+brand (camera filenames defeat pairing) offer a one-click, human-confirmed combine that re-reads
+them as one product. Transient service failures auto-retry with jittered backoff and adaptive
+pacing, narrating each attempt on the row and ending in an honest error plus a Retry (and a
+"Retry all failed" sweep) rather than a dead end. The review drawer lets you supply or correct
+application values in place, so a batch without a CSV is still fully workable, and rows settle one
+by one, so a 300-label dump is triaged continuously rather than waited on. On the single verify
+screen, a multi-photo selection places itself: filename tokens (name-front, name-back, name-neck)
+claim their slots and the rest fill the open slots in order.
 
 ## Run it locally
 
@@ -150,14 +156,18 @@ to a deployed `/api/verify` end to end and checks each verdict. Against the live
 Vercel, gpt-4.1 extraction + a gpt-5.5 warning judge, a 7-wide self-consistency vote under a 5s
 straggler cap, 15 sequential reads, 2026-06-10): **p50 3.1s, p95 5.2s, 15/15 verdicts correct, no
 timeouts**. The median sits comfortably inside the ~5s budget; the single 5.2s read was the first
-request, which pays the serverless cold start. The straggler cap is load-bearing: 7 reads run in
-parallel and slow samples are dropped at 5s so the vote proceeds rather than one straggler dragging
-the request past budget. The levers are
-documented in [`.env.example`](.env.example): `SELF_CONSISTENCY_SAMPLES` (the vote width; the demo
-runs 7 with a `VISION_TIMEOUT_MS=5000` cap, the pairing that measured 15/15 inside budget),
-`SELF_CONSISTENCY_ESCALATION` (opt-in extra reads on a contested verdict-relevant field; accuracy
-over tail latency), and the model choice. Uploads are downscaled in the browser to keep request
-sizes inside the budget.
+request, which pays the serverless cold start.
+
+That 7-wide/5s pairing was later SUPERSEDED by its own measurement gap: the 15 reads were
+single-image demo labels, and on a real front+back product the dense back label (the statutory
+warning paragraph dominates generation time) reads in ~5s+, so the 5s cap could kill every sample
+of the back image. The pipeline now reports a dropped image instead of silently proceeding (the
+response carries `imageFailures`, both screens warn and offer a retry, and a partial read can never
+headline Approve), and the recommended pairing is **`SELF_CONSISTENCY_SAMPLES=5` +
+`VISION_TIMEOUT_MS=8000`** (measured: the same dense pair reads fully in ~4.9s). The levers are
+documented in [`.env.example`](.env.example), including `SELF_CONSISTENCY_ESCALATION` (opt-in extra
+reads on a contested verdict-relevant field; accuracy over tail latency) and the model choice.
+Uploads are downscaled in the browser to keep request sizes inside the budget.
 
 The deployed config was chosen by A/B measurement, not preference: on OpenAI (local dev server,
 real API, 2026-06-10), gpt-4.1 extraction with a gpt-5.5 warning judge measured **6/6 verdicts at

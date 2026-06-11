@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { aggregateSamples, selfConsistentExtract } from "./selfConsistency";
+import { aggregateSamples, selfConsistentExtract, SUPERMAJORITY_DROPOUT_CONFIDENCE } from "./selfConsistency";
+import { DISAGREEMENT_CONFIDENCE } from "./reconcile";
 import type { ExtractedFields } from "@/domain";
 import type { VisionProvider } from "./VisionProvider";
 import { MIN_READABLE_CONFIDENCE, FIELD_REVIEW_CONFIDENCE } from "@/compare";
@@ -102,6 +103,54 @@ describe("aggregateSamples", () => {
     const out = aggregateSamples([read("Old Tom", 0.9), read("Old Tom", 0.9), read("Old Tom", 0.9)]);
     expect(out.countryOfOrigin).toBeUndefined();
     expect(out.confidence.countryOfOrigin).toBe(1);
+  });
+
+  it("a SUPERMAJORITY presence dropout (4 of 5 agree, 1 dropped) lands at 0.65: review, but rescue-eligible", () => {
+    // The dominant artifact of wider sampling: one sample omits a field the rest read identically.
+    // The probability of one dropout GROWS with sample count, so the old hard 0.3 stamp made wider
+    // votes LESS trusting of correct reads — and 0.3 is exactly outside the strong-model rescue band,
+    // so the artifact had no recovery path. A supermajority dropout now lands at 0.65: still gated
+    // to review (no auto-pass), but inside the rescue band so cross-model agreement can clear it.
+    const conf = { ...read("X", 0.9).confidence, countryOfOrigin: 0.9 };
+    const valued = () => readWith({ countryOfOrigin: "Product of Scotland", confidence: conf });
+    const out = aggregateSamples([valued(), valued(), valued(), valued(), readWith({ countryOfOrigin: "" })]);
+    expect(out.countryOfOrigin).toBe("Product of Scotland");
+    expect(out.confidence.countryOfOrigin).toBe(SUPERMAJORITY_DROPOUT_CONFIDENCE);
+    expect(out.confidence.countryOfOrigin).toBeLessThan(FIELD_REVIEW_CONFIDENCE); // still review
+    expect(out.confidence.countryOfOrigin).toBeGreaterThan(DISAGREEMENT_CONFIDENCE); // but rescuable
+  });
+
+  it("a sub-supermajority presence split (3 of 5) keeps the hard 0.3 conflict stamp", () => {
+    const conf = { ...read("X", 0.9).confidence, countryOfOrigin: 0.9 };
+    const valued = () => readWith({ countryOfOrigin: "Product of Scotland", confidence: conf });
+    const out = aggregateSamples([
+      valued(), valued(), valued(),
+      readWith({ countryOfOrigin: "" }),
+      readWith({ countryOfOrigin: "" }),
+    ]);
+    expect(out.countryOfOrigin).toBe("Product of Scotland");
+    expect(out.confidence.countryOfOrigin).toBe(DISAGREEMENT_CONFIDENCE);
+  });
+
+  it("an absent-majority with a minority value never relaxes — the 0.3 stamp stands", () => {
+    // 3 absent vs 2 valued: absence wins the vote but the value is surfaced for a human; the
+    // supermajority relaxation must key on the VALUE cluster, not on the absent side's share.
+    const conf = { ...read("X", 0.9).confidence, countryOfOrigin: 0.9 };
+    const valued = () => readWith({ countryOfOrigin: "Product of Scotland", confidence: conf });
+    const out = aggregateSamples([
+      valued(), valued(),
+      readWith({ countryOfOrigin: "" }),
+      readWith({ countryOfOrigin: "" }),
+      readWith({ countryOfOrigin: "" }),
+    ]);
+    expect(out.confidence.countryOfOrigin).toBe(DISAGREEMENT_CONFIDENCE);
+  });
+
+  it("an alcohol MAGNITUDE split never relaxes, even at supermajority presence", () => {
+    // 4 of 5 say 45%, the fifth says 4.5%: numbers are the value, not cosmetics — stays human.
+    const alc = (v: string) => readWith({ alcoholContentText: v });
+    const out = aggregateSamples([alc("45% Alc./Vol."), alc("45% Alc./Vol."), alc("45% Alc./Vol."), alc("4.5% Alc./Vol."), readWith({ alcoholContentText: "" })]);
+    expect(out.confidence.alcoholContent).toBe(DISAGREEMENT_CONFIDENCE);
   });
 
   it("UNSTABLE presence (2 absent, 1 valued) is NOT asserted as a confident absence", () => {

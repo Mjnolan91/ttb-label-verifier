@@ -40,7 +40,13 @@ export {
   REAL_PROVIDER_TIMEOUT_MS,
   DISAGREEMENT_CONFIDENCE,
 } from "./reconcile";
-export { aggregateSamples, selfConsistentExtract } from "./selfConsistency";
+export {
+  aggregateSamples,
+  selfConsistentExtract,
+  SUPERMAJORITY_DROPOUT_CONFIDENCE,
+  SUPERMAJORITY_PRESENCE_FRACTION,
+} from "./selfConsistency";
+export { harvestOriginStatement } from "./harvest";
 export {
   resolveSelfConsistencySamples,
   resolveLowConfidenceRescue,

@@ -34,10 +34,22 @@ const POSITION_TOKENS: Record<string, LabelPosition> = {
   o: "other",
 };
 
-function parseName(filename: string): { product: string; position: LabelPosition } {
-  // Browsers rename a repeat download to "name (1).png"; strip that suffix so a re-downloaded back
-  // label still pairs with its front (and the position token is still recognized).
-  const stem = filename.replace(/\.[^.]+$/, "").replace(/ \(\d+\)$/, "");
+/**
+ * Parse one filename into its product stem and its EXPLICIT position token, or `position: null`
+ * when the name carries none. The null matters to the single screen's multi-file placement: an
+ * explicit "-back" claims the Back slot, while a tokenless file fills empty slots in order —
+ * a distinction the grouping default ("tokenless = front") cannot express.
+ */
+export function parsePositionToken(filename: string): { product: string; position: LabelPosition | null } {
+  // Browsers rename a repeat download to "name (1).png"; Windows Explorer makes "name - Copy.png"
+  // and "name(1).png". Strip those (repeatedly — "name - Copy (2)" stacks) so a re-downloaded or
+  // duplicated back label still pairs with its front and the position token is still recognized.
+  let stem = filename.replace(/\.[^.]+$/, "");
+  for (;;) {
+    const next = stem.replace(/(?:\s*\(\d+\)|\s+-\s+copy)$/i, "");
+    if (next === stem) break;
+    stem = next;
+  }
   const m = stem.match(/^(.*?)[\s_-]+([a-z]+)$/i);
   if (m) {
     const token = m[2].toLowerCase();
@@ -47,7 +59,12 @@ function parseName(filename: string): { product: string; position: LabelPosition
       return { product: product || stem, position };
     }
   }
-  return { product: stem, position: "front" };
+  return { product: stem, position: null };
+}
+
+function parseName(filename: string): { product: string; position: LabelPosition } {
+  const { product, position } = parsePositionToken(filename);
+  return { product, position: position ?? "front" };
 }
 
 /** Group filenames into products (order of first appearance preserved). */

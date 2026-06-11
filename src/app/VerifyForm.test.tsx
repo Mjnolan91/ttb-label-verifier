@@ -348,6 +348,96 @@ describe("VerifyForm — verify against the application", () => {
     expect(within(container).getAllByText(/Back label/i).length).toBeGreaterThan(0);
   });
 
+  it("MULTI-SELECT: filename tokens route front + back to their slots with ONE read", ASYNC, async () => {
+    mockFetch(READ_OK());
+    const { container } = render(<VerifyForm />);
+    const q = within(container);
+    const frontInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(frontInput, {
+      target: {
+        files: [
+          new File(["a"], "bonny-front.png", { type: "image/png" }),
+          new File(["b"], "bonny-back.png", { type: "image/png" }),
+        ],
+      },
+    });
+    await q.findByText("Complete the application to verify");
+    expect(globalThis.fetch).toHaveBeenCalledTimes(1); // one placement, one read
+    const calls = (globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls;
+    const fd = (calls[calls.length - 1][1] as RequestInit).body as FormData;
+    expect(fd.getAll("position")).toEqual(["front", "back"]);
+    expect(q.getByRole("button", { name: /^Remove Front/ })).toBeTruthy();
+    expect(q.getByRole("button", { name: /^Remove Back/ })).toBeTruthy();
+  });
+
+  it("MULTI-SELECT: tokenless files fill empty slots in order, auto-revealing the neck slot", ASYNC, async () => {
+    mockFetch(READ_OK());
+    const { container } = render(<VerifyForm />);
+    const q = within(container);
+    const frontInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(frontInput, {
+      target: {
+        files: [
+          new File(["a"], "photo-one.png", { type: "image/png" }),
+          new File(["b"], "photo-two.png", { type: "image/png" }),
+          new File(["c"], "photo-three.png", { type: "image/png" }),
+        ],
+      },
+    });
+    await q.findByText("Complete the application to verify");
+    const calls = (globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls;
+    const fd = (calls[calls.length - 1][1] as RequestInit).body as FormData;
+    expect(fd.getAll("position")).toEqual(["front", "back", "neck"]);
+    expect(q.getAllByText(/Neck \/ strip label/i).length).toBeGreaterThan(0); // revealed by placement
+  });
+
+  it("MULTI-SELECT: a tokenless file dropped on the BACK zone fills Back, not Front", ASYNC, async () => {
+    mockFetch(READ_OK());
+    const { container } = render(<VerifyForm />);
+    const q = within(container);
+    const backInput = q.getByLabelText("Upload back label (optional)") as HTMLInputElement;
+    fireEvent.change(backInput, {
+      target: { files: [new File(["b"], "whatever.png", { type: "image/png" })] },
+    });
+    await waitFor(() => expect(q.getByRole("button", { name: /^Remove Back/ })).toBeTruthy());
+    expect(q.queryByRole("button", { name: /^Remove Front/ })).toBeNull(); // front stays empty
+  });
+
+  it("MULTI-SELECT: overflow files surface an honest notice instead of silent loss", ASYNC, async () => {
+    mockFetch(READ_OK());
+    const { container } = render(<VerifyForm />);
+    const q = within(container);
+    const frontInput = container.querySelector('input[type="file"]') as HTMLInputElement;
+    fireEvent.change(frontInput, {
+      target: {
+        files: [1, 2, 3, 4].map((n) => new File(["x"], `photo-${n}.png`, { type: "image/png" })),
+      },
+    });
+    await q.findByText("Complete the application to verify");
+    expect(q.getByText(/not used/i)).toBeTruthy();
+    const calls = (globalThis.fetch as unknown as ReturnType<typeof vi.fn>).mock.calls;
+    const fd = (calls[calls.length - 1][1] as RequestInit).body as FormData;
+    expect(fd.getAll("image")).toHaveLength(3); // three slots, three images
+  });
+
+  it("MULTI-SELECT: an explicit front token replacing the loaded front resets the application", ASYNC, async () => {
+    mockFetch(READ_OK());
+    const { container } = render(<VerifyForm />);
+    const q = within(container);
+    dropLabelImage(container); // old-tom.png into Front
+    await q.findByText("Complete the application to verify");
+    fireEvent.click(q.getByRole("button", { name: /Accept all AI suggestions/i }));
+    expect((q.getByLabelText(/^Brand/i) as HTMLInputElement).value).toBe("Old Tom Distillery");
+    // A new product's front arrives via the Back zone picker, claiming the Front slot by token.
+    const backInput = q.getByLabelText("Upload back label (optional)") as HTMLInputElement;
+    fireEvent.change(backInput, {
+      target: { files: [new File(["n"], "bonny-front.png", { type: "image/png" })] },
+    });
+    await waitFor(() =>
+      expect((q.getByLabelText(/^Brand/i) as HTMLInputElement).value).toBe(""),
+    ); // the old product's typed application is gone
+  });
+
   it("hides the neck/strip slot behind an 'Add a neck or strip label' button until asked for", () => {
     const { container } = render(<VerifyForm />);
     const q = within(container);

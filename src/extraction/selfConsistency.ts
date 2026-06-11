@@ -14,6 +14,15 @@
  *      presence-agreement separately; when presence is UNSTABLE across samples (split present/absent)
  *      we cap the field's confidence into the review band rather than asserting the majority. When
  *      every sample AGREES on presence (all present, or all absent) the behavior is unchanged.
+ *      The cap is TIERED (2026-06-10, batch-distrust investigation): a SUPERMAJORITY dropout — the
+ *      agreeing value cluster covers >= 75% of ALL samples and only the remainder dropped the field —
+ *      caps at 0.65 instead of the hard 0.3. Both land in review (no auto-pass), but 0.65 sits inside
+ *      the strong-model rescue band while 0.3 is deliberately outside it: the probability of one
+ *      sample dropping a field GROWS with sample count, so the most common artifact of a wider vote
+ *      was a correct field stamped permanently unrescuable. Genuine splits (sub-supermajority) and
+ *      all numeric splits keep the hard 0.3 — cross-source conflicts stay with a human. Note the
+ *      tier is INERT at the offline default width of 3 (a single dropout is 2/3 < 0.75; it first
+ *      fires at width 4) — deliberate: narrow votes carry too little evidence to soften a conflict.
  *   2. ALCOHOL numeric cross-check. For the alcohol statement, if the samples disagree on the ABV
  *      magnitude while the proof is stable (or vice versa), we cap confidence into review rather than
  *      asserting a number that could drive a wrong tolerance verdict.
@@ -26,6 +35,12 @@ import { resolveSelfConsistencyEscalation } from "./config";
 import type { ImageInput, VisionProvider } from "./VisionProvider";
 
 type ValueKey = (typeof FIELD_CATALOG)[number]["key"];
+
+/** A presence-unstable field whose value cluster still covers this fraction of ALL samples is a
+ *  dropout artifact, not a genuine split. */
+export const SUPERMAJORITY_PRESENCE_FRACTION = 0.75;
+/** The confidence for a supermajority dropout: review-gated (< 0.7) but rescue-eligible (> 0.3). */
+export const SUPERMAJORITY_DROPOUT_CONFIDENCE = 0.65;
 
 /** A field value counts as PRESENT only when it is a non-empty, non-whitespace string. */
 function isPresent(v: string | undefined): boolean {
@@ -64,6 +79,9 @@ function vote(values: (string | undefined)[]): {
   value: string | undefined;
   agreement: number;
   presenceStable: boolean;
+  /** The surfaced value's cluster as a fraction of ALL samples (0 when no value is surfaced) — the
+   *  supermajority-dropout test keys on this, never on the absent side's share. */
+  valueFraction: number;
 } {
   // CLUSTERED (semantic) voting: samples that agree under the SAME tolerant field-equivalence the
   // provider merge uses (valuesAgree: punctuation/diacritic noise, containment, a one-character
@@ -93,9 +111,14 @@ function vote(values: (string | undefined)[]): {
   // When presence is unstable, still surface the best PRESENT reading (mirrors the old behavior of
   // preferring the majority among present samples).
   if (!presenceStable && bestCluster) {
-    return { value: representative(bestCluster), agreement, presenceStable };
+    return {
+      value: representative(bestCluster),
+      agreement,
+      presenceStable,
+      valueFraction: bestPresent / values.length,
+    };
   }
-  return { value, agreement, presenceStable };
+  return { value, agreement, presenceStable, valueFraction: value === undefined ? 0 : bestPresent / values.length };
 }
 
 /**
@@ -158,14 +181,21 @@ export function aggregateSamples(samples: ExtractedFields[]): ExtractedFields {
   for (const d of FIELD_CATALOG) {
     const key = d.key as ValueKey;
     const rawValues = samples.map((s) => (s as unknown as Record<string, string | undefined>)[key]);
-    const { value, agreement, presenceStable } = vote(rawValues);
+    const { value, agreement, presenceStable, valueFraction } = vote(rawValues);
     (out as unknown as Record<string, string | undefined>)[key] = value;
 
     // Start from the raw agreement fraction, then DOWN-WEIGHT (never up) for the robustness guards.
     let conf = agreement;
     // (1) Unstable presence: a minority dropout/hallucination must not assert a confident value or
-    // absence — route to review rather than trusting the majority.
-    if (!presenceStable) conf = Math.min(conf, DISAGREEMENT_CONFIDENCE);
+    // absence — route to review rather than trusting the majority. TIERED: a supermajority value
+    // cluster (one-sample dropout) caps to the rescue-eligible 0.65; genuine splits keep the hard 0.3.
+    if (!presenceStable) {
+      const cap =
+        valueFraction >= SUPERMAJORITY_PRESENCE_FRACTION
+          ? SUPERMAJORITY_DROPOUT_CONFIDENCE
+          : DISAGREEMENT_CONFIDENCE;
+      conf = Math.min(conf, cap);
+    }
     // (2) Alcohol magnitude split: disagreeing ABV/proof numbers must not drive a tolerance verdict.
     if (d.key === "alcoholContentText" && !alcoholNumbersStable(rawValues)) {
       conf = Math.min(conf, DISAGREEMENT_CONFIDENCE);

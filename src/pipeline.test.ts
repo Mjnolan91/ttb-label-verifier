@@ -111,6 +111,24 @@ describe("runExtraction — a partial image failure is REPORTED, never silent", 
   });
 });
 
+describe("runExtraction — origin harvesting after the merge", () => {
+  it("fills an absent countryOfOrigin from a printed origin phrase in the commodity statement", async () => {
+    const provider = providerByFilename({
+      "back.jpg": () =>
+        Promise.resolve(
+          fields({
+            brand: "Cassiopeia",
+            commodityStatement: "SPARKLING WINE - PRODUCT OF FRANCE",
+            confidence: { brand: 0.95, commodityStatement: 0.9 },
+          }),
+        ),
+    });
+    const { extracted } = await runExtraction([provider], [img("back.jpg")]);
+    expect(extracted.countryOfOrigin).toBe("PRODUCT OF FRANCE");
+    expect(extracted.confidence.countryOfOrigin).toBe(0.9);
+  });
+});
+
 describe("runExtraction — burst hygiene + rescue budget", () => {
   it("caps the bold-judge fan-out at 3 per image even when extraction samples wider", async () => {
     const prev = process.env.SELF_CONSISTENCY_SAMPLES;
