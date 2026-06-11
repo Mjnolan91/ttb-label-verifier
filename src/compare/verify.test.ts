@@ -63,6 +63,20 @@ describe("verifyLabel", () => {
     expect(r.overall).toBe("reject");
   });
 
+  it("a focus-RECOVERED warning (canonical text at review-band confidence) can NEVER approve", () => {
+    // The warning-focus pass recovers a missed warning at RESCUE_CONTESTED_CONFIDENCE (0.65) with
+    // clean flags. The statutory wording lives in every model's training data, so this exact shape
+    // is what a hallucinated recovery would look like — the confidence gate on the warning field is
+    // the single line of defense, and mutation testing showed nothing else pins it. The verdict
+    // must be review (confirm on the label), never approve.
+    const ex = extractedClean();
+    ex.confidence.warningText = 0.65;
+    const r = verifyLabel(claimedClean, ex);
+    expect(r.warning.status).toBe("review");
+    expect(r.overall).toBe("review");
+    expect(r.overall).not.toBe("approve");
+  });
+
   it("routes a near-miss brand typo to review (overall review)", () => {
     const ex = extractedClean();
     ex.brand = "Old Tomm Distillery";

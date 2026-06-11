@@ -90,4 +90,32 @@ export interface VisionProvider {
    * offline suite and eval never rescue.
    */
   readFields?(images: ImageInput[], rawKeys: string[], signal?: AbortSignal): Promise<Record<string, string | null> | null>;
+  /**
+   * OPTIONAL warning-focus pass (warningFocus.ts): a strong-model read dedicated to the GOVERNMENT
+   * WARNING — locate it in ANY orientation across the given images, transcribe it verbatim, judge
+   * the 16.22 format flags, and report the region/rotation so the pipeline can crop+derotate+upscale
+   * and re-judge from the zoomed crop. Returns null when the call fails (the pipeline leaves the
+   * extraction untouched). Implemented by the chat providers; the mock omits it so the offline
+   * suite and eval never run it.
+   */
+  focusWarning?(images: ImageInput[], signal?: AbortSignal): Promise<WarningFocusRead | null>;
+}
+
+/** One warning-focused strong-model read (see VisionProvider.focusWarning / warningFocus.ts). */
+export interface WarningFocusRead {
+  /** Whether a government-warning statement was found on any of the images. */
+  found: boolean;
+  /** 0-based index (into the images given) of the image carrying the warning; null when not found. */
+  imageIndex: number | null;
+  /** Verbatim transcript exactly as printed (never reconstructed from memory), or null. */
+  transcript: string | null;
+  /** Tri-state 16.22 format judgments (null = cannot tell), mirroring the extraction flags. */
+  prefixAllCaps: boolean | null;
+  prefixBold: boolean | null;
+  remainderBold: boolean | null;
+  readilyLegible: boolean | null;
+  /** Degrees (0|90|180|270) to rotate the image CLOCKWISE so the warning reads upright; null unknown. */
+  rotateClockwise: number | null;
+  /** Warning region as FRACTIONS of the carrying image's width/height; null when not localizable. */
+  box: { left: number; top: number; width: number; height: number } | null;
 }

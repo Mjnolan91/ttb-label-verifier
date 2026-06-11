@@ -42,3 +42,16 @@ export function combineBoldSignals(extraction: boolean | null, judge: boolean | 
   if (extraction === true || judge === true) return true; // positive evidence, nothing contradicting
   return null; // neither can tell
 }
+
+/**
+ * The MIRROR of combineBoldSignals for flags where TRUE is the hard-fail signal (e.g.
+ * warningRemainderIsBold: a confidently-bold remainder violates 16.22(a)(2)). Assert the violation
+ * (true) ONLY when both signals agree; a lone "violation" or any disagreement falls to null
+ * (surfaced, not failed); "compliant" (false) needs only one positive with no contradiction.
+ */
+export function combineViolationSignals(a: boolean | null, b: boolean | null): boolean | null {
+  if (a === true && b === true) return true; // both agree on the violation -> hard-fail justified
+  if (a === true || b === true) return null; // one sees a violation, the other doesn't agree
+  if (a === false || b === false) return false; // compliant evidence, nothing contradicting
+  return null; // neither can tell
+}

@@ -104,9 +104,12 @@ export function applyRescue(
       if (canonical(strongValue).length > canonical(cur).length) setValue(e, d, strongValue);
       e.confidence[k] = Math.max(e.confidence[k] ?? 0, RESCUE_AGREED_CONFIDENCE);
     } else {
-      // Cross-model conflict: surface the strong model's read, but a human still decides.
+      // Cross-model conflict: surface the strong model's read, but a human still decides. The
+      // adoption is MARKED so no later pass can treat the same strong model agreeing with its own
+      // words as independent evidence (the warning focus checks this before any agree-boost).
       setValue(e, d, strongValue);
       e.confidence[k] = RESCUE_CONTESTED_CONFIDENCE;
+      e.strongReadAdopted = [...new Set([...(e.strongReadAdopted ?? []), k])];
     }
   }
   return e;

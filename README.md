@@ -118,7 +118,12 @@ image(s) ──> VisionProvider(s) ──> reconciler ──> completeness check
   one check that can hard-fail a label, that judge can run on a stronger model than the bulk reads
   (`WARNING_JUDGE_MODEL`), and "verified" means verified: when neither the extraction nor the judge
   can confirm the prefix format, the verdict says so and routes to review instead of silently
-  passing.
+  passing. And when the warning is REQUIRED but still missing or unverified after all of that, a
+  WARNING FOCUS escalation runs one strong-model pass that finds the warning in any orientation
+  (sideways and upside-down text are normal on bottles), then crops the region, rotates it upright,
+  and upscales it so a second judgment reads the prefix strokes at several times the effective
+  resolution — a recovered warning surfaces at review-band confidence for a human, never as a
+  silent pass (`scripts/test-warning-focus-live.ts` measures this path on adversarial renders).
 - **The rules live once, in a CFR-verified module.** The canonical warning text, the per-class
   alcohol tolerance matrix, and the mandatory-elements matrix are hand-written in
   [`src/domain/`](src/domain/README.md) with inline CFR citations, and treated as statutory:

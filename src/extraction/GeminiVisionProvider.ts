@@ -11,9 +11,10 @@
  * HTTP layer is injectable so unit tests use no network.
  */
 import type { ExtractedFields } from "@/domain";
-import type { ExtractOptions, ImageInput, VisionProvider } from "./VisionProvider";
+import type { ExtractOptions, ImageInput, VisionProvider, WarningFocusRead } from "./VisionProvider";
 import { CONFLICTING_FIELDS_DESCRIPTION, SYSTEM_PROMPT, USER_PROMPT, jointReadPreamble, parseModelJson } from "./LlmVisionProvider";
 import { RESCUE_PROMPT } from "./rescue";
+import { WARNING_FOCUS_PROMPT, coerceWarningFocusRead } from "./warningFocus";
 import { FIELD_CATALOG } from "./fieldCatalog";
 import { defaultFetch, fetchWithRetry, withHardTimeout, type FetchLike } from "./http";
 import { geminiTuning } from "./geminiTuning";
@@ -249,7 +250,8 @@ export class GeminiVisionProvider implements VisionProvider {
   }
 
   private static readonly BOLD_PROMPT =
-    'Look ONLY at the government health warning statement on this label. Compare the STROKE WEIGHT ' +
+    'Look ONLY at the government health warning statement on this label. The warning may be printed ' +
+    "SIDEWAYS or upside down — find it in any orientation and judge it as if upright. Compare the STROKE WEIGHT " +
     '(line thickness and darkness) of the "GOVERNMENT WARNING:" prefix against the warning body text ' +
     "that follows it. Bold means heavier strokes than the body, whatever the style: an italic, serif, " +
     "or decorative prefix still counts as BOLDER when its strokes are clearly thicker or darker than " +
@@ -317,6 +319,111 @@ export class GeminiVisionProvider implements VisionProvider {
       return { ok: true, verdict: verdict === "BOLDER" ? true : verdict === "SAME" ? false : null };
     } catch {
       return { ok: false, verdict: null };
+    }
+  }
+
+  /** Gemini's OpenAPI-subset response schema for the WARNING FOCUS pass (see warningFocus.ts). */
+  private static readonly WARNING_FOCUS_SCHEMA = {
+    type: "OBJECT",
+    properties: {
+      found: { type: "BOOLEAN" },
+      imageIndex: { type: "INTEGER", nullable: true },
+      transcript: {
+        type: "STRING",
+        nullable: true,
+        description:
+          "The warning VERBATIM as printed (preserve capitalization and the (1)/(2) markers); " +
+          "transcribe only printed text, never reconstruct from memory.",
+      },
+      prefixAllCaps: { type: "BOOLEAN", nullable: true },
+      prefixBolderThanBody: { type: "BOOLEAN", nullable: true },
+      remainderBold: { type: "BOOLEAN", nullable: true },
+      readilyLegible: { type: "BOOLEAN", nullable: true },
+      rotateClockwiseDegrees: {
+        type: "INTEGER",
+        nullable: true,
+        description: "Degrees (0, 90, 180, or 270) to rotate the image clockwise so the warning reads upright.",
+      },
+      box: {
+        type: "OBJECT",
+        nullable: true,
+        description: "Warning region as fractions (0..1) of the carrying image's width/height.",
+        properties: {
+          left: { type: "NUMBER" },
+          top: { type: "NUMBER" },
+          width: { type: "NUMBER" },
+          height: { type: "NUMBER" },
+        },
+        required: ["left", "top", "width", "height"],
+      },
+    },
+    required: [
+      "found",
+      "imageIndex",
+      "transcript",
+      "prefixAllCaps",
+      "prefixBolderThanBody",
+      "remainderBold",
+      "readilyLegible",
+      "rotateClockwiseDegrees",
+      "box",
+    ],
+  } as const;
+
+  /** The WARNING FOCUS pass (warningFocus.ts), on the strong judge model. Best-effort: null on failure. */
+  async focusWarning(images: ImageInput[], signal?: AbortSignal): Promise<WarningFocusRead | null> {
+    const indexed = images
+      .map((img, originalIndex) => ({ img, originalIndex }))
+      .filter(({ img }) => img.data && img.data.length > 0);
+    const usable = indexed.map(({ img }) => img);
+    if (usable.length === 0) return null;
+    const model = this.config.judgeModel ?? GeminiVisionProvider.DEFAULT_JUDGE_MODEL;
+    const url = `${API_BASE}/models/${model}:generateContent`;
+    const tuning = geminiTuning(model, "read");
+    try {
+      const res = await fetchWithRetry(this.fetchImpl, url, {
+        method: "POST",
+        headers: { "x-goog-api-key": this.config.apiKey, "content-type": "application/json" },
+        signal: withHardTimeout(signal),
+        body: JSON.stringify({
+          contents: [
+            {
+              role: "user",
+              parts: [
+                ...usable.flatMap((img, i) => [
+                  { text: `Image ${i}${img.position ? ` (the ${img.position} label)` : ""}:` },
+                  {
+                    inlineData: {
+                      mimeType: img.contentType ?? "image/jpeg",
+                      data: Buffer.from(img.data!).toString("base64"),
+                    },
+                  },
+                ]),
+                { text: WARNING_FOCUS_PROMPT },
+              ],
+            },
+          ],
+          generationConfig: {
+            temperature: tuning.temperature,
+            maxOutputTokens: MAX_OUTPUT_TOKENS,
+            responseMimeType: "application/json",
+            responseSchema: GeminiVisionProvider.WARNING_FOCUS_SCHEMA,
+            thinkingConfig: tuning.thinkingConfig,
+          },
+        }),
+      });
+      if (!res.ok) return null;
+      const json = (await res.json()) as GeminiResponse;
+      const text = firstText(json.candidates?.[0]);
+      if (!text) return null;
+      const read = coerceWarningFocusRead(JSON.parse(text));
+      // Remap the model's prompt-frame index to the caller's array position (byteless filtering).
+      if (read && read.imageIndex !== null) {
+        read.imageIndex = indexed[read.imageIndex]?.originalIndex ?? null;
+      }
+      return read;
+    } catch {
+      return null;
     }
   }
 

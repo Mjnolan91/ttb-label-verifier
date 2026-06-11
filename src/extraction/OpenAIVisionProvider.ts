@@ -8,8 +8,8 @@
  * Azure access is gated. Config from env only; the HTTP layer is injectable so unit tests use no network.
  */
 import type { ExtractedFields } from "@/domain";
-import type { ExtractOptions, ImageInput, VisionProvider } from "./VisionProvider";
-import { buildExtractionBody, callChatCompletion, encodeLabelImage, judgeWarningBoldViaChat, readFieldsViaChat } from "./LlmVisionProvider";
+import type { ExtractOptions, ImageInput, VisionProvider, WarningFocusRead } from "./VisionProvider";
+import { buildExtractionBody, callChatCompletion, encodeLabelImage, focusWarningViaChat, judgeWarningBoldViaChat, readFieldsViaChat } from "./LlmVisionProvider";
 import { defaultFetch, type FetchLike } from "./http";
 import { resolveSelfConsistencyTemperature, resolveWarningJudgeModel } from "./config";
 
@@ -108,6 +108,26 @@ export class OpenAIVisionProvider implements VisionProvider {
       signal,
       model: this.config.judgeModel ?? OpenAIVisionProvider.DEFAULT_JUDGE_MODEL,
       fallbackModel: this.config.model,
+    });
+  }
+
+  /** The WARNING FOCUS pass (warningFocus.ts), on the strong judge model. Best-effort: null on failure. */
+  async focusWarning(images: ImageInput[], signal?: AbortSignal): Promise<WarningFocusRead | null> {
+    const usable = images
+      .map((img, originalIndex) => ({ img, originalIndex }))
+      .filter(({ img }) => img.data && img.data.length > 0);
+    if (usable.length === 0) return null;
+    return focusWarningViaChat({
+      fetchImpl: this.fetchImpl,
+      url: OPENAI_URL,
+      headers: { authorization: `Bearer ${this.config.apiKey}` },
+      images: usable.map(({ img }) => ({
+        dataUrl: `data:${img.contentType ?? "image/jpeg"};base64,${Buffer.from(img.data!).toString("base64")}`,
+        position: img.position,
+      })),
+      signal,
+      model: this.config.judgeModel ?? OpenAIVisionProvider.DEFAULT_JUDGE_MODEL,
+      originalIndexes: usable.map(({ originalIndex }) => originalIndex),
     });
   }
 

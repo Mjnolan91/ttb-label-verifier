@@ -139,7 +139,22 @@ label-carries-every-required-element check (`src/compare/completeness.ts`). `com
   (`GeminiVisionProvider.DEFAULT_JUDGE_MODEL` / `OpenAIVisionProvider.DEFAULT_JUDGE_MODEL`)
   with automatic fallback to the extraction model when that call fails; `WARNING_JUDGE_MODEL`
   pins or upgrades it on any provider (the Azure `llm` provider defaults to the extraction
-  deployment, no automatic upgrade). Measured (2026-06-10, 9 live reads per config): Flash
+  deployment, no automatic upgrade). The judge's per-image verdicts are MAJORITY-VOTED across
+  images (a spurious verdict from a no-warning image must not preempt the warning-bearing one).
+  On top of the judge sits the WARNING FOCUS escalation (`src/extraction/warningFocus.ts`,
+  default ON, `WARNING_FOCUS=0` disables): when the warning is REQUIRED (>=0.5% ABV or unknown)
+  but still missing or format-unverified after the merge/judge/rescue, ONE bounded strong-model
+  pass locates it in ANY orientation, then code CROPS the region, DEROTATES it upright, and
+  UPSCALES it (sharp) for a second zoomed judgment — the crop-locally pattern for fine print
+  (2026-06-11 RCA: the full-image judge split on a clean 90-degree rotation, and a MISSED warning
+  was structurally unrecoverable because the rescue excludes absent fields). Asymmetric by
+  design: a RECOVERED warning surfaces at review-band confidence (the statutory text lives in
+  every model's training data, so a recovered canonical transcript is never self-certifying); an
+  AGREEING transcript clears the review gate — but NEVER from a deliberate review hold: the
+  conflict band (<= DISAGREEMENT_CONFIDENCE, the rescue's FP-3 carve-out — a third reading must
+  not arbitrate which panel was right) and rescue-adopted values (`strongReadAdopted`: the same
+  strong model re-agreeing with its own words is not independent evidence) are fully untouchable;
+  a lone violation signal from any single source lands in review, never a hard fail. Measured (2026-06-10, 9 live reads per config): Flash
   extraction + Pro judge = 9/9 verdicts, p95 4.5s (the concurrent judge hides behind the
   extraction wall-clock); Pro extraction = p95 8.1s with quota failures — extraction
   stays on Flash BY MEASUREMENT, not preference. The same split was measured on OpenAI

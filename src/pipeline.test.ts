@@ -309,6 +309,217 @@ describe("runExtraction — JOINT multi-image read (one request per product)", (
   });
 });
 
+describe("runExtraction — WARNING FOCUS escalation (locate -> crop -> re-judge)", () => {
+  /** Pin WARNING_FOCUS for a test, restoring the env afterwards. */
+  async function withFocusEnv<T>(value: string | undefined, fn: () => Promise<T>): Promise<T> {
+    const prev = process.env.WARNING_FOCUS;
+    if (value === undefined) delete process.env.WARNING_FOCUS;
+    else process.env.WARNING_FOCUS = value;
+    try {
+      return await fn();
+    } finally {
+      if (prev === undefined) delete process.env.WARNING_FOCUS;
+      else process.env.WARNING_FOCUS = prev;
+    }
+  }
+
+  const focusFound = {
+    found: true,
+    imageIndex: 0,
+    transcript: CANONICAL_GOVERNMENT_WARNING,
+    prefixAllCaps: true as boolean | null,
+    prefixBold: true as boolean | null,
+    remainderBold: false as boolean | null,
+    readilyLegible: true as boolean | null,
+    rotateClockwise: 0 as number | null,
+    box: null,
+  };
+
+  it("a MISSED required warning is recovered by the focus pass at review-band confidence", async () => {
+    let focusCalls = 0;
+    const provider: VisionProvider = {
+      name: "mock",
+      extract: async () =>
+        fields({
+          brand: "Fireball",
+          alcoholContentText: "ALC. 33% BY VOL. (66 PROOF)",
+          confidence: { brand: 0.95, alcoholContent: 0.95 },
+        }),
+      focusWarning: async (images) => {
+        focusCalls++;
+        expect(images).toHaveLength(2); // the pass sees ALL the product's images
+        return focusFound;
+      },
+    };
+    const out = await runExtraction([provider], [img("front.jpg"), img("back.jpg")]);
+    expect(focusCalls).toBeGreaterThanOrEqual(1);
+    expect(out.extracted.warningText).toBe(CANONICAL_GOVERNMENT_WARNING);
+    const conf = out.extracted.confidence.warningText ?? 0;
+    expect(conf).toBeGreaterThan(0.3); // surfaced, not buried
+    expect(conf).toBeLessThan(0.7); // but still review-gated: a recovery is never a silent pass
+  });
+
+  it("an UNVERIFIED bold prefix (null) is verified by the focus pass — the Fireball case", async () => {
+    const provider: VisionProvider = {
+      name: "mock",
+      extract: async () =>
+        fields({
+          brand: "Fireball",
+          alcoholContentText: "ALC. 33% BY VOL. (66 PROOF)",
+          warningText: CANONICAL_GOVERNMENT_WARNING,
+          warningPrefixIsAllCaps: true,
+          warningPrefixIsBold: null, // the fast path could not tell
+          confidence: { brand: 0.95, alcoholContent: 0.95, warningText: 1 },
+        }),
+      focusWarning: async () => focusFound,
+    };
+    const out = await runExtraction([provider], [img("front.jpg")]);
+    expect(out.extracted.warningPrefixIsBold).toBe(true); // verified, not parked in review
+    expect(out.extracted.confidence.warningText).toBeGreaterThanOrEqual(0.85); // agreement boost
+  });
+
+  it("WARNING_FOCUS=0 disables the pass", async () => {
+    await withFocusEnv("0", async () => {
+      let focusCalls = 0;
+      const provider: VisionProvider = {
+        name: "mock",
+        extract: async () =>
+          fields({ brand: "Fireball", alcoholContentText: "33% ALC/VOL", confidence: { brand: 0.95 } }),
+        focusWarning: async () => {
+          focusCalls++;
+          return focusFound;
+        },
+      };
+      const out = await runExtraction([provider], [img("front.jpg")]);
+      expect(focusCalls).toBe(0);
+      expect(out.extracted.warningText).toBeUndefined();
+    });
+  });
+
+  it("never fires for an exempt product (<0.5% ABV at a TRUSTED read: no warning required)", async () => {
+    let focusCalls = 0;
+    const provider: VisionProvider = {
+      name: "mock",
+      extract: async () =>
+        fields({
+          brand: "Near Beer",
+          alcoholContentText: "0.4% ALC/VOL",
+          confidence: { brand: 0.95, alcoholContent: 0.95 },
+        }),
+      focusWarning: async () => {
+        focusCalls++;
+        return focusFound;
+      },
+    };
+    await runExtraction([provider], [img("front.jpg")]);
+    expect(focusCalls).toBe(0);
+  });
+
+  it("an UNTRUSTED sub-0.5% ABV read does not exempt (a decimal-slip misread must not bury the warning)", async () => {
+    let focusCalls = 0;
+    const provider: VisionProvider = {
+      name: "mock",
+      extract: async () =>
+        fields({
+          brand: "Fireball",
+          alcoholContentText: "0.4% ALC/VOL", // plausibly "40%" misread; confidence is low
+          confidence: { brand: 0.95, alcoholContent: 0.3 },
+        }),
+      focusWarning: async () => {
+        focusCalls++;
+        return focusFound;
+      },
+    };
+    await runExtraction([provider], [img("front.jpg")]);
+    expect(focusCalls).toBeGreaterThanOrEqual(1);
+  });
+
+  it("NEVER fires on a conflict-stamped warning — a cross-panel contradiction stays with a human", async () => {
+    // The model reported the front and back printing DIFFERENT warning text (crossImageConflicts);
+    // the cap pins it to 0.3 and the focus pass must not arbitrate it (adversarial review blocker:
+    // an agree-boost here could approve a label one of whose panels is non-compliant).
+    let focusCalls = 0;
+    const provider: VisionProvider = {
+      name: "mock",
+      extract: async () => fields({}),
+      extractAll: async () =>
+        fields({
+          brand: "Fireball",
+          alcoholContentText: "ALC. 33% BY VOL.",
+          warningText: CANONICAL_GOVERNMENT_WARNING,
+          warningPrefixIsAllCaps: true,
+          warningPrefixIsBold: true,
+          crossImageConflicts: ["warningText"],
+          confidence: { brand: 0.95, alcoholContent: 0.95, warningText: 0.98 },
+        }),
+      focusWarning: async () => {
+        focusCalls++;
+        return focusFound;
+      },
+    };
+    const out = await runExtraction([provider], [img("front.jpg"), img("back.jpg")]);
+    expect(focusCalls).toBe(0);
+    expect(out.extracted.confidence.warningText).toBeLessThanOrEqual(0.3); // the hold survives
+  });
+
+  it("never fires when the warning is already verified (the common case costs nothing)", async () => {
+    let focusCalls = 0;
+    const provider: VisionProvider = {
+      name: "mock",
+      extract: async () =>
+        fields({
+          brand: "Old Tom",
+          warningText: CANONICAL_GOVERNMENT_WARNING,
+          warningPrefixIsAllCaps: true,
+          warningPrefixIsBold: true,
+          confidence: { brand: 0.95, warningText: 0.95 },
+        }),
+      focusWarning: async () => {
+        focusCalls++;
+        return focusFound;
+      },
+    };
+    await runExtraction([provider], [img("front.jpg")]);
+    expect(focusCalls).toBe(0);
+  });
+
+  it("a failed focus pass leaves the extraction untouched (missing stays an honest missing)", async () => {
+    const provider: VisionProvider = {
+      name: "mock",
+      extract: async () =>
+        fields({ brand: "Fireball", alcoholContentText: "33% ALC/VOL", confidence: { brand: 0.95 } }),
+      focusWarning: async () => null,
+    };
+    const out = await runExtraction([provider], [img("front.jpg")]);
+    expect(out.extracted.warningText).toBeUndefined();
+  });
+});
+
+describe("runExtraction — cross-image bold-judge voting", () => {
+  it("a spurious front-image verdict no longer preempts the back image's (majority vote, tie -> extraction stands)", async () => {
+    // Front (no warning on it) wrongly answers SAME; back correctly answers BOLDER. The old
+    // first-non-null wiring took the front's false and nulled a verified-bold label; the vote
+    // ties them to null and the extraction's own TRUE stands.
+    const provider: VisionProvider = {
+      name: "mock",
+      extract: async () =>
+        fields({
+          brand: "XYZ",
+          warningText: CANONICAL_GOVERNMENT_WARNING,
+          warningPrefixIsAllCaps: true,
+          warningPrefixIsBold: true,
+          confidence: { brand: 0.95, warningText: 0.95 },
+        }),
+      judgeWarningBold: async (image) => (image.filename === "front.jpg" ? false : true),
+    };
+    const out = await runExtraction(
+      [provider],
+      [{ ...img("front.jpg"), position: "front" }, { ...img("back.jpg"), position: "back" }],
+    );
+    expect(out.extracted.warningPrefixIsBold).toBe(true);
+  });
+});
+
 describe("runVerification", () => {
   const claimed: ClaimedFields = { brand: "ABC", alcoholContentText: "40% Alc./Vol." };
 

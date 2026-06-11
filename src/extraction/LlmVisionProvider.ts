@@ -12,7 +12,8 @@
  * tests run with no live network.
  */
 import type { ExtractedFields } from "@/domain";
-import type { ExtractOptions, ImageInput, VisionProvider } from "./VisionProvider";
+import type { ExtractOptions, ImageInput, VisionProvider, WarningFocusRead } from "./VisionProvider";
+import { WARNING_FOCUS_PROMPT, coerceWarningFocusRead } from "./warningFocus";
 import {
   mapRawExtracted,
   type RawConfidencedValue,
@@ -193,7 +194,10 @@ export const SYSTEM_PROMPT =
   "it appears on none of them.\n" +
   "7. CONFLICTS BETWEEN IMAGES: if two images print genuinely DIFFERENT values for the same field, " +
   "list that field's key in `conflictingFields` and lower its confidence — never silently pick one. " +
-  "Formatting or abbreviation differences are not conflicts.";
+  "Formatting or abbreviation differences are not conflicts.\n" +
+  "8. ORIENTATION: label text may be printed SIDEWAYS (rotated 90 or 270 degrees), upside down, or " +
+  "curved around the container. Read it in whatever orientation it appears — rotated text is normal " +
+  "on bottles, not unreadable.";
 
 export const USER_PROMPT =
   "Read EVERY piece of text on each label image — top, bottom, sides, and small/fine print. Transcribe " +
@@ -385,7 +389,8 @@ export function buildExtractionBody(
 }
 
 export const BOLD_PROMPT =
-  'Look ONLY at the government health warning statement on this label. Compare the STROKE WEIGHT ' +
+  'Look ONLY at the government health warning statement on this label. The warning may be printed ' +
+  "SIDEWAYS or upside down — find it in any orientation and judge it as if upright. Compare the STROKE WEIGHT " +
   '(line thickness and darkness) of the "GOVERNMENT WARNING:" prefix against the warning body text ' +
   "that follows it. Bold means heavier strokes than the body, whatever the style: an italic, serif, " +
   "or decorative prefix still counts as BOLDER when its strokes are clearly thicker or darker than " +
@@ -477,6 +482,116 @@ export function rescueResponseFormat(rawKeys: string[]) {
 
 /** Headroom for a rescue reply: the longest field (the verbatim statutory warning) plus slack. */
 const RESCUE_MAX_OUTPUT_TOKENS = 700;
+
+/** Strict structured-output format for the WARNING FOCUS pass (see warningFocus.ts). */
+export const WARNING_FOCUS_RESPONSE_FORMAT = {
+  type: "json_schema",
+  json_schema: {
+    name: "warning_focus",
+    strict: true,
+    schema: {
+      type: "object",
+      properties: {
+        found: { type: "boolean", description: "Whether a government-warning statement is printed on any image." },
+        imageIndex: { type: ["integer", "null"], description: "0-based index of the image carrying the warning." },
+        transcript: {
+          type: ["string", "null"],
+          description:
+            "The warning VERBATIM as printed (preserve capitalization and the (1)/(2) markers); " +
+            "transcribe only printed text, never reconstruct from memory.",
+        },
+        prefixAllCaps: { type: ["boolean", "null"] },
+        prefixBolderThanBody: { type: ["boolean", "null"] },
+        remainderBold: { type: ["boolean", "null"] },
+        readilyLegible: { type: ["boolean", "null"] },
+        rotateClockwiseDegrees: {
+          type: ["integer", "null"],
+          description: "Degrees (0, 90, 180, or 270) to rotate the image clockwise so the warning reads upright.",
+        },
+        box: {
+          type: ["object", "null"],
+          description: "Warning region as fractions (0..1) of the carrying image's width/height.",
+          properties: {
+            left: { type: "number" },
+            top: { type: "number" },
+            width: { type: "number" },
+            height: { type: "number" },
+          },
+          required: ["left", "top", "width", "height"],
+          additionalProperties: false,
+        },
+      },
+      required: [
+        "found",
+        "imageIndex",
+        "transcript",
+        "prefixAllCaps",
+        "prefixBolderThanBody",
+        "remainderBold",
+        "readilyLegible",
+        "rotateClockwiseDegrees",
+        "box",
+      ],
+      additionalProperties: false,
+    },
+  },
+} as const;
+
+/**
+ * Shared OpenAI-dialect warning-focus call (see warningFocus.ts): ONE bounded request on the strong
+ * model. Returns the coerced read or null when the call fails — never throws (a failed focus pass
+ * must leave the extraction untouched).
+ */
+export async function focusWarningViaChat(opts: {
+  fetchImpl: FetchLike;
+  url: string;
+  headers: Record<string, string>;
+  images: { dataUrl: string; position?: string }[];
+  signal?: AbortSignal;
+  /** Required for api.openai.com (the body names the model); omitted for Azure (deployment in URL). */
+  model?: string;
+  /** Maps each sent image's prompt index back to the CALLER's array position (providers filter
+   *  byteless images before sending, so the model's `Image i` frame can differ from the caller's;
+   *  the WarningFocusRead contract promises an index into the images the caller gave). */
+  originalIndexes?: number[];
+}): Promise<WarningFocusRead | null> {
+  try {
+    const res = await fetchWithRetry(opts.fetchImpl, opts.url, {
+      method: "POST",
+      headers: { ...opts.headers, "content-type": "application/json" },
+      signal: withHardTimeout(opts.signal),
+      body: JSON.stringify({
+        ...(opts.model ? { model: opts.model } : {}),
+        messages: [
+          {
+            role: "user",
+            content: [
+              { type: "text", text: WARNING_FOCUS_PROMPT },
+              ...opts.images.flatMap((img, i) => [
+                { type: "text", text: `Image ${i}${img.position ? ` (the ${img.position} label)` : ""}:` },
+                { type: "image_url", image_url: { url: img.dataUrl, detail: "high" } },
+              ]),
+            ],
+          },
+        ],
+        // Like the rescue: a transcription + typography judgment, already on the strongest model.
+        ...chatParams(opts.model, RESCUE_MAX_OUTPUT_TOKENS, 0),
+        response_format: WARNING_FOCUS_RESPONSE_FORMAT,
+      }),
+    });
+    if (!res.ok) return null;
+    const json = (await res.json()) as { choices?: { message?: { content?: unknown } }[] };
+    const content = json.choices?.[0]?.message?.content;
+    if (typeof content !== "string") return null;
+    const read = coerceWarningFocusRead(JSON.parse(content));
+    if (read && read.imageIndex !== null && opts.originalIndexes) {
+      read.imageIndex = opts.originalIndexes[read.imageIndex] ?? null;
+    }
+    return read;
+  } catch {
+    return null;
+  }
+}
 
 /**
  * Shared OpenAI-dialect rescue read (see rescue.ts): ONE call on the strong model, ALL images, ONLY
@@ -636,6 +751,29 @@ export class LlmVisionProvider implements VisionProvider {
       headers: { "api-key": this.config.apiKey },
       dataUrl,
       signal,
+    });
+  }
+
+  /** The WARNING FOCUS pass (warningFocus.ts), on the judge deployment (the strongest available). */
+  async focusWarning(images: ImageInput[], signal?: AbortSignal): Promise<WarningFocusRead | null> {
+    const usable = images
+      .map((img, originalIndex) => ({ img, originalIndex }))
+      .filter(({ img }) => img.data && img.data.length > 0);
+    if (usable.length === 0) return null;
+    const judgeDeployment = this.config.judgeDeployment ?? this.config.deployment;
+    const url =
+      `${this.config.endpoint.replace(/\/+$/, "")}/openai/deployments/` +
+      `${judgeDeployment}/chat/completions?api-version=${this.config.apiVersion}`;
+    return focusWarningViaChat({
+      fetchImpl: this.fetchImpl,
+      url,
+      headers: { "api-key": this.config.apiKey },
+      images: usable.map(({ img }) => ({
+        dataUrl: `data:${img.contentType ?? "image/jpeg"};base64,${Buffer.from(img.data!).toString("base64")}`,
+        position: img.position,
+      })),
+      signal,
+      originalIndexes: usable.map(({ originalIndex }) => originalIndex),
     });
   }
 }

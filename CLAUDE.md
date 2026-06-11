@@ -78,12 +78,25 @@ pipeline and the "why". As built, the load-bearing pieces are:
   batch): a dropped back label must never masquerade as a clean front-only read — that silent drop
   under a 5000ms cap was the Bonnaire capture regression. When a warning is read, a dedicated `judgeWarningBold` pass over the
   images sets `warningPrefixIsBold` (capped at min(samples, 3) votes per image,
-  `resolveWarningJudgeSamples`/`WARNING_JUDGE_SAMPLES` — one boolean needs no 7-way burst; on gemini AND openai the judge DEFAULTS to the strongest model,
+  `resolveWarningJudgeSamples`/`WARNING_JUDGE_SAMPLES` — one boolean needs no 7-way burst; the
+  per-image verdicts are MAJORITY-VOTED across images, never first-non-null; on gemini AND openai the judge DEFAULTS to the strongest model,
   `GeminiVisionProvider.DEFAULT_JUDGE_MODEL` / `OpenAIVisionProvider.DEFAULT_JUDGE_MODEL`, falling
   back to the extraction model when that
   call fails; `WARNING_JUDGE_MODEL` pins/upgrades it per provider; an UNVERIFIABLE caps/bold
   prefix routes the warning to review in `compareWarning` — "verified" is never claimed on
-  missing evidence). On the Gemini provider, extraction stays on Flash by measurement (Pro
+  missing evidence). When the warning is REQUIRED but still missing or format-unverified after
+  the merge/judge/rescue, the WARNING FOCUS escalation (`src/extraction/warningFocus.ts`, default
+  ON, `WARNING_FOCUS=0` off, own per-stage budget `WARNING_FOCUS_TIMEOUT_MS`) runs ONE strong-model
+  locate pass (any orientation) then crops/derotates/upscales the region (sharp, a declared prod
+  dependency) and re-judges from the zoomed crop; a RECOVERED warning lands at review-band
+  confidence (never a silent pass — the statutory text is in every model's training data), an
+  agreeing transcript clears the gate, and a lone violation signal never hard-fails
+  (`combineViolationSignals`, the mirror of `combineBoldSignals`, guards the remainder-bold rule).
+  DELIBERATE REVIEW HOLDS ARE UNTOUCHABLE (`warningTextUntouchable`): the conflict band
+  (<= DISAGREEMENT_CONFIDENCE — mirrors the rescue's FP-3 carve-out) and rescue-adopted values
+  (`ExtractedFields.strongReadAdopted` — the same strong model re-agreeing with its own words is
+  not independent evidence) neither trigger nor accept the pass's text/flags/boost.
+  The mock has no `focusWarning`, so offline/eval never run it. On the Gemini provider, extraction stays on Flash by measurement (Pro
   extraction blew the ~5s budget and its 25 req/min quota; see README "Measured, not claimed");
   the same fast-extracts/strong-judges split holds on OpenAI (gpt-4.1 + gpt-5.5 judge). `runVerification()` adds the claimed comparison. `/api/verify`
   always extracts + runs the TTB **completeness** check (`src/compare/completeness.ts` over

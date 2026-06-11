@@ -162,11 +162,20 @@ export function evaluateWarningElement(spec: RequirementSpec, e: ExtractedFields
       ? " The statement may not be readily legible under ordinary conditions. Confirm it on the label (27 CFR 16.22(a)(1))."
       : "";
   const prefixDesc = e.warningPrefixIsAllCaps === true ? "an ALL-CAPS prefix" : "the required warning text";
+  // Mirror the generic present-value confidence check: a warning READ below the trust gate (incl.
+  // one RECOVERED by the focused re-read at review-band confidence) must surface here too, not only
+  // in the claimed comparison — the no-CSV batch flow reads ONLY this surface, and a single
+  // un-cross-checked strong-model read must never render as a clean "Present" there.
+  const conf = e.confidence.warningText;
+  const lowConf = conf === undefined || conf < FIELD_REVIEW_CONFIDENCE;
   return {
     ...base(spec),
     status: "present",
     value: w,
-    detail: `Present with ${prefixDesc}.${capsNote}${boldNote}${legibilityNote}`,
+    lowConfidence: lowConf,
+    detail: lowConf
+      ? `Found (low confidence, verify): present with ${prefixDesc}.${capsNote}${boldNote}${legibilityNote}`
+      : `Present with ${prefixDesc}.${capsNote}${boldNote}${legibilityNote}`,
   };
 }
 
@@ -352,11 +361,12 @@ export function checkCompleteness(extracted: ExtractedFields): CompletenessResul
   // Any element resolved to missing or malformed => incomplete (an element is only marked "missing"
   // once we've decided it is genuinely required-and-absent; a conditionally-absent element is
   // "unverifiable" and neutral). A merely uncertain READ (low confidence on something we did find)
-  // => review.
+  // => review. Derived from the elements themselves so EVERY present element's lowConfidence flag
+  // counts — including the warning's, which has its own evaluator.
   const hardIssue = elements.some((el) => el.status === "missing" || el.status === "malformed");
   const overall: CompletenessOverall = hardIssue
     ? "incomplete"
-    : lowConfidencePresent
+    : lowConfidencePresent || elements.some((el) => el.lowConfidence === true)
       ? "review"
       : "complete";
 

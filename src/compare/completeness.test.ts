@@ -51,6 +51,18 @@ describe("checkCompleteness — internal validity (no application value needed)"
     // a CONFIDENT non-all-caps prefix is still malformed
     expect(statusOf(checkCompleteness(ds({ warningPrefixIsAllCaps: false })), "governmentWarning")).toBe("malformed");
   });
+
+  it("a LOW-CONFIDENCE warning read (e.g. focus-recovered at 0.65) surfaces for verification, never a clean Present", () => {
+    // The no-CSV batch flow reads ONLY this surface: a warning recovered by one un-cross-checked
+    // strong-model read must keep the overall at review with a verify note, not render 'complete'.
+    const base = ds({});
+    const r = checkCompleteness({ ...base, confidence: { ...base.confidence, warningText: 0.65 } });
+    const el = r.elements.find((e) => e.key === "governmentWarning");
+    expect(el?.status).toBe("present");
+    expect(el?.lowConfidence).toBe(true);
+    expect(el?.detail).toMatch(/low confidence, verify/i);
+    expect(r.overall).toBe("review");
+  });
 });
 
 describe("checkCompleteness — net contents standards of fill (27 CFR 5.203/4.72/7.70)", () => {

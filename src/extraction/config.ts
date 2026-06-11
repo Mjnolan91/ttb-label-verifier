@@ -126,6 +126,40 @@ export function resolveLowConfidenceRescue(
 }
 
 /**
+ * Whether the WARNING FOCUS pass runs (warningFocus.ts): when the government warning is required
+ * but still missing or format-unverified after the merge/judge/rescue, a dedicated strong-model
+ * escalation locates it in any orientation, then re-judges from a cropped, derotated, upscaled
+ * region. DEFAULT ON for providers that implement focusWarning (the mock never does, so the
+ * offline suite/eval are unaffected). The warning is the one check that can hard-fail a label, and
+ * a "could not verify" otherwise parks every subtle-weight or rotated capture in review forever.
+ * Set WARNING_FOCUS=0 to disable.
+ */
+export function resolveWarningFocus(
+  env: Record<string, string | undefined> = process.env,
+): boolean {
+  const raw = env.WARNING_FOCUS?.trim().toLowerCase();
+  return !(raw === "0" || raw === "false" || raw === "off");
+}
+
+/**
+ * The focus pass's OWN per-stage time budget, mirroring the rescue's (resolveRescueTimeoutMs and
+ * the 2026-06-10 RCA rationale: a strong-model read cannot live inside a tight per-sample straggler
+ * cap). Default max(per-call cap, 10s); WARNING_FOCUS_TIMEOUT_MS overrides, clamped to [1s, 30s]
+ * so two bounded stages still fit the route's maxDuration (60s) with headroom.
+ */
+export function resolveWarningFocusTimeoutMs(
+  perCallTimeoutMs: number,
+  env: Record<string, string | undefined> = process.env,
+): number {
+  const raw = env.WARNING_FOCUS_TIMEOUT_MS;
+  if (raw !== undefined && raw.trim() !== "") {
+    const ms = Number(raw);
+    if (Number.isFinite(ms)) return Math.min(30_000, Math.max(1_000, Math.floor(ms)));
+  }
+  return Math.max(perCallTimeoutMs, 10_000);
+}
+
+/**
  * Whether a multi-image product is read JOINTLY — every image of the product in ONE model request
  * (VisionProvider.extractAll) instead of per-image reads merged after the fact. DEFAULT ON for
  * providers that support it (the mock and OCR providers don't, so the offline suite/eval and the

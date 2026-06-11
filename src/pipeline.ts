@@ -6,7 +6,7 @@
  * evaluation measures the exact production pipeline.
  */
 import type { ClaimedFields, ExtractedFields } from "@/domain";
-import { selfConsistentExtract, selfConsistentExtractJoint, applyCrossImageConflictCaps, resolveSelfConsistencySamples, resolveJointExtraction, resolveWarningJudgeSamples, resolveRescueTimeoutMs, resolveTimeoutMs, mergeExtracted, harvestOriginStatement, isAbortOrTimeout, aggregateBoldVotes, combineBoldSignals, resolveLowConfidenceRescue, rescueEligibleKeys, rescueRawKeys, applyRescue, readFieldsBounded, type ImageInput, type LabelPosition, type VisionProvider } from "@/extraction";
+import { selfConsistentExtract, selfConsistentExtractJoint, applyCrossImageConflictCaps, resolveSelfConsistencySamples, resolveJointExtraction, resolveWarningJudgeSamples, resolveRescueTimeoutMs, resolveTimeoutMs, resolveWarningFocus, resolveWarningFocusTimeoutMs, mergeExtracted, harvestOriginStatement, isAbortOrTimeout, aggregateBoldVotes, combineBoldSignals, resolveLowConfidenceRescue, rescueEligibleKeys, rescueRawKeys, applyRescue, readFieldsBounded, warningFocusNeeded, runWarningFocus, applyWarningFocus, type ImageInput, type LabelPosition, type VisionProvider } from "@/extraction";
 import { verifyLabel, isExtractionReadable, type VerifyResult } from "@/compare";
 
 /** One image of the product that could not be read while at least one other image succeeded. */
@@ -150,12 +150,15 @@ export async function runExtraction(
   harvestOriginStatement(extracted);
 
   // Apply the dedicated bold judgment ONLY when a warning was read AND a judge actually ran. The warning
-  // may be on the back label, so take the first non-null verdict across images. COMBINE it with the
-  // extraction model's own bold flag rather than clobbering: "not bold" (the hard-fail signal) holds only
-  // when both agree, so one weak visual judgment can't reject a compliant label. (No judge -> leave the
-  // extraction flag untouched, keeping the offline mock + eval deterministic.)
+  // may be on the back label, so MAJORITY-VOTE the per-image verdicts (a spurious answer from the
+  // no-warning front image must not preempt the warning-bearing back image's verdict — taking the
+  // first non-null verdict in upload order did exactly that; a cross-image contradiction now falls
+  // to null/review instead). COMBINE the vote with the extraction model's own bold flag rather than
+  // clobbering: "not bold" (the hard-fail signal) holds only when both agree, so one weak visual
+  // judgment can't reject a compliant label. (No judge -> leave the extraction flag untouched,
+  // keeping the offline mock + eval deterministic.)
   if (bolder && extracted.warningText && extracted.warningText.trim() !== "") {
-    const judge = boldVerdicts.find((v) => v !== null) ?? null;
+    const judge = aggregateBoldVotes(boldVerdicts);
     extracted.warningPrefixIsBold = combineBoldSignals(extracted.warningPrefixIsBold, judge);
   }
 
@@ -179,6 +182,19 @@ export async function runExtraction(
       );
       if (strong) applyRescue(extracted, contested, strong);
     }
+  }
+
+  // WARNING FOCUS (warningFocus.ts): the warning is the one check that can HARD-FAIL a label, and
+  // the generic passes leave two dead ends — a dropped warning is never re-looked-for (the rescue
+  // excludes absent fields), and a subtle-weight or rotated prefix parks every read at "could not
+  // be verified" review. When the warning is REQUIRED but still missing/unverified, ONE dedicated
+  // strong-model escalation locates it in any orientation, then code crops, derotates, and upscales
+  // the region for a second zoomed judgment. Runs on its OWN budget like the rescue; bounded; only
+  // on contested warnings. The mock has no focusWarning, so offline/eval never enter this branch.
+  const focuser = providers.find((p) => typeof p.focusWarning === "function");
+  if (focuser && isExtractionReadable(extracted) && resolveWarningFocus() && warningFocusNeeded(extracted)) {
+    const focus = await runWarningFocus(focuser, images, resolveWarningFocusTimeoutMs(perCallTimeoutMs));
+    if (focus) applyWarningFocus(extracted, focus);
   }
 
   return { readable: isExtractionReadable(extracted), extracted, failedImages };

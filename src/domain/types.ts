@@ -243,4 +243,12 @@ export interface ExtractedFields {
    * discrepancy between panels is never silently resolved by the model picking one.
    */
   crossImageConflicts?: (keyof FieldConfidence)[];
+  /**
+   * Field-confidence keys whose VALUE was adopted from the STRONG model AGAINST the fast-read
+   * majority (the rescue's / warning-focus's contested branch). The adoption is a deliberate
+   * review hold: a later re-read by the SAME strong model agreeing with its own words is not
+   * independent evidence and must never clear that hold (one model's self-agreement could
+   * otherwise launder a reconstructed-from-memory statutory text into a pass).
+   */
+  strongReadAdopted?: (keyof FieldConfidence)[];
 }

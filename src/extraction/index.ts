@@ -6,7 +6,7 @@
  * reconciler — one for mock/llm/ocr, or both Azure providers for the "ensemble" mode. Selecting a
  * real provider without its env config errors cleanly and never touches the mock/test path.
  */
-export type { ImageInput, VisionProvider, VisionProviderName, LabelPosition } from "./VisionProvider";
+export type { ImageInput, VisionProvider, VisionProviderName, LabelPosition, WarningFocusRead } from "./VisionProvider";
 export type { FetchLike } from "./http";
 export { isAbortOrTimeout } from "./http";
 export { MockVisionProvider } from "./MockVisionProvider";
@@ -57,9 +57,20 @@ export {
   resolveLowConfidenceRescue,
   resolveWarningJudgeSamples,
   resolveRescueTimeoutMs,
+  resolveWarningFocus,
+  resolveWarningFocusTimeoutMs,
 } from "./config";
-export { aggregateBoldVotes, combineBoldSignals } from "./boldJudgment";
+export { aggregateBoldVotes, combineBoldSignals, combineViolationSignals } from "./boldJudgment";
 export { rescueEligibleKeys, rescueRawKeys, applyRescue, readFieldsBounded } from "./rescue";
+export {
+  warningFocusNeeded,
+  runWarningFocus,
+  applyWarningFocus,
+  cropWarningRegion,
+  coerceWarningFocusRead,
+  WARNING_FOCUS_PROMPT,
+  type WarningCropper,
+} from "./warningFocus";
 
 import type { VisionProvider } from "./VisionProvider";
 import { MockVisionProvider } from "./MockVisionProvider";
