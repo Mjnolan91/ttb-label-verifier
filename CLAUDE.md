@@ -179,7 +179,7 @@ pipeline and the "why". As built, the load-bearing pieces are:
   plus "The application" inputs. The REQUIRED input set is DYNAMIC per beverage type
   (`requiredInputKeysFor` over the CFR matrix: brand/class/net/producer name/address always; alcohol
   only for spirits / wine >14% / unknown); country of origin, fanciful name, and statement of
-  composition are compared when listed. The AI's reading pre-fills each input as a grey suggestion
+  composition are compared when listed. The AI's reading pre-fills each input as a gray suggestion
   (Tab to accept, or the "Accept all AI suggestions" button), and a beverage-type selector re-derives
   the required set. Once every required field is filled the results LEAD with `ResultView` — the
   field-by-field label-vs-application comparison (`combinedVerdict`) → Approve/Needs review/Reject;

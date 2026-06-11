@@ -48,7 +48,7 @@ const NEXT_STEP: Record<CompletenessResult["overall"], string> = {
   incomplete:
     "One or more required items are missing or in the wrong format. Check the rows marked MISSING or WRONG FORMAT below before approving.",
   review:
-    "Some required items couldn't be confirmed from the image. Open the label and check the highlighted rows below, or confirm them on the comparison above.",
+    "Some required items couldn't be confirmed from the photo. Open the label photo and check the highlighted rows below.",
 };
 
 function displayOf(el: CompletenessElement, override: ElementOverride | undefined): Display {

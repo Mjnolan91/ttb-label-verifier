@@ -34,14 +34,16 @@ function emailFor(decision: Decision, brand: string, notes: string): { subject: 
     };
   }
   const corrections = trimmed ? `\n\n${trimmed}` : `\n\n  - See the reviewer's notes.`;
+  // "Returned for correction" is TTB's actual COLAs Online vocabulary (the "Needs Correction"
+  // status), and corrections carry a real deadline, so no "at your convenience".
   return {
-    subject: `TTB COLA: ${product} returned for revision`,
+    subject: `TTB COLA: ${product} returned for correction`,
     body:
       `Dear Applicant,\n\n` +
       `Your Certificate of Label Approval (COLA) application for "${product}" has been RETURNED FOR ` +
-      `REVISION. Please correct the following item(s) before resubmitting:` +
+      `CORRECTION. Please correct the following item(s) before resubmitting:` +
       corrections +
-      `\n\nResubmit the corrected label at your convenience.\n\n` +
+      `\n\nPlease correct the items above and resubmit.\n\n` +
       `Regards,\nTTB Label Review`,
   };
 }
@@ -283,11 +285,10 @@ export function DecisionPanel({
           <IconPass className="mt-0.5 h-5 w-5 shrink-0" />
           <div>
             <p className="font-semibold">
-              Recorded: {decision === "approve" ? "Approved" : "Returned for revision"}.
+              Recorded: {decision === "approve" ? "Approved" : "Returned for correction"}.
             </p>
             <p className="mt-0.5 text-sm">
-              A notification was sent to {to.trim() || "the applicant"} (demo, no message actually left this
-              prototype).{" "}
+              Demo: the email to {to.trim() || "the applicant"} was recorded but not actually sent.{" "}
               <button
                 type="button"
                 onClick={() => {

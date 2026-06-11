@@ -31,9 +31,9 @@ function ConfidenceTag({ value }: { value: number | undefined }) {
   return (
     <span
       className={`shrink-0 text-xs font-semibold ${confidenceColor(value)}`}
-      title="How sure the AI is it read this field correctly"
+      title="How clearly the AI read this value off the photo. Below 70% we ask a person to confirm. A low score is not a mismatch."
     >
-      {Math.round(value * 100)}% confident
+      {Math.round(value * 100)}% read
     </span>
   );
 }
@@ -112,7 +112,7 @@ export function ExtractedFieldsView({
           <Flag label="Warning prefix ALL CAPS" value={tri(extracted.warningPrefixIsAllCaps, "yes", "no")} />
           <Flag label="Warning prefix bold" value={tri(extracted.warningPrefixIsBold, "yes", "no")} />
           <Flag label="Warning body bold" value={tri(extracted.warningRemainderIsBold, "yes (violation)", "no")} />
-          <Flag label="Warning readily legible" value={tri(extracted.warningIsReadilyLegible, "yes", "confirm")} />
+          <Flag label="Warning readily legible" value={tri(extracted.warningIsReadilyLegible, "yes", "check the label")} />
         </div>
       </div>
 

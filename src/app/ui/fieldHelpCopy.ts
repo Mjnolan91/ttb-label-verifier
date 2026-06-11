@@ -36,7 +36,10 @@ export const APP_FIELD_HELP: Record<AppInputKey, string> = {
   name: "The producer, bottler, or importer named on the application. The label must carry the same name.",
   address:
     "The city and state (or country) printed with the producer or bottler name on the label.",
-  countryOfOrigin: "Required for imported products only. Leave blank for domestic products.",
+  countryOfOrigin:
+    "The country the application declares for an import, for example Product of France. Required " +
+    "for imported products only; leave blank for domestic products. If the label looks imported " +
+    "but prints no country, the verdict flags it automatically.",
   fancifulName:
     "A distinctive or fanciful name is additional branding text beyond the brand name, like " +
     "Midnight Reserve. Not every product has one; leave blank if the application lists none.",

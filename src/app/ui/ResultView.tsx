@@ -60,7 +60,7 @@ function synthesizedConcernKeys(
 const NEXT_STEP: Record<VerifyResult["overall"], string> = {
   approve: "Everything matched the application, so this label can be approved.",
   review:
-    "Some items need a person to confirm. Open the label image, then mark each highlighted field below as correct or flag a problem.",
+    "Some items need a person to confirm. Open the label photo, then mark each highlighted field below as correct or flag a problem.",
   reject:
     "A required check failed. Review the item(s) marked “No match” below before sending this back to the applicant.",
 };
@@ -228,7 +228,7 @@ function ReviewControls({
         </button>
         {override && (
           <span className="text-xs text-ink-muted">
-            The AI said {aiLabel(field)}.{" "}
+            The AI said &ldquo;{aiLabel(field)}&rdquo;.{" "}
             <button
               type="button"
               onClick={() => onOverride(field.key, undefined)}
@@ -529,9 +529,9 @@ export function ResultView({
   const nextStep =
     nextStepOverride ??
     (calmReadReview
-      ? `Everything you entered matched the label, with no mismatches found. We read ${
+      ? `Everything you entered matched the label. We read ${
           gatedMatches.length === 1 ? "one value" : `${gatedMatches.length} values`
-        } from a slightly fuzzy photo. Confirm the highlighted field${gatedMatches.length === 1 ? "" : "s"} below (or open the label image) to approve.`
+        } from a slightly fuzzy photo. Confirm the highlighted field${gatedMatches.length === 1 ? "" : "s"} below (or open the label photo) to approve.`
       : NEXT_STEP[headline]);
 
   return (

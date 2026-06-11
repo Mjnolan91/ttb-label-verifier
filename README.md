@@ -23,7 +23,7 @@ for reviewers in
 2. Grab a sample label: the demo's upload screen offers all three as one-click downloads ("No
    label handy?"), or use the links in the table below (on GitHub, open the link and use the
    "Download raw file" button). Any bottle photo of your own works too.
-3. Upload it as the front label. The AI reads it and pre-fills "The application" inputs with grey
+3. Upload it as the front label. The AI reads it and pre-fills "The application" inputs with gray
    suggestions; press Tab to accept one, or click **Accept all AI suggestions**. (In real use the
    agent would type what the COLA (Certificate of Label Approval) application claims. Accepting
    the suggestions simulates an application that matches the label.)

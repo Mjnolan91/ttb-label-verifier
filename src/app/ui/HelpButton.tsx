@@ -28,7 +28,7 @@ const SAMPLES: { href: string; name: string; expect: string; detail: string }[] 
     name: "Title-case warning",
     expect: "Reject",
     detail:
-      'The label prints "Government Warning:" in title case. The prefix must be all capital letters (27 CFR 16.22), a hard fail.',
+      'The label prints "Government Warning:" in title case. The prefix must be all capital letters (27 CFR 16.22(a)(2)), a hard fail.',
   },
   {
     href: "/samples/demo-brand-typo.png",
@@ -64,17 +64,22 @@ export function HelpButton() {
           </h3>
           <ol className="mt-2 list-decimal space-y-2 pl-5">
             <li>
-              Upload the front label photo (and the back, if you have it). The AI reads the images
-              automatically.
+              Upload the front label photo, plus the back and a neck or strip label if there is one.
+              You can select several photos at once; filenames ending in -front, -back, or -neck
+              place themselves. The AI reads the images automatically.
             </li>
             <li>
               Fill in <strong>The application</strong>: what the applicant claims. The AI&apos;s
-              reading is suggested in grey. Press Tab to accept a field, or use Accept all AI
+              reading is suggested in gray. Press Tab to accept a field, or use Accept all AI
               suggestions, or type the application&apos;s values.
             </li>
             <li>
               Once every field TTB requires for the beverage type is filled, the screen compares the
               label against the application field by field and shows the verdict.
+            </li>
+            <li>
+              Record your decision: Approve COLA or Reject / send back. The email to the applicant
+              is drafted from your review notes (demo only; no email is actually sent).
             </li>
           </ol>
 
@@ -87,7 +92,8 @@ export function HelpButton() {
             <li>
               <strong>Needs review.</strong> A near miss, a low-confidence read, or anything the
               system could not verify outright. Uncertainty always routes to a person; the system
-              never auto-approves on a doubtful read.
+              never auto-approves on a doubtful read. Check each flagged field against the label
+              photo, then confirm or flag it; the verdict updates with your calls.
             </li>
             <li>
               <strong>Reject.</strong> A hard mismatch: a different brand name, alcohol content
@@ -101,6 +107,12 @@ export function HelpButton() {
             element TTB requires for its beverage type (brand name, class/type designation, net
             contents, producer name and address, alcohol content where required, and the government
             warning at 0.5% ABV or above). It sits in the collapsed section under the verdict.
+          </p>
+
+          <SectionTitle>If the label can&apos;t be read</SectionTitle>
+          <p className="mt-2">
+            Upload a clearer, well-lit photo with the label flat and in focus. Every completed read
+            can be saved with the Download JSON and Download CSV buttons under the result.
           </p>
 
           <SectionTitle>Try it with a sample</SectionTitle>
@@ -120,7 +132,9 @@ export function HelpButton() {
           <p className="mt-2">
             The <a href="/batch" className={linkClass}>batch screen</a> takes a whole folder of label
             images, pairs fronts and backs by filename, and checks each product against an optional
-            CSV of application values. It doubles as the review worklist.
+            CSV of application values. It doubles as the review worklist. Busy-service failures retry
+            automatically, your decisions and typed application values save in this browser, and the
+            table downloads as JSON or CSV.
           </p>
         </div>
       </Drawer>

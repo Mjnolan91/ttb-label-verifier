@@ -8,7 +8,7 @@ const PROPOSALS: { title: string; detail: string }[] = [
   {
     title: "Cancer-risk health warning",
     detail:
-      "The Surgeon General's January 2025 advisory urges Congress to add a cancer warning to the statutory text. Only Congress can amend it (warning text at 27 U.S.C. 215 / 27 CFR 16.21; amendment mechanism at 27 U.S.C. 219a). No bill has passed, so the warning text is unchanged.",
+      "The Surgeon General's January 2025 advisory urges Congress to add a cancer warning to the statutory text. Only Congress can amend it (warning text at 27 U.S.C. 215 / 27 CFR 16.21; amendment mechanism at 27 U.S.C. 217). No bill has passed, so the warning text is unchanged.",
   },
   {
     title: "“Alcohol Facts” statement",
