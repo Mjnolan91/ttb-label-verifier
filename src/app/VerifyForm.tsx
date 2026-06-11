@@ -466,10 +466,14 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
       ? `Verdict: ${VERDICT_LABEL[shownOverall ?? "review"]}.`
       : `Label read. Complete the required application fields to verify: ${missingLabels.join(", ")}.`;
 
-  const firstImage = orderedImages[0];
-  const viewFirstImage = firstImage
-    ? () => setZoom({ src: firstImage.preview, alt: `Label: ${firstImage.file.name}` })
-    : undefined;
+  // The lightbox carries EVERY uploaded image (front first) so "confirm it on the label" never
+  // means the front only — the government warning usually lives on the back. Slot labels name
+  // each image as the reviewer steps through.
+  const lightboxImages = orderedImages.map((i) => ({
+    src: i.preview,
+    alt: `${i.position !== "other" ? SLOT_DEFS[i.position as SlotKey].label : "Label"}: ${i.file.name}`,
+  }));
+  const viewLabelImages = lightboxImages.length > 0 ? () => setZoom(lightboxImages[0]) : undefined;
 
   const pipelineStage: "reading" | "awaiting" | "done" | null =
     state === "loading" ? "reading" : readable ? (combined?.verify ? "done" : "awaiting") : null;
@@ -831,7 +835,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
                 overall={shownOverall ?? undefined}
                 gatedByCompleteness={effectiveGatedByCompleteness}
                 headingRef={headlineRef}
-                onViewImage={viewFirstImage}
+                onViewImage={viewLabelImages}
                 overrides={fieldOverrides}
                 onOverride={setOverride}
                 concerns={completenessConcerns}
@@ -929,8 +933,8 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
 
       <ImageLightbox
         open={zoom !== null}
-        src={zoom?.src ?? ""}
-        alt={zoom?.alt ?? ""}
+        images={lightboxImages}
+        initialIndex={Math.max(0, lightboxImages.findIndex((im) => im.src === zoom?.src))}
         onClose={() => setZoom(null)}
       />
     </section>

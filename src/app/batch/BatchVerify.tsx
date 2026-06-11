@@ -241,7 +241,9 @@ const CATEGORY_RANK: Record<RowCategory, number> = {
 export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
   const ids = { images: useId(), help: useId() };
   const [images, setImages] = useState<{ file: File; preview: string }[]>([]);
-  const [zoom, setZoom] = useState<{ src: string; alt: string } | null>(null);
+  // The lightbox shows a SET of images (a product's front+back together — never just the front when
+  // a reviewer is asked to confirm something on the label) opened at the clicked one.
+  const [zoom, setZoom] = useState<{ images: { src: string; alt: string }[]; index: number } | null>(null);
   const [claimed, setClaimed] = useState<Map<string, ClaimedRow>>(new Map());
   const [rows, setRows] = useState<BatchRow[]>([]);
   const [running, setRunning] = useState(false);
@@ -437,7 +439,7 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
     setImages((prev) => {
       const target = prev[index];
       if (target) {
-        if (zoom?.src === target.preview) setZoom(null);
+        if (zoom?.images.some((zi) => zi.src === target.preview)) setZoom(null);
         URL.revokeObjectURL(target.preview);
       }
       return prev.filter((_, i) => i !== index);
@@ -620,7 +622,7 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
                   <li key={`${img.file.name}-${i}`} className="relative">
                     <button
                       type="button"
-                      onClick={() => setZoom({ src: img.preview, alt: img.file.name })}
+                      onClick={() => setZoom({ images: [{ src: img.preview, alt: img.file.name }], index: 0 })}
                       aria-label={`Enlarge ${img.file.name}`}
                       title={img.file.name}
                       className="group relative block h-20 w-20 cursor-zoom-in overflow-hidden rounded border border-border bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2"
@@ -875,11 +877,13 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
                   <div className="flex min-w-0 items-start gap-2.5 text-ink">
                     {thumbs.length > 0 && (
                       <div className="flex shrink-0 flex-wrap gap-1">
-                        {thumbs.map((t) => (
+                        {thumbs.map((t, ti) => (
                           <button
                             key={t.alt}
                             type="button"
-                            onClick={() => setZoom({ src: t.src, alt: t.alt })}
+                            onClick={() =>
+                              setZoom({ images: thumbs.map((x) => ({ src: x.src, alt: x.alt })), index: ti })
+                            }
                             aria-label={`Show ${r.product} ${t.position ? `${t.position} ` : ""}label larger`}
                             title={t.position ? POSITION_LABEL[t.position] ?? t.position : undefined}
                             className="h-12 w-12 cursor-zoom-in overflow-hidden rounded-field border border-border bg-surface-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2"
@@ -1062,8 +1066,8 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
 
       <ImageLightbox
         open={zoom !== null}
-        src={zoom?.src ?? ""}
-        alt={zoom?.alt ?? ""}
+        images={zoom?.images ?? []}
+        initialIndex={zoom?.index ?? 0}
         onClose={() => setZoom(null)}
       />
     </section>

@@ -99,7 +99,9 @@ export function ProductReview({
 }) {
   const review = combined ? deriveLabelReview(combined, overrides, notes) : null;
   const [zoom, setZoom] = useState<{ src: string; alt: string } | null>(null);
-  const viewFirstImage = images.length > 0 ? () => setZoom(images[0]) : undefined;
+  // Opens at the front, but the lightbox carries the WHOLE image set: "confirm it on the label"
+  // usually means the back label (the government warning lives there), never just the front.
+  const viewLabelImages = images.length > 0 ? () => setZoom(images[0]) : undefined;
 
   // The completeness verdict AFTER the reviewer's resolved flags, for the completeness-only path:
   // confirming each missing/malformed element flips the suggestion to Approve instead of stranding
@@ -207,7 +209,7 @@ export function ProductReview({
             gatedByCompleteness={review?.effectiveGatedByCompleteness ?? false}
             overrides={overrides}
             onOverride={onOverride}
-            onViewImage={viewFirstImage}
+            onViewImage={viewLabelImages}
             concerns={review?.completenessConcerns}
             notes={notes}
             onNote={onNote}
@@ -232,7 +234,7 @@ export function ProductReview({
               nextStepOverride={completenessOnlyNextStep}
               overrides={overrides}
               onOverride={onOverride}
-              onViewImage={viewFirstImage}
+              onViewImage={viewLabelImages}
               concerns={review?.completenessConcerns}
               notes={notes}
               onNote={onNote}
@@ -269,8 +271,8 @@ export function ProductReview({
 
       <ImageLightbox
         open={zoom !== null}
-        src={zoom?.src ?? ""}
-        alt={zoom?.alt ?? ""}
+        images={images}
+        initialIndex={Math.max(0, images.findIndex((im) => im.src === zoom?.src))}
         onClose={() => setZoom(null)}
       />
     </div>
