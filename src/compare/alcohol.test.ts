@@ -121,3 +121,22 @@ describe("isLowOrReducedAlcoholClaim", () => {
     expect(isLowOrReducedAlcoholClaim(undefined)).toBe(false);
   });
 });
+
+describe("resolveBeverageClass — adversarial audit (FN-1, FN-9)", () => {
+  it("varietals and semi-generics are wine, not unknown", () => {
+    expect(resolveBeverageClass("Chardonnay")).toBe("wineUnder14");
+    expect(resolveBeverageClass("Pinot Noir")).toBe("wineUnder14");
+    expect(resolveBeverageClass("Champagne")).toBe("wineUnder14");
+    expect(resolveBeverageClass("Cabernet Sauvignon", 14.5)).toBe("wineOver14");
+  });
+
+  it("hard seltzer is a malt beverage", () => {
+    expect(resolveBeverageClass("Hard Seltzer")).toBe("maltBeverage");
+  });
+
+  it("a spirit word wins over incidental beverage words (cask finishes, single malt)", () => {
+    expect(resolveBeverageClass("Single Malt Scotch Whisky")).toBe("distilledSpirits");
+    expect(resolveBeverageClass("Single Malt Scotch Whisky Finished in Cider Casks")).toBe("distilledSpirits");
+    expect(resolveBeverageClass("Straight Bourbon Whiskey Finished in Port Casks")).toBe("distilledSpirits");
+  });
+});

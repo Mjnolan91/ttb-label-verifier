@@ -376,3 +376,17 @@ describe("checkCompleteness — a printed origin on an import must name a COUNTR
     expect(r.elements.find((e) => e.key === "countryOfOrigin")?.status).toBe("present");
   });
 });
+
+describe("checkCompleteness — a spirits statement of proof ONLY is malformed (27 CFR 5.65)", () => {
+  it('"80 PROOF" alone can never read complete', () => {
+    const r = checkCompleteness(ds({ alcoholContentText: "80 PROOF" }));
+    const el = r.elements.find((e) => e.key === "alcoholContent");
+    expect(el?.status).toBe("malformed");
+    expect(el?.detail).toMatch(/percent/i);
+    expect(r.overall).toBe("incomplete");
+  });
+
+  it("proof alongside the percent form stays present", () => {
+    expect(statusOf(checkCompleteness(ds({})), "alcoholContent")).toBe("present");
+  });
+});

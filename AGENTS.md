@@ -103,7 +103,10 @@ label-carries-every-required-element check (`src/compare/completeness.ts`). `com
   compare. Exact-after-normalization = pass; high similarity = review (show the
   discrepancy); low = fail. "STONE'S THROW" vs "Stone's Throw" must pass.
 - **Alcohol content — numeric + tolerance, class-selected.** Parse the ABV value and any
-  proof (proof = 2 x ABV, so cross-check "45% Alc./Vol. (90 Proof)"). The **beverage class
+  proof (proof = 2 x ABV, so cross-check "45% Alc./Vol. (90 Proof)"; an application typed as
+  proof only derives its ABV, a LABEL stating proof only is a malformed statement per 5.65).
+  An UNSUPPLIED claimed ABV is a named PASS where the statement is legally optional (malt /
+  wine ≤14% / cider) and review everywhere else. The **beverage class
   is an INPUT that SELECTS the tolerance rule** — it is not a passive field. Apply the
   per-class tolerance from the domain matrix below; out of tolerance = fail. The authoritative
   values, CFR citations, and asymmetric boundary notes live in `src/domain/tolerances.ts`

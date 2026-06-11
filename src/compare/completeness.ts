@@ -285,6 +285,20 @@ export function checkCompleteness(extracted: ExtractedFields): CompletenessResul
       if (spec.key === "alcoholContent") {
         const problem = checkAlcoholInternalConsistency(extracted.alcoholContentText, classText, beverageClass);
         if (problem) return { ...base(spec), status: "malformed", value, detail: problem };
+        // A spirits statement carrying ONLY proof ("80 PROOF") is present but not compliant:
+        // 27 CFR 5.65 requires the percent-alcohol-by-volume form (proof is an OPTIONAL addition).
+        // Without this, a %-less label reads "complete" while the comparator can still pass it.
+        const parsed = parseAlcoholText(extracted.alcoholContentText);
+        if (beverageClass === "distilledSpirits" && parsed.abv === undefined && parsed.proof !== undefined) {
+          return {
+            ...base(spec),
+            status: "malformed",
+            value,
+            detail:
+              `States proof only ("${value}"). Spirits must state alcohol content as percent ` +
+              "alcohol by volume (27 CFR 5.65); proof is optional in addition, not instead.",
+          };
+        }
       }
       // Net contents must be a valid quantity in the class-mandated unit system AND (spirits/wine) an
       // authorized standard of fill — presence alone is not compliance (27 CFR 5.203/5.71, 4.72/4.73, 7.70).

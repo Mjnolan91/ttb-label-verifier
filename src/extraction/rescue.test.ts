@@ -15,6 +15,7 @@ import {
   rescueEligibleKeys,
   rescueRawKeys,
 } from "./rescue";
+import { DISAGREEMENT_CONFIDENCE } from "./reconcile";
 
 function extracted(overrides: Partial<ExtractedFields> = {}): ExtractedFields {
   return {
@@ -99,5 +100,16 @@ describe("applyRescue — agree boosts, disagree adopts-but-stays-review, null l
     const e = extracted({ confidence: { brand: 0.9, classType: 0.95, alcoholContent: 0.95, netContents: 0.95 } });
     applyRescue(e, ["brand"], { brand: "Old Tom Distillery" });
     expect(e.confidence.brand).toBe(0.9); // max(current, 0.85)
+  });
+});
+
+describe("rescueEligibleKeys — conflicts are not uncertainty (adversarial audit FP-3)", () => {
+  it("a field stamped with the cross-source DISAGREEMENT confidence is never rescue-eligible", () => {
+    // Front and back labels printing different numbers is a physical discrepancy; a third reading
+    // must not arbitrate it past the review gate.
+    const e = extracted({
+      confidence: { brand: 0.95, classType: 0.95, alcoholContent: 0.95, netContents: DISAGREEMENT_CONFIDENCE },
+    });
+    expect(rescueEligibleKeys(e)).toEqual([]);
   });
 });

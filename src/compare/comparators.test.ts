@@ -19,6 +19,8 @@ import {
   compareStatementOfComposition,
 } from "./comparators";
 import { CANONICAL_GOVERNMENT_WARNING } from "@/domain";
+import { parseAlcoholText } from "./alcohol";
+const parseAlcoholTextForTest = (t: string) => parseAlcoholText(t).abv;
 
 describe("compareBrand", () => {
   it("PASS: smart-quote + case differences normalize away", () => {
@@ -411,7 +413,7 @@ describe("compareOrigin — match is not compliance: the statement must name a c
       extractedAddress: "Bridgetown, Barbados.",
     });
     expect(r.status).toBe("review");
-    expect(r.reason).toMatch(/does not name a country/);
+    expect(r.reason).toMatch(/does not name a recognized country/);
     expect(r.reason).toMatch(/Product of Barbados/);
     expect(r.reason).not.toMatch(/[–—]/); // copy standard
   });
@@ -425,5 +427,92 @@ describe("compareOrigin — match is not compliance: the statement must name a c
   it("a real country marking still passes, including US forms", () => {
     expect(compareOrigin({ claimed: "Product of Barbados", extracted: "Product of Barbados" }).status).toBe("pass");
     expect(compareOrigin({ claimed: "Made in the USA", extracted: "Made in the USA" }).status).toBe("pass");
+  });
+});
+
+describe("common human errors — not getting it wrong (probe regressions, 2026-06-10)", () => {
+  it('".75L" reads as 0.75 L, never a 100x misparse that hard-fails', () => {
+    const r = compareNetContents({ claimed: ".75L", extracted: "750 mL" });
+    expect(r.status).toBe("pass");
+  });
+
+  it('"75 cl" is 750 mL (standard on European labels and applications)', () => {
+    expect(compareNetContents({ claimed: "75 cl", extracted: "750 mL" }).status).toBe("pass");
+  });
+
+  it('a proof-only claim ("80 proof") compares as its ABV, with the derivation named', () => {
+    const r = compareAlcohol({ claimedText: "80 proof", extractedText: "40% ALC/VOL (80 PROOF)" });
+    expect(r.status).toBe("pass");
+    expect(r.reason).toMatch(/derived from the stated proof/);
+  });
+
+  it("a proof-only LABEL read never derives (a %-less label is itself a 5.65 defect): review", () => {
+    // Deriving on the label side would let a proof-only label pass comparison while completeness
+    // read the statement as present — a false-approve corridor (adversarial audit FP-2).
+    const r = compareAlcohol({ claimedText: "40% Alc./Vol.", extractedText: "80 PROOF" });
+    expect(r.status).toBe("review");
+  });
+
+  it('a typed-but-unparseable claim names the problem instead of saying nothing was claimed', () => {
+    const r = compareAlcohol({ claimedText: "40", extractedText: "40% ALC/VOL (80 PROOF)" });
+    expect(r.status).toBe("review");
+    expect(r.reason).toMatch(/Couldn't parse the application's alcohol entry/);
+  });
+
+  it("a genuinely wrong proof-only claim still fails (derivation is not leniency)", () => {
+    const r = compareAlcohol({ claimedText: "90 proof", extractedText: "40% ALC/VOL (80 PROOF)" });
+    expect(r.status).toBe("fail");
+  });
+});
+
+describe("compareClassType — same family is not the same designation (adversarial audit)", () => {
+  it("Vodka vs Gin: shared family must NOT pass; review with the family named", () => {
+    const r = compareClassType({ claimed: "Vodka", extracted: "Gin" });
+    expect(r.status).toBe("review");
+    expect(r.reason).toMatch(/designations differ/);
+  });
+
+  it("Stout vs Lager: same malt family, different designations, review", () => {
+    expect(compareClassType({ claimed: "Stout", extracted: "Lager" }).status).toBe("review");
+  });
+
+  it("whisky/whiskey spelling variants are one designation", () => {
+    expect(compareClassType({ claimed: "Straight Bourbon Whisky", extracted: "Straight Bourbon Whiskey" }).status).toBe("pass");
+    expect(compareClassType({ claimed: "Whisky", extracted: "Kentucky Straight Bourbon Whiskey" }).status).toBe("pass");
+  });
+});
+
+describe("net contents and warning — adversarial audit regressions", () => {
+  it("equal US-customary quantities in different units match: 1 PINT = 16 FL OZ", () => {
+    expect(compareNetContents({ claimed: "1 PINT", extracted: "16 FL OZ" }).status).toBe("pass");
+  });
+
+  it('bare "12 oz" parses as fluid ounces (the beer shorthand)', () => {
+    expect(compareNetContents({ claimed: "12 oz", extracted: "12 FL OZ" }).status).toBe("pass");
+  });
+
+  it('combination statements sum: "1 PT 8 FL OZ" = 24 FL OZ', () => {
+    expect(compareNetContents({ claimed: "1 PT 8 FL OZ", extracted: "24 FL OZ" }).status).toBe("pass");
+  });
+
+  it("a hyphenated line-break in the warning transcription is not a rewording", () => {
+    const hyphenated = CANONICAL_GOVERNMENT_WARNING.replace("machinery", "machin- ery").replace("pregnancy", "preg- nancy");
+    const r = compareWarning({ warningText: hyphenated, warningPrefixIsAllCaps: true, warningPrefixIsBold: true });
+    expect(r.status).toBe("pass");
+  });
+
+  it("an actual rewording still fails after hyphen healing", () => {
+    const reworded = CANONICAL_GOVERNMENT_WARNING.replace("machinery", "heavy equipment");
+    const r = compareWarning({ warningText: reworded, warningPrefixIsAllCaps: true, warningPrefixIsBold: true });
+    expect(r.status).toBe("fail");
+  });
+
+  it('"LESS THAN 0.5% ALC/VOL" is a bound: the warning exemption applies', () => {
+    const r = compareWarning({ warningText: "", warningPrefixIsAllCaps: false, warningPrefixIsBold: null, abv: parseAlcoholTextForTest("LESS THAN 0.5% ALC/VOL") });
+    expect(r.status).toBe("pass");
+  });
+
+  it('"NOT less than 40% ALC/VOL" keeps the floor value (no false exemption direction)', () => {
+    expect(parseAlcoholTextForTest("Bottled at not less than 40% ALC/VOL")).toBe(40);
   });
 });

@@ -23,7 +23,7 @@ import {
   resolveBeverageClass,
   isLowOrReducedAlcoholClaim,
 } from "./alcohol";
-import { displayCountry, foreignCountryFromAddress, namedCountryIn } from "./origin";
+import { canonicalCountry, displayCountry, foreignCountryFromAddress, namedCountryIn } from "./origin";
 
 /** Float comparison slack so e.g. 40.3 - 40 (== 0.2999999996) lands inside a ±0.3 band. */
 const EPS = 1e-6;
@@ -175,8 +175,29 @@ export function compareAlcohol(args: {
   const claimed = parseAlcoholText(args.claimedText);
   const extracted = parseAlcoholText(args.extractedText);
 
+  // An APPLICATION entry carrying only proof still states the alcohol content: proof is twice the
+  // ABV by definition (27 CFR 5.65), so an agent typing "80 proof" compares as 40%. CLAIMED side
+  // only, deliberately: deriving on the LABEL side would let a %-less, proof-only label (itself a
+  // 5.65 defect) sail through comparison while completeness reads the statement as present — the
+  // completeness check flags proof-only labels as malformed instead (see completeness.ts).
+  const claimedDerived = claimed.abv === undefined && claimed.proof !== undefined;
+  if (claimedDerived) claimed.abv = claimed.proof! / 2;
+  const derivedNote = claimedDerived
+    ? " ABV was derived from the stated proof (proof is twice the ABV, 27 CFR 5.65)."
+    : "";
+
   if (claimed.abv === undefined) {
-    return result("review", claimedDisplay, extractedDisplay, "No claimed alcohol content to compare against.");
+    // Distinguish a BLANK entry from a typed-but-unparseable one: "40" or "4O%" is not nothing,
+    // and telling the agent nothing was claimed sends them hunting the wrong problem.
+    const typed = (args.claimedText ?? "").trim();
+    return result(
+      "review",
+      claimedDisplay,
+      extractedDisplay,
+      typed === ""
+        ? "No claimed alcohol content to compare against."
+        : `Couldn't parse the application's alcohol entry ("${typed}"). Use a percent form like "40% Alc./Vol.".`,
+    );
   }
   if (extracted.abv === undefined) {
     return result("review", claimedDisplay, extractedDisplay, "Could not read the alcohol content from the label.");
@@ -243,14 +264,14 @@ export function compareAlcohol(args: {
       "pass",
       claimedDisplay,
       extractedDisplay,
-      `Actual ${extracted.abv}% is within the ±${tol} percentage-point ${label} tolerance of the claimed ${claimed.abv}% (${rule.cfrCitation}).`,
+      `Actual ${extracted.abv}% is within the ±${tol} percentage-point ${label} tolerance of the claimed ${claimed.abv}% (${rule.cfrCitation}).${derivedNote}`,
     );
   }
   return result(
     "fail",
     claimedDisplay,
     extractedDisplay,
-    `Actual ${extracted.abv}% is ${delta.toFixed(1)} percentage points from the claimed ${claimed.abv}%, outside the ±${tol} percentage-point ${label} tolerance (${rule.cfrCitation}).`,
+    `Actual ${extracted.abv}% is ${delta.toFixed(1)} percentage points from the claimed ${claimed.abv}%, outside the ±${tol} percentage-point ${label} tolerance (${rule.cfrCitation}).${derivedNote}`,
   );
 }
 
@@ -350,6 +371,13 @@ export function compareNetContents(args: { claimed?: string; extracted?: string 
       : result("fail", claimed, extracted, `Net contents differ: application states ${c.ml} mL, label states ${e.ml} mL.`);
   }
   if (c.ml === undefined && e.ml === undefined) {
+    // Both customary: compare the converted fluid-ounce quantities, so "1 PINT" equals "16 FL OZ"
+    // instead of failing on dissimilar text.
+    if (c.flOz !== undefined && e.flOz !== undefined) {
+      return Math.abs(c.flOz - e.flOz) <= 0.05
+        ? result("pass", claimed, extracted, `Net contents match (${e.flOz} fl oz).`)
+        : result("fail", claimed, extracted, `Net contents differ: application states ${c.flOz} fl oz, label states ${e.flOz} fl oz.`);
+    }
     const nc = normalizeText(claimed);
     const ne = normalizeText(extracted);
     if (nc === ne) return result("pass", claimed, extracted, "Net contents match after normalizing.");
@@ -381,18 +409,38 @@ export function compareClassType(args: {
   if (nc === ne) {
     return result("pass", claimed, extracted, "Class/type matches after normalizing.");
   }
+  // The two lawful spellings of the same designation ("whiskey"/"whisky", 27 CFR 5.143 note) are
+  // one word for comparison purposes; the fold also lets "Whisky" contain-match "Bourbon Whiskey".
+  const fc = nc.replace(/\bwhiskey\b/g, "whisky");
+  const fe = ne.replace(/\bwhiskey\b/g, "whisky");
+  if (fc === fe) {
+    return result("pass", claimed, extracted, "Class/type matches after normalizing (whisky spelling).");
+  }
   const claimedClass = args.claimedBeverageClass ?? resolveBeverageClass(claimed);
   const extractedClass = resolveBeverageClass(extracted);
   const isWine = (b: BeverageClass) => b === "wineUnder14" || b === "wineOver14";
-  if (claimedClass !== "unknown" && (claimedClass === extractedClass || (isWine(claimedClass) && isWine(extractedClass)))) {
+  const sameFamily =
+    claimedClass !== "unknown" &&
+    (claimedClass === extractedClass || (isWine(claimedClass) && isWine(extractedClass)));
+  // The resolved-class PASS exists for a BROAD application term covering a specific label
+  // designation: a generic category ("distilled spirits" vs "Kentucky Straight Bourbon Whiskey"),
+  // or the claimed term appearing AS the head of the label's fuller designation ("Rum" vs
+  // "Superior Caribbean Rum" — the AI over-capturing an adjective must not break the verdict).
+  // It must NOT fire for two DISJOINT designations that merely share a family: "Vodka" vs "Gin"
+  // both resolve to distilled-spirits, and that is a real discrepancy, not a match.
+  if (sameFamily && (GENERIC_CLASS_CLAIM.test(nc) || wordBoundaryContains(fe, fc))) {
     return result("pass", claimed, extracted,
       `Both resolve to ${CLASS_LABEL[extractedClass]}, so the label's specific designation matches the application's class.`);
   }
-  if (wordBoundaryContains(ne, nc) || wordBoundaryContains(nc, ne)) {
+  if (wordBoundaryContains(fe, fc) || wordBoundaryContains(fc, fe)) {
     return result("review", claimed, extracted, "One class/type designation contains the other. Confirm they're the same.");
   }
-  if (similarity(nc, ne) >= CLASS_REVIEW_SIMILARITY) {
-    return result("review", claimed, extracted, `Class/type is a close match (${Math.round(similarity(nc, ne) * 100)}%). Confirm.`);
+  if (similarity(fc, fe) >= CLASS_REVIEW_SIMILARITY) {
+    return result("review", claimed, extracted, `Class/type is a close match (${Math.round(similarity(fc, fe) * 100)}%). Confirm.`);
+  }
+  if (sameFamily) {
+    return result("review", claimed, extracted,
+      `Both are ${CLASS_LABEL[extractedClass]}, but the designations differ. Confirm the label matches what was filed.`);
   }
   if (claimedClass !== "unknown" && extractedClass !== "unknown") {
     return result("fail", claimed, extracted,
@@ -400,6 +448,12 @@ export function compareClassType(args: {
   }
   return result("review", claimed, extracted, "Class/type couldn't be confidently matched. A person should confirm.");
 }
+
+/** Application class terms BROAD enough that any same-family label designation satisfies them.
+ *  Deliberately excludes specific designations (vodka, gin, stout, red wine): those must match
+ *  the label's designation, not merely its family. */
+const GENERIC_CLASS_CLAIM =
+  /^(?:distilled spirits?|spirits?|wine|table wine|malt beverages?|beer|cider|hard cider)$/;
 
 /**
  * Producer/bottler name — fuzzy and review-leaning (NEVER a hard fail): a mismatch is commonly a
@@ -456,34 +510,73 @@ export function compareAddress(args: { claimed?: string; extracted?: string }): 
 export function compareOrigin(args: { claimed?: string; extracted?: string; extractedAddress?: string }): FieldResult {
   const claimed = args.claimed ?? "";
   const extracted = args.extracted ?? "";
-  const nc = normalizeText(claimed.replace(ORIGIN_PREFIX, ""));
-  const ne = normalizeText(extracted.replace(ORIGIN_PREFIX, ""));
+  // Strip the marking lead-in AND a leading article: "USA" must equal "MADE IN THE USA".
+  const strip = (s: string) => normalizeText(s.replace(ORIGIN_PREFIX, "")).replace(/^the\s+/, "");
+  const nc = strip(claimed);
+  const ne = strip(extracted);
   if (ne.length === 0) {
     return result("review", claimed || "(none)", extracted || "(none)", "No country of origin was read from the label to compare.");
   }
+
+  // Matching the application is not the whole check: the marking must name a COUNTRY. A region
+  // ("Imported from the Caribbean") can match the application verbatim and still be unlawful
+  // under the CBP rules the TTB origin sections incorporate. Review, never auto-fail: the
+  // country recognizer is conservative and a person decides.
+  const labelNamesNoCountry = !namedCountryIn(extracted);
+  const regionReview = (lead: string) => {
+    const from = foreignCountryFromAddress(args.extractedAddress);
+    const hint = from ? ` The producer address suggests "Product of ${displayCountry(from)}".` : "";
+    // Georgia is both a country and a US state; the recognizer deliberately can't tell. Say so
+    // instead of flatly calling a real wine-exporting country "not a country".
+    const georgia = /\bgeorgia\b/i.test(extracted)
+      ? " Note: Georgia is both a country and a US state; confirm which is intended."
+      : "";
+    return result(
+      "review",
+      claimed,
+      extracted,
+      `${lead} "${extracted}" does not name a recognized country. ` +
+        `CBP marking requires the country of origin (19 CFR 134; 27 CFR 5.69 / 7.69 / 4.35(e)).${hint}${georgia}`,
+    );
+  };
+
   if (nc === ne) {
-    // Matching the application is not the whole check: the marking must name a COUNTRY. A region
-    // ("Imported from the Caribbean") can match the application verbatim and still be unlawful
-    // under the CBP rules the TTB origin sections incorporate. Review, never auto-fail: the
-    // country list is conservative and a person decides.
-    if (!namedCountryIn(extracted)) {
-      const from = foreignCountryFromAddress(args.extractedAddress);
-      const hint = from
-        ? ` The producer address suggests "Product of ${displayCountry(from)}".`
-        : "";
-      return result(
-        "review",
-        claimed,
-        extracted,
-        `The label matches the application, but "${extracted}" does not name a country. ` +
-          `CBP marking requires the country of origin (19 CFR 134; 27 CFR 5.69 / 7.69 / 4.35(e)).${hint}`,
-      );
-    }
+    if (labelNamesNoCountry) return regionReview("The label matches the application, but");
     return result("pass", claimed, extracted, "Country of origin matches.");
   }
+
+  // Same COUNTRY under different lawful names: "UK" vs "United Kingdom", "Scotland" vs "United
+  // Kingdom", "Holland" vs "Netherlands", "Spain" vs "Product of España". Text differs, origin
+  // does not — a hard fail here was pure false alarm.
+  const claimedCountry = canonicalCountry(claimed);
+  const extractedCountry = canonicalCountry(extracted);
+  if (claimedCountry !== null && claimedCountry === extractedCountry) {
+    return result(
+      "pass",
+      claimed,
+      extracted,
+      `Country of origin matches: both name ${displayCountry(claimedCountry)}.`,
+    );
+  }
+
   if (wordBoundaryContains(ne, nc) || wordBoundaryContains(nc, ne) || similarity(nc, ne) >= ORIGIN_REVIEW_SIMILARITY) {
+    if (labelNamesNoCountry) return regionReview("The label is close to the application, but");
     return result("review", claimed, extracted, "Country of origin is close but not identical. Confirm.");
   }
+  // Two recognized but DIFFERENT countries is a genuine defect; an unrecognized side is more
+  // likely a typo ("Mexcio") or a region, so a person decides instead of an auto-reject.
+  if (claimedCountry !== null && extractedCountry !== null) {
+    return result("fail", claimed, extracted, "Country of origin does not match the application.");
+  }
+  if (extractedCountry !== null) {
+    return result(
+      "review",
+      claimed,
+      extracted,
+      `The application's country was not recognized (a typo is likely); the label names ${displayCountry(extractedCountry)}. Confirm.`,
+    );
+  }
+  if (labelNamesNoCountry) return regionReview("The label differs from the application, and");
   return result("fail", claimed, extracted, "Country of origin does not match the application.");
 }
 

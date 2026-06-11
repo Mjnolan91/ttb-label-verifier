@@ -183,10 +183,12 @@ describe("BatchVerify — verify against an application CSV", () => {
       'filename,brand,class,net,name,address\nacme-front.png,Granite Peak,India Pale Ale,12 FL OZ,Granite Peak Brewing,"Portland, OR"',
       vi.fn(async () => ({ ok: true, json: async () => MALT })) as unknown as typeof fetch,
     );
-    // Alcohol is optional on malt: the row verdicts (the un-supplied alcohol comparison stays review-
-    // biased, so "Needs review" at best) instead of dead-ending on an "add alcohol content" prompt.
-    expect(await q.findByText("Needs review")).toBeTruthy();
+    // Alcohol is optional on malt: a fully matching, legally ABV-less application VERDICTS — and
+    // since every supplied field matches, it can genuinely reach Approve (the unsupplied alcohol
+    // row is a named pass per 27 CFR 7.65, not a permanent review).
+    expect((await q.findAllByText("Approve")).length).toBeGreaterThan(0);
     expect(q.queryByText(/add alcohol content/i)).toBeNull();
+    expect(q.queryByText("Needs review")).toBeNull();
   });
 
   it("opens a product's review drawer, records a decision, and persists it to the worklist", { retry: 2 }, async () => {

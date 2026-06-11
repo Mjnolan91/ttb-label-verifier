@@ -33,6 +33,10 @@ export const WINE_STANDARDS_OF_FILL_ML: readonly number[] = [
 export interface ParsedNetContents {
   /** Stated metric volume in mL (liters converted), when a metric quantity is present. */
   ml?: number;
+  /** Stated US-customary volume in FLUID OUNCES (pints/quarts/gallons converted, combination
+   *  statements like "1 PT 8 FL OZ" summed), when a customary quantity is present. Lets the
+   *  comparator see "1 PINT" and "16 FL OZ" as the same quantity instead of failing on text. */
+  flOz?: number;
   /** Whether a US-customary volume (fl oz / pint / quart / gallon) is stated. */
   hasUsCustomary: boolean;
   /** Whether any recognizable quantity+unit was found at all. */
@@ -47,19 +51,37 @@ export function parseNetContents(text: string | undefined): ParsedNetContents {
   if (!text) return { hasUsCustomary: false, parsed: false };
   const t = text.toLowerCase();
 
+  // The number form accepts a leading decimal: ".75 L" must read as 0.75, not skip the dot and
+  // read "75 L" (a 100x misparse that confidently hard-failed a plausible application typing).
   let ml: number | undefined;
-  const mlMatch = t.match(/(\d+(?:\.\d+)?)\s*ml\b/); // "750 ml" / "750ml"
+  const mlMatch = t.match(/(\d+(?:\.\d+)?|\.\d+)\s*ml\b/); // "750 ml" / "750ml"
+  const clMatch = t.match(/(\d+(?:\.\d+)?|\.\d+)\s*cl\b/); // "75 cl" — standard on European labels
   if (mlMatch) {
     ml = parseFloat(mlMatch[1]);
+  } else if (clMatch) {
+    ml = parseFloat(clMatch[1]) * 10;
   } else {
-    const lMatch = t.match(/(\d+(?:\.\d+)?)\s*(?:l\b|lit(?:er|re)s?\b)/); // "1.5 l" / "1 liter"
+    const lMatch = t.match(/(\d+(?:\.\d+)?|\.\d+)\s*(?:l\b|lit(?:er|re)s?\b)/); // "1.5 l" / "1 liter"
     if (lMatch) ml = parseFloat(lMatch[1]) * 1000;
   }
 
-  const hasUsCustomary =
-    /(\d+(?:\.\d+)?)\s*(?:fl\.?\s*oz|fluid\s*ounce|pint|pt\b|quart|qt\b|gallon|gal\b)/.test(t);
+  // Customary quantities parse into FLUID OUNCES, summing combination statements ("1 PT 8 FL OZ"
+  // = 24). Bare "oz" counts as fluid ounces: on a beverage label there is no other ounce.
+  const ozM = t.match(/(\d+(?:\.\d+)?|\.\d+)\s*(?:fl\.?\s*oz|fluid\s*ounces?|oz)\b/);
+  const ptM = t.match(/(\d+(?:\.\d+)?|\.\d+)\s*(?:pints?|pt)\b/);
+  const qtM = t.match(/(\d+(?:\.\d+)?|\.\d+)\s*(?:quarts?|qt)\b/);
+  const galM = t.match(/(\d+(?:\.\d+)?|\.\d+)\s*(?:gallons?|gal)\b/);
+  let flOz: number | undefined;
+  if (ozM || ptM || qtM || galM) {
+    flOz =
+      (ozM ? parseFloat(ozM[1]) : 0) +
+      (ptM ? parseFloat(ptM[1]) * 16 : 0) +
+      (qtM ? parseFloat(qtM[1]) * 32 : 0) +
+      (galM ? parseFloat(galM[1]) * 128 : 0);
+  }
+  const hasUsCustomary = flOz !== undefined;
 
-  return { ml, hasUsCustomary, parsed: ml !== undefined || hasUsCustomary };
+  return { ml, flOz, hasUsCustomary, parsed: ml !== undefined || hasUsCustomary };
 }
 
 /** Is a stated metric volume (mL) an authorized standard of fill? Wine also allows even-liter ≥ 4 L. */

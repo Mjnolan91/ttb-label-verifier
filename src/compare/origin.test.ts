@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { displayCountry, foreignCountryFromAddress, inferOrigin, isUsAddress, namedCountryIn, suggestedCountryOfOrigin } from "./origin";
+import { canonicalCountry, displayCountry, foreignCountryFromAddress, inferOrigin, isUsAddress, namedCountryIn, suggestedCountryOfOrigin } from "./origin";
 import type { ExtractedFields } from "@/domain";
 
 /** Minimal extracted shape for origin inference (only the consulted text fields). */
@@ -208,7 +208,7 @@ describe("suggestedCountryOfOrigin", () => {
 describe("namedCountryIn — does the printed statement name an actual country?", () => {
   it("recognizes country names and US forms in marking phrases", () => {
     expect(namedCountryIn("Product of Barbados")).toBe("barbados");
-    expect(namedCountryIn("Imported from Trinidad and Tobago")).toBe("trinidad");
+    expect(namedCountryIn("Imported from Trinidad and Tobago")).toBe("trinidad and tobago");
     expect(namedCountryIn("Made in the U.S.A.")).toBeTruthy();
     expect(namedCountryIn("PRODUCT OF MEXICO")).toBe("mexico");
   });
@@ -231,5 +231,28 @@ describe("foreignCountryFromAddress — the likely intended country", () => {
 
   it("displayCountry title-cases multi-word names", () => {
     expect(displayCountry("dominican republic")).toBe("Dominican Republic");
+  });
+});
+
+describe("namedCountryIn — common endonyms on imported labels", () => {
+  it("recognizes the native spellings the diacritic fold produces", () => {
+    expect(namedCountryIn("Product of España")).toBe("espana");
+    expect(namedCountryIn("Prodotto in Italia")).toBe("italia");
+    expect(namedCountryIn("Hergestellt in Deutschland")).toBe("deutschland");
+  });
+});
+
+describe("canonicalCountry — same country under different lawful names", () => {
+  it("folds UK constituents, Holland, endonyms, and exact US forms", () => {
+    expect(canonicalCountry("Product of Scotland")).toBe("united kingdom");
+    expect(canonicalCountry("UK")).toBe("united kingdom");
+    expect(canonicalCountry("Holland")).toBe("netherlands");
+    expect(canonicalCountry("Product of España")).toBe("spain");
+    expect(canonicalCountry("Made in America")).toBe("united states");
+    expect(canonicalCountry("Product of Northern Ireland")).toBe("united kingdom"); // longest match, never "ireland"
+  });
+
+  it("South America is NOT the US form (exact matching only)", () => {
+    expect(canonicalCountry("Imported from South America")).toBeNull();
   });
 });

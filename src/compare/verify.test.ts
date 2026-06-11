@@ -193,3 +193,29 @@ describe("verifyLabel — full field-by-field application match", () => {
     expect(keys.indexOf("statementOfComposition")).toBeLessThan(keys.indexOf("warning"));
   });
 });
+
+describe("verifyLabel — legally ABV-less applications can reach Approve (adversarial audit FN-2)", () => {
+  const maltLabel = {
+    brand: "GRANITE PEAK",
+    classType: "India Pale Ale",
+    alcoholContentText: "6.7% Alc./Vol.",
+    netContents: "12 FL OZ",
+    warningText: CANONICAL_GOVERNMENT_WARNING,
+    warningPrefixIsAllCaps: true,
+    warningPrefixIsBold: true,
+    confidence: { brand: 0.97, classType: 0.96, alcoholContent: 0.97, netContents: 0.96, warningText: 0.97 },
+  } as ExtractedFields;
+
+  it("a malt application with no claimed ABV gets a named PASS on the alcohol row, not permanent review", () => {
+    const r = verifyLabel({ brand: "GRANITE PEAK", classType: "India Pale Ale" }, maltLabel);
+    expect(r.alcohol.status).toBe("pass");
+    expect(r.alcohol.reason).toMatch(/not mandatory for this beverage type/);
+    expect(r.overall).toBe("approve");
+  });
+
+  it("a spirits application with no claimed ABV still routes to review (mandatory there)", () => {
+    const spirits = { ...maltLabel, classType: "Kentucky Straight Bourbon Whiskey", alcoholContentText: "45% Alc./Vol. (90 Proof)" };
+    const r = verifyLabel({ brand: "GRANITE PEAK", classType: "Kentucky Straight Bourbon Whiskey" }, spirits);
+    expect(r.alcohol.status).toBe("review");
+  });
+});

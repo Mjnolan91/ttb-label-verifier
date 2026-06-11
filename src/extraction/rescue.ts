@@ -28,7 +28,7 @@
 import type { ExtractedFields } from "@/domain";
 import { FIELD_REVIEW_CONFIDENCE } from "@/compare";
 import { FIELD_CATALOG, type FieldDescriptor } from "./fieldCatalog";
-import { canonical, valuesAgree } from "./reconcile";
+import { DISAGREEMENT_CONFIDENCE, canonical, valuesAgree } from "./reconcile";
 import { VERDICT_RELEVANT_FIELDS } from "./selfConsistency";
 import type { ImageInput, VisionProvider } from "./VisionProvider";
 
@@ -53,8 +53,15 @@ function setValue(e: ExtractedFields, d: FieldDescriptor, v: string): void {
 
 /**
  * The contested fields a rescue read can help with: verdict-relevant, value PRESENT, and the
- * agreement-based confidence in the borderline band (0 < c < the review gate) — the same band the
+ * agreement-based confidence in the borderline band ABOVE the conflict stamp — the same band the
  * escalation lever targets.
+ *
+ * Fields AT or BELOW DISAGREEMENT_CONFIDENCE are deliberately ineligible: that stamp marks a
+ * cross-source CONFLICT (front label vs back label disagreeing on a value, or presence flapping
+ * across samples), not mere uncertainty. Two label panels printing different numbers is a physical
+ * discrepancy a third reading cannot arbitrate — a strong model voting for one panel would erase
+ * the very signal that routes the conflict to a human (adversarial audit FP-3: mispaired batch
+ * images "agree-boosted" past the gate).
  */
 export function rescueEligibleKeys(e: ExtractedFields): RescueKey[] {
   return VERDICT_RELEVANT_FIELDS.filter((k) => {
@@ -63,7 +70,7 @@ export function rescueEligibleKeys(e: ExtractedFields): RescueKey[] {
     return (
       d !== undefined &&
       typeof c === "number" &&
-      c > 0 &&
+      c > DISAGREEMENT_CONFIDENCE &&
       c < FIELD_REVIEW_CONFIDENCE &&
       valueOf(e, d) !== ""
     );

@@ -59,8 +59,10 @@ const US_STATE_NAMES = new Set([
 ]);
 
 /** US-country synonyms a printed origin statement may use. Exact matches only (after stripping the
- *  lead-in); bare "america" is deliberately absent (ambiguous: "South America"). */
-const US_COUNTRY_SYNONYMS = new Set(["usa", "us", "u s", "u s a", "united states", "united states of america"]);
+ *  lead-in) — which is why bare "america" IS safe here: "Made in America" strips to exactly
+ *  "america" (the most common domestic marketing phrase), while "South America" never equals it.
+ *  The substring-scanning namedCountryIn deliberately does NOT use "america" (see below). */
+const US_COUNTRY_SYNONYMS = new Set(["usa", "us", "u s", "u s a", "united states", "united states of america", "america"]);
 
 /** "Product of …" / "Made in …" lead-ins, mirrored from the origin comparator. */
 const ORIGIN_PREFIX = /^(?:product of|produce of|made in|bottled in|imported from)\s+/i;
@@ -106,6 +108,10 @@ const FOREIGN_COUNTRY_NAMES = new Set([
   "south africa", "kenya", "ethiopia", "tanzania", "uganda", "nigeria", "ghana", "morocco",
   "tunisia", "algeria", "egypt", "israel", "lebanon", "jordan",
   "uk", "u k", "bosnia and herzegovina",
+  // Common ENDONYMS seen on imported labels (normalize() already folds diacritics, so "España"
+  // arrives here as "espana"). A small, deliberate set: the wine/spirits exporters whose labels
+  // most often print the native name. Anything missing still routes to review, never to fail.
+  "espana", "italia", "deutschland", "brasil", "osterreich",
 ]);
 
 const normalize = (s: string): string =>
@@ -167,13 +173,15 @@ export function isForeignAddress(address: string | undefined): boolean {
   return FOREIGN_COUNTRY_NAMES.has(addressTail(address));
 }
 
-/** Phrase-wise membership: does the normalized text contain `name` as whole word(s)? */
+/** Phrase-wise membership: does the normalized text contain `name` as whole word(s)? Returns the
+ *  LONGEST matching name, so "Northern Ireland" resolves as itself, never as "Ireland". */
 function containsName(normalized: string, names: ReadonlySet<string>): string | null {
   const padded = ` ${normalized} `;
+  let best: string | null = null;
   for (const name of names) {
-    if (padded.includes(` ${name} `)) return name;
+    if (padded.includes(` ${name} `) && (best === null || name.length > best.length)) best = name;
   }
-  return null;
+  return best;
 }
 
 /**
@@ -191,8 +199,40 @@ export function namedCountryIn(text: string | undefined): string | null {
   if (norm === "") return null;
   const foreign = containsName(norm, FOREIGN_COUNTRY_NAMES);
   if (foreign) return foreign;
-  // US forms count as naming a country ("Product of the USA" is a valid marking form).
-  return containsName(norm.replace(/\bthe\s+/g, " ").replace(/\s+/g, " ").trim(), US_COUNTRY_SYNONYMS);
+  // US forms count as naming a country ("Product of the USA", "Made in America"). EXACT matching
+  // only, via isUsOriginText: a substring scan would read "South America" as the US form.
+  return isUsOriginText(text ?? "") ? "united states" : null;
+}
+
+/**
+ * Fold a recognized country name to its CANONICAL country, so the comparator can see that "UK",
+ * "Scotland", and "United Kingdom" describe the same origin (CBP treats the UK as the country of
+ * origin for its constituent countries), "Holland" is the Netherlands, and the endonyms map to
+ * their English names. Null when the text names no recognized country.
+ */
+const COUNTRY_ALIASES: Record<string, string> = {
+  uk: "united kingdom",
+  "u k": "united kingdom",
+  "great britain": "united kingdom",
+  england: "united kingdom",
+  scotland: "united kingdom",
+  wales: "united kingdom",
+  "northern ireland": "united kingdom",
+  holland: "netherlands",
+  espana: "spain",
+  italia: "italy",
+  deutschland: "germany",
+  brasil: "brazil",
+  osterreich: "austria",
+  korea: "south korea",
+  trinidad: "trinidad and tobago",
+  czechia: "czech republic",
+};
+
+export function canonicalCountry(text: string | undefined): string | null {
+  const named = namedCountryIn(text);
+  if (named === null) return null;
+  return COUNTRY_ALIASES[named] ?? named;
 }
 
 /** The foreign country a structured producer address ends in ("Bridgetown, Barbados." ->

@@ -51,8 +51,19 @@ export function parseAlcoholText(text: string | undefined): ParsedAlcohol {
   // ABV must be in [0, 100] (0 is allowed — non-alcoholic products legitimately read "0.0% Alc./Vol.",
   // and the <0.5% warning exemption needs a real 0); proof in [0, 200]. Out-of-range -> undefined,
   // which routes the field to "couldn't read"/review rather than a fabricated comparison.
-  const abv = abvMatch ? num(abvMatch[1]) : undefined;
+  let abv = abvMatch ? num(abvMatch[1]) : undefined;
   const proof = proofMatch ? num(proofMatch[1]) : undefined;
+  // The NA-beverage form "LESS THAN 0.5% ALC/VOL" states a BOUND, not a value: reading it as
+  // exactly 0.5 put a genuinely exempt product on the wrong side of the warning threshold
+  // (isWarningRequired uses abv < 0.5). The qualifier must sit immediately before the matched
+  // number, and "NOT less than" (a floor, the opposite meaning) never triggers.
+  if (
+    abv !== undefined &&
+    abvMatch?.index !== undefined &&
+    /(?<!\bnot\s)(?:less\s+than|under|below|<)\s*$/i.test(text.slice(0, abvMatch.index))
+  ) {
+    abv = Math.max(abv - 0.01, 0);
+  }
   return {
     abv: abv !== undefined && abv >= 0 && abv <= 100 ? abv : undefined,
     proof: proof !== undefined && proof >= 0 && proof <= 200 ? proof : undefined,
@@ -92,21 +103,28 @@ export function resolveBeverageClass(
   // Keyword heuristics on WORD boundaries (spaces preserved, punctuation collapsed). Substring
   // matching here once sent every "Imported ..." spirit to the WINE tolerance band because
   // "imported" contains "port" — a word like "port" must match only as its own word.
-  // Cider first (it has its own resolution), then malt, wine, spirits.
+  // SPIRITS keywords rank FIRST: cask-finish phrasing ("Scotch Whisky Finished in Cider Casks")
+  // names another beverage incidentally, and a spirit word anywhere makes the product a spirit.
   const words = classText.toLowerCase().replace(/[^a-z0-9]+/g, " ");
-  if (/\bciders?\b/.test(words)) return "cider";
-  if (/\b(?:malt|beers?|ales?|lagers?|stouts?|porters?|ipas?|pilsners?)\b/.test(words)) {
-    return "maltBeverage";
-  }
-  if (/\b(?:wines?|ports?|sherry|vermouth|madeira|meads?|sake|sangria)\b/.test(words)) {
-    return abv !== undefined && abv > 14 ? "wineOver14" : "wineUnder14";
-  }
   if (
     /\b(?:spirits?|whiskey|whisky|whiskies|bourbon|rye|vodka|gin|rum|tequila|mezcal|brandy|cognac|liqueurs?|distilled|scotch)\b/.test(
       words,
     )
   ) {
     return "distilledSpirits";
+  }
+  if (/\bciders?\b/.test(words)) return "cider";
+  if (/\b(?:malt|beers?|ales?|lagers?|stouts?|porters?|ipas?|pilsners?|seltzers?)\b/.test(words)) {
+    return "maltBeverage";
+  }
+  // Varietal and semi-generic designations ARE the lawful class/type for wine (27 CFR 4.34/4.24);
+  // without them every "Chardonnay" resolved to unknown and reviewed for nothing.
+  if (
+    /\b(?:wines?|ports?|sherry|vermouth|madeira|meads?|sake|sangria|chardonnay|chablis|riesling|moscato|muscat|prosecco|champagne|cava|merlot|malbec|zinfandel|shiraz|syrah|tempranillo|sangiovese|grenache|gewurztraminer|viognier|chenin|semillon|barbera|nebbiolo|pinot|cabernet|sauvignon|ros[eé]|burgundy|chianti|rioja|bordeaux|beaujolais)\b/.test(
+      words,
+    )
+  ) {
+    return abv !== undefined && abv > 14 ? "wineOver14" : "wineUnder14";
   }
   return "unknown";
 }

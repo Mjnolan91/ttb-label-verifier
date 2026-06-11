@@ -20,7 +20,7 @@ import {
   compareFancifulName,
   compareStatementOfComposition,
 } from "./comparators";
-import { parseAlcoholText } from "./alcohol";
+import { parseAlcoholText, resolveBeverageClass } from "./alcohol";
 import { applyConfidenceGate } from "./thresholds";
 
 /** Overall label verdict. Asymmetric reduction biases away from false approval. */
@@ -50,8 +50,10 @@ export interface VerifyField extends FieldResult {
  * comparison that RAN (a field the application didn't supply is omitted) — the uniform render/iterate
  * surface. `brand`/`alcohol`/`warning` are convenience accessors (the SAME verdicts as in `fields`)
  * to avoid churn in eval/CSV; they are always present because brand is gated everywhere, the warning
- * is auto-compared, and the alcohol comparison always runs (an UNSUPPLIED claimed alcohol — legal for
- * malt / wine ≤14% / cider — compares to `review`, never approve).
+ * is auto-compared, and the alcohol row always exists: an UNSUPPLIED claimed alcohol routes to
+ * `review` EXCEPT where the statement is legally optional (malt / wine ≤14% / cider), where it is a
+ * named pass — the lawful state of a complete application — with the label's own printed statement
+ * still policed by the completeness rules.
  */
 export interface VerifyResult {
   fields: VerifyField[];
@@ -111,19 +113,47 @@ export function verifyLabel(
     );
   }
 
+  // An UNSUPPLIED claimed alcohol on a class where the statement is legally OPTIONAL (malt
+  // 27 CFR 7.65; wine at or under 14% with a type designation, 4.36(a); cider likewise) is the
+  // LAWFUL state of a complete application, not a gap: a permanent "Needs review" here buried
+  // every legal ABV-less beer application in noise the product's own required-input matrix says
+  // should not exist. The row passes with the legal basis named; the LABEL's own printed
+  // statement is still independently checked by the completeness rules (internal validity,
+  // malformed statements), and the combined verdict takes the worse of the two, so nothing
+  // defective on the label is masked. For every other class (spirits, wine over 14%, unknown)
+  // an unsupplied claim still routes to review.
+  const claimedAlcoholBlank = !claimed.alcoholContentText?.trim();
+  const resolvedForAlcohol =
+    claimed.beverageClass ??
+    resolveBeverageClass(
+      claimed.classType?.trim() ? claimed.classType : extracted.classType,
+      parseAlcoholText(extracted.alcoholContentText).abv,
+    );
+  const alcoholOptional =
+    resolvedForAlcohol === "maltBeverage" || resolvedForAlcohol === "wineUnder14" || resolvedForAlcohol === "cider";
   const alcohol = add(
     "alcohol",
     "Alcohol content",
-    applyConfidenceGate(
-      compareAlcohol({
-        claimedText: claimed.alcoholContentText,
-        extractedText: extracted.alcoholContentText,
-        claimedClass: claimed.classType,
-        extractedClass: extracted.classType,
-        beverageClass: claimed.beverageClass,
-      }),
-      extracted.confidence.alcoholContent,
-    ),
+    claimedAlcoholBlank && alcoholOptional
+      ? {
+          status: "pass",
+          claimed: "(not required for this beverage type)",
+          extracted: extracted.alcoholContentText ?? "(none)",
+          reason:
+            "Alcohol content is not mandatory for this beverage type (malt: 27 CFR 7.65; wine at or " +
+            "under 14%: 27 CFR 4.36(a)) and the application claims none. The label's own statement " +
+            "is still checked by the completeness rules.",
+        }
+      : applyConfidenceGate(
+          compareAlcohol({
+            claimedText: claimed.alcoholContentText,
+            extractedText: extracted.alcoholContentText,
+            claimedClass: claimed.classType,
+            extractedClass: extracted.classType,
+            beverageClass: claimed.beverageClass,
+          }),
+          extracted.confidence.alcoholContent,
+        ),
   );
 
   if (claimed.netContents?.trim()) {
