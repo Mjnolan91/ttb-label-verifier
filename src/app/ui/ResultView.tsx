@@ -1,4 +1,4 @@
-import { useState, type Ref } from "react";
+import { useEffect, useRef, useState, type Ref } from "react";
 import { FIELD_REVIEW_CONFIDENCE, MIN_READABLE_CONFIDENCE, type VerifyResult, type VerifyField, type VerifyFieldKey } from "@/compare";
 import { StatusBadge } from "./StatusBadge";
 import {
@@ -90,6 +90,47 @@ function aiLabel(f: VerifyField): string {
 /** Does any field carry a GENUINE AI concern (a real mismatch / discrepancy), vs. only fuzzy-read flags? */
 function hasRealConcern(fields: readonly VerifyField[]): boolean {
   return fields.some((f) => f.status === "fail" || (f.status === "review" && !isGatedMatch(f)));
+}
+
+/**
+ * A claimed/extracted value clamped to three lines, with a "Show more" toggle that appears ONLY
+ * when text is actually hidden (measured, not guessed) — long statutory warnings stay scannable
+ * without permanently hiding their tails, and short values stay exactly as calm as before.
+ * Re-measured on resize; jsdom reports zero heights, so the toggle simply never renders in tests.
+ */
+function ClampedValue({ id, text }: { id: string; text: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const [clamped, setClamped] = useState(false);
+  const ref = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el || expanded) return; // measure only while collapsed (expanded text never overflows)
+    const measure = () => setClamped(el.scrollHeight > el.clientHeight + 1);
+    measure();
+    if (typeof ResizeObserver === "undefined") return;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [text, expanded]);
+  return (
+    <>
+      <dd id={id} ref={ref} className={`mt-0.5 break-words text-ink ${expanded ? "" : "line-clamp-3"}`}>
+        {text}
+      </dd>
+      {(clamped || expanded) && (
+        <button
+          type="button"
+          aria-expanded={expanded}
+          aria-controls={id}
+          onClick={() => setExpanded((v) => !v)}
+          className="mt-1 inline-flex min-h-[32px] items-center gap-1 text-xs font-semibold text-brand-700 underline underline-offset-2 transition hover:text-brand-800 focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700"
+        >
+          {expanded ? "Show less" : "Show more"}
+          <span aria-hidden="true">{expanded ? "▴" : "▾"}</span>
+        </button>
+      )}
+    </>
+  );
 }
 
 function ConfidenceChip({ value }: { value: number | undefined }) {
@@ -395,11 +436,11 @@ function FieldCard({
           <dt className="text-xs font-semibold uppercase tracking-wide text-ink-muted">
             Application{field.key === "warning" ? " (statutory text)" : ""}
           </dt>
-          <dd className="mt-0.5 line-clamp-3 break-words text-ink">{field.claimed}</dd>
+          <ClampedValue id={`field-${field.key}-claimed`} text={field.claimed} />
         </div>
         <div>
           <dt className="text-xs font-semibold uppercase tracking-wide text-ink-muted">On the label</dt>
-          <dd className="mt-0.5 line-clamp-3 break-words text-ink">{field.extracted}</dd>
+          <ClampedValue id={`field-${field.key}-extracted`} text={field.extracted} />
         </div>
       </dl>
       <p className="mt-3 text-sm">{field.reason}</p>
