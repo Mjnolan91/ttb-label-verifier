@@ -100,6 +100,14 @@
   }
 }
 
+/* Focus-ring offsets read as a halo of the page, not a fringe: Tailwind's ring-offset color
+ * defaults to #fff, which glows around every focused control in dark mode. A strict no-op in
+ * light mode, where the surface IS white. Deliberately UNLAYERED: Tailwind v4 emits its
+ * --tw-* property defaults outside the cascade layers, so a layered override loses to them. */
+* {
+  --tw-ring-offset-color: var(--color-surface);
+}
+
 /*
  * Smooth light/dark transition. Scoped to a `.theme-transition` class that ThemeToggle adds to <html>
  * only for the ~320ms of a toggle, so colors ease between themes WITHOUT animating during normal
