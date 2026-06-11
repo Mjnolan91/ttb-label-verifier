@@ -102,13 +102,10 @@ const LABELS = {
   "demo-brand-typo.png": { ...BASE, brand1: "Old Tomm", brand2: "Distillery", warningPrefix: "GOVERNMENT WARNING:" },
 };
 
-// The same three rasters serve two roles: filename-keyed eval fixtures AND the in-app sample
-// downloads (public/samples, linked from the verify screen). Writing both here keeps them
-// byte-identical; src/app/samples.test.ts fails if they ever drift.
-const outDirs = [
-  path.join(__dirname, "..", "eval", "fixtures", "images"),
-  path.join(__dirname, "..", "public", "samples"),
-];
+// These rasters are filename-keyed EVAL FIXTURES only. (They were also the in-app sample
+// downloads until 2026-06-11; the demo now ships the Fear the Dragon pair — see
+// scripts/make-fear-the-dragon-demo.cjs — so nothing is written to public/samples here.)
+const outDirs = [path.join(__dirname, "..", "eval", "fixtures", "images")];
 
 (async () => {
   for (const dir of outDirs) fs.mkdirSync(dir, { recursive: true });

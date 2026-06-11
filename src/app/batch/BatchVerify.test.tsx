@@ -414,14 +414,14 @@ describe("BatchVerify — verify against an application CSV", () => {
     expect(screen.queryByText(/Step 3/)).toBeNull();
   });
 
-  it("the CSV template includes the three bundled sample labels, ready to demo end to end", () => {
+  it("the CSV template includes the bundled sample product + defect variant, ready to demo end to end", () => {
     const { container } = render(<BatchVerify />);
     fireEvent.click(within(container).getByRole("button", { name: /Download CSV template/i }));
     const content = (downloadCsv as unknown as ReturnType<typeof vi.fn>).mock.calls.at(-1)?.[1] as string;
     const map = parseClaimedCsv(content);
-    expect(map.get("demo-old-tom-clean.png")?.brand).toBe("OLD TOM DISTILLERY");
-    expect(map.get("demo-warning-title-case.png")?.alcoholContent).toBe("45% Alc./Vol. (90 Proof)");
-    expect(map.get("demo-brand-typo.png")?.brand).toBe("Old Tom Distillery");
+    expect(map.get("fear-the-dragon-front.jpg")?.brand).toBe("Fear the Dragon");
+    expect(map.get("fear-the-dragon-front.jpg")?.alcoholContent).toBe("50% Alc./Vol. (100 Proof)");
+    expect(map.get("fear-the-dragon-warning-not-bold-back.jpg")?.brand).toBe("Fear the Dragon");
     expect(map.get("jolly-jerrys-front.jpg")?.classType).toBe("Rum"); // the varied examples stay
   });
 

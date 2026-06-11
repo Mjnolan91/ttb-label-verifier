@@ -480,18 +480,18 @@ describe("VerifyForm — verify against the application", () => {
     mockFetch(READ_OK());
     const { container } = render(<VerifyForm />);
     const q = within(container);
-    const clean = q.getByRole("link", { name: /clean bourbon/i }) as HTMLAnchorElement;
-    expect(clean.getAttribute("href")).toBe("/samples/demo-old-tom-clean.png");
-    expect(clean.hasAttribute("download")).toBe(true);
+    const front = q.getByRole("link", { name: /front label/i }) as HTMLAnchorElement;
+    expect(front.getAttribute("href")).toBe("/samples/fear-the-dragon-front.jpg");
+    expect(front.hasAttribute("download")).toBe(true);
     expect(
-      (q.getByRole("link", { name: /title-case warning/i }) as HTMLAnchorElement).getAttribute("href"),
-    ).toBe("/samples/demo-warning-title-case.png");
+      (q.getByRole("link", { name: /^back label/i }) as HTMLAnchorElement).getAttribute("href"),
+    ).toBe("/samples/fear-the-dragon-back.jpg");
     expect(
-      (q.getByRole("link", { name: /brand typo/i }) as HTMLAnchorElement).getAttribute("href"),
-    ).toBe("/samples/demo-brand-typo.png");
+      (q.getByRole("link", { name: /non-bold-warning back/i }) as HTMLAnchorElement).getAttribute("href"),
+    ).toBe("/samples/fear-the-dragon-warning-not-bold-back.jpg");
     dropLabelImage(container);
     await q.findByText("Complete the application to verify");
-    expect(q.queryByRole("link", { name: /clean bourbon/i })).toBeNull();
+    expect(q.queryByRole("link", { name: /front label/i })).toBeNull();
   });
 
   it("a failed read shows Try again, which retries WITHOUT wiping typed application values", ASYNC, async () => {

@@ -659,25 +659,28 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
             </button>
           </p>
         )}
-        {/* Self-sufficient demo: a cold visitor has no label image on hand. The three bundled sample
-            labels are served from /public/samples with their filenames intact, so the offline mock
-            recognizes them AND a live provider reads their real pixels. Plain download links keep the
-            upload flow honest (no special in-app path). */}
+        {/* Self-sufficient demo: a cold visitor has no label image on hand. The bundled sample is a
+            REAL front/back pair (Fear the Dragon, Dragon Distillery x Flying Dog) served from
+            /public/samples with filenames intact, so the offline mock recognizes them AND a live
+            provider reads their real pixels; the pair exercises the joint multi-image read. The
+            defect variant is an EDITED test image (the real label is compliant). Plain download
+            links keep the upload flow honest (no special in-app path). */}
         {!slots.front && (
           <p className="mt-3 text-sm text-ink-muted">
-            No label handy? Download a sample to upload:{" "}
-            <a href="/samples/demo-old-tom-clean.png" download className={linkClass}>
-              clean bourbon
+            No label handy? Download the sample pair, then select both files at once (they place
+            themselves):{" "}
+            <a href="/samples/fear-the-dragon-front.jpg" download className={linkClass}>
+              front label
             </a>
-            {", "}
-            <a href="/samples/demo-warning-title-case.png" download className={linkClass}>
-              title-case warning
+            {" and "}
+            <a href="/samples/fear-the-dragon-back.jpg" download className={linkClass}>
+              back label
             </a>
-            {", or "}
-            <a href="/samples/demo-brand-typo.png" download className={linkClass}>
-              brand typo
-            </a>
-            .
+            . To see a Reject, swap in the{" "}
+            <a href="/samples/fear-the-dragon-warning-not-bold-back.jpg" download className={linkClass}>
+              non-bold-warning back
+            </a>{" "}
+            (an edited test image; the real label is compliant).
           </p>
         )}
         {/* The read's live status, co-located with the slot the user just dropped into (all other

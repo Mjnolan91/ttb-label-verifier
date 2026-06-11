@@ -408,12 +408,15 @@ function FieldCard({
   const hasConcern = Boolean(concern) && !override;
   const tone = effectiveTone(field, override, hasConcern);
   const Icon = TONE_ICON[tone];
+  // The concern badge ELEVATES an otherwise-matching card (mirroring effectiveTone); it must never
+  // SOFTEN one that failed its own comparison — a hard 16.22(a)(2) fail wearing a "Needs review"
+  // badge under a Reject headline reads as a contradiction.
   const badge =
     override === "ok"
       ? "Confirmed by you"
       : override === "issue"
         ? "Problem flagged"
-        : hasConcern
+        : hasConcern && aiTone(field) === "pass"
           ? FIELD_LABEL.review
           : tone === "verify"
             ? GATED_MATCH_LABEL

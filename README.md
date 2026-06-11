@@ -7,7 +7,7 @@ labeling rules, and returns an at-a-glance verdict: **Approve / Needs review / R
 **Live demo:** https://ttb-label-verifier-matthew-nolan-s-projects.vercel.app
 (runs a real vision model, OpenAI gpt-4.1, so it can read any label photo)
 
-![The verify screen: a bourbon label read by the AI, checked field by field against the application, with an Approve verdict](docs/screenshot.png)
+![The verify screen: a real spirits label, front and back read together by the AI, checked field by field against the application, with an Approve verdict](docs/screenshot.png)
 
 Built for the take-home brief: the three core checks (brand name, alcohol content, government
 health warning) lead the screen. The same engine also extracts the full TTB field set (killing the
@@ -20,29 +20,32 @@ for reviewers in
 ## Try it in two minutes
 
 1. Open the [live demo](https://ttb-label-verifier-matthew-nolan-s-projects.vercel.app).
-2. Grab a sample label: the demo's upload screen offers all three as one-click downloads ("No
-   label handy?"), or use the links in the table below (on GitHub, open the link and use the
-   "Download raw file" button). Any bottle photo of your own works too.
-3. Upload it as the front label. The AI reads it and pre-fills "The application" inputs with gray
+2. Grab the sample product: the demo's upload screen offers it as one-click downloads ("No label
+   handy?"), or use the links in the table below (on GitHub, open the link and use the
+   "Download raw file" button). It is a real spirits label, a front/back pair, so the read
+   exercises the joint multi-image path. Any bottle photo of your own works too.
+3. Select BOTH files at once: the -front/-back filenames place themselves into the slots. The AI
+   reads the pair as one product and pre-fills "The application" inputs with gray
    suggestions; press Tab to accept one, or click **Accept all AI suggestions**. (In real use the
    agent would type what the COLA (Certificate of Label Approval) application claims. Accepting
    the suggestions simulates an application that matches the label.)
 4. The verdict appears as soon as every field TTB requires for the beverage type is filled in.
 
-| Sample label | The defect on the label | What to enter | Expected verdict |
+| Sample product | The defect on the label | What to enter | Expected verdict |
 | --- | --- | --- | --- |
-| [Clean bourbon](eval/fixtures/images/demo-old-tom-clean.png) | none | accept all suggestions | **Approve** |
-| [Title-case warning](eval/fixtures/images/demo-warning-title-case.png) | warning prefix printed "Government Warning:" instead of all-caps bold "GOVERNMENT WARNING:" | accept all suggestions | **Reject**. 27 CFR 16.22(a)(2) requires the all-caps bold prefix |
-| [Brand typo](eval/fixtures/images/demo-brand-typo.png) | label prints "Old Tomm Distillery" (extra "m") | type **Old Tom Distillery** as the brand, accept the rest | **Needs review**. A near-miss is routed to a human, not auto-decided |
+| Fear the Dragon, clean pair: [front](eval/fixtures/images/fear-the-dragon-front.jpg) + [back](eval/fixtures/images/fear-the-dragon-back.jpg) | none (brand and alcohol on the front; net contents and the warning on the back) | accept all suggestions | **Approve** |
+| The same front + the [non-bold-warning back](eval/fixtures/images/fear-the-dragon-warning-not-bold-back.jpg) | the "GOVERNMENT WARNING:" prefix is printed in regular weight (an edited test image; the real label is compliant) | accept all suggestions | **Reject**. 27 CFR 16.22(a)(2) requires the prefix in bold type |
 
 You never type the government warning: the tool compares the label's warning text word for word
 against the statutory text automatically. (Live model reads can occasionally vary; locally, the
-offline mock reproduces these verdicts deterministically.)
+offline mock reproduces these verdicts deterministically.) The third verdict, **Needs review**, is
+what uncertainty gets instead of a guess: type a slightly different brand than the label prints and
+the near-miss routes to a human rather than auto-deciding (the eval fixtures cover this path).
 
 For the batch workflow (the brief's importers dumping 200 to 300 applications at once), open
 [/batch](https://ttb-label-verifier-matthew-nolan-s-projects.vercel.app/batch): drop many images,
 fronts and backs pair by filename, optionally attach a CSV of claimed values (the downloadable
-template ships ready-made rows for the three sample labels), and results stream into a reviewable
+template ships ready-made rows for the sample product), and results stream into a reviewable
 worklist with CSV export. Each row leads with a clickable thumbnail; two rows that read the same
 brand (camera filenames defeat pairing) offer a one-click, human-confirmed combine that re-reads
 them as one product. Transient service failures auto-retry with jittered backoff and adaptive
@@ -61,7 +64,7 @@ npm run dev        # http://localhost:3000, zero API keys needed
 ```
 
 Requires Node 20.9+. With no keys the app runs on an offline **mock** provider: it recognizes the
-bundled sample labels by filename (including the three above, which yield the same verdicts
+bundled sample labels by filename (including the pair above, which yields the same verdicts
 locally) but cannot read arbitrary photos. To read your own images locally,
 [enable a real vision provider](#enable-a-real-vision-provider); the live demo already runs one.
 
@@ -209,7 +212,7 @@ the one judgment that can hard-fail a label.
   exercise the pipeline and verdict logic, not a real model's reading accuracy. The live demo runs
   a real provider so reviewers get both.
 - **Test fixtures key off the image filename, not pixels.** That is what makes the offline suite
-  possible. The defect fixtures are lightweight SVG placeholders; the three demo labels are real
+  possible. The defect fixtures are lightweight SVG placeholders; the demo labels are real
   rasters so a live provider extracts genuine pixels from them.
 - **The application is required for a verdict.** The brief's core task is "does the label match
   the application", so the screen leads with that comparison and blocks the verdict until the

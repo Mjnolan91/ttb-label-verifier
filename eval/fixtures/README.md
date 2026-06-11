@@ -59,6 +59,9 @@ placeholders are human-viewable documentation of each scenario; they are not con
 | `specialty-spiced-rum-approve` | `cayo-verde-spiced-specialty.svg` | pass | pass | pass | **approve** |
 | `sangria-import-no-country-review` | `sangria-import-no-country.svg` | pass | pass | pass | **review** |
 | `region-origin-not-country-review` | `jolly-jerrys-region-origin.svg` | pass | pass | pass | **review** |
+| `fear-the-dragon-front-panel-alone` | `fear-the-dragon-front.jpg` (real demo artwork) | pass | pass | **review** | **review** |
+| `fear-the-dragon-back-panel-alone` | `fear-the-dragon-back.jpg` (real demo artwork) | pass | review | pass | **review** |
+| `fear-the-dragon-warning-not-bold-reject` | `fear-the-dragon-warning-not-bold-back.jpg` (EDITED demo artifact) | pass | review | **fail** | **reject** |
 
 The sangria case is the origin-inference fixture: every claimed-vs-label comparison passes, but the
 label carries an importer line and a foreign producer address with NO "Product of Spain" statement,

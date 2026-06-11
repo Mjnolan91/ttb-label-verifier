@@ -15,27 +15,29 @@ import { Drawer } from "./Drawer";
 import { IconHelp } from "./icons";
 import { linkClass } from "./fieldStyles";
 
-/** The bundled sample labels: filename (under /samples) + what each one demonstrates. */
-const SAMPLES: { href: string; name: string; expect: string; detail: string }[] = [
+/** The bundled sample product (a real front/back spirits pair) and its one defect variant. */
+const SAMPLES: { name: string; expect: string; detail: string; files: { href: string; label: string }[] }[] = [
   {
-    href: "/samples/demo-old-tom-clean.png",
-    name: "Clean bourbon",
+    name: "Fear the Dragon, the clean pair",
     expect: "Approve",
-    detail: "Every field matches the application and the label carries all required elements.",
+    files: [
+      { href: "/samples/fear-the-dragon-front.jpg", label: "front label" },
+      { href: "/samples/fear-the-dragon-back.jpg", label: "back label" },
+    ],
+    detail:
+      "A real spirits label read as one product: select both files at once and they place " +
+      "themselves. The brand and alcohol read from the front, the net contents and the government " +
+      "warning from the back, and every field matches the application.",
   },
   {
-    href: "/samples/demo-warning-title-case.png",
-    name: "Title-case warning",
+    name: "Non-bold government warning",
     expect: "Reject",
+    files: [{ href: "/samples/fear-the-dragon-warning-not-bold-back.jpg", label: "edited back label" }],
     detail:
-      'The label prints "Government Warning:" in title case. The prefix must be all capital letters (27 CFR 16.22(a)(2)), a hard fail.',
-  },
-  {
-    href: "/samples/demo-brand-typo.png",
-    name: "Brand typo",
-    expect: "Needs review",
-    detail:
-      'The label prints "Old Tomm". Type the application\'s brand name (Old Tom Distillery) instead of accepting the suggestion, and the near miss routes to review.',
+      'Upload the same front with this back: the warning text is word-for-word correct and all ' +
+      'caps, but the "GOVERNMENT WARNING:" prefix is printed in regular weight. 27 CFR ' +
+      "16.22(a)(2) requires it in bold type, a hard fail. (An edited test image; the real " +
+      "product's label is compliant.)",
   },
 ];
 
@@ -118,11 +120,17 @@ export function HelpButton() {
           <SectionTitle>Try it with a sample</SectionTitle>
           <ul className="mt-2 space-y-2.5">
             {SAMPLES.map((s) => (
-              <li key={s.href}>
-                <a href={s.href} download className={linkClass}>
-                  {s.name}
-                </a>{" "}
-                <span className="font-semibold">({s.expect})</span>
+              <li key={s.name}>
+                <span className="font-semibold">{s.name}</span> <span className="font-semibold">({s.expect})</span>
+                {" : "}
+                {s.files.map((f, i) => (
+                  <span key={f.href}>
+                    {i > 0 && " and "}
+                    <a href={f.href} download className={linkClass}>
+                      {f.label}
+                    </a>
+                  </span>
+                ))}
                 <span className="block text-ink-muted">{s.detail}</span>
               </li>
             ))}

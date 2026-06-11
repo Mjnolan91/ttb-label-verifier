@@ -221,12 +221,16 @@ pipeline and the "why". As built, the load-bearing pieces are:
   one API key, no Azure resource) or `llm`/`ocr`/`ensemble` (Azure in-tenant). The hosted Vercel demo
   runs a real provider (OpenAI gpt-4.1 + gpt-5.5 warning judge, via env vars; switched from Gemini
   2026-06-10); Azure is the documented in-tenant production target;
-  the deployed URL runs a real provider. The verify screen offers the three demo labels as plain
-  download links ("No label handy?") served from `public/samples/` — byte-copies of
-  `eval/fixtures/images/demo-*.png` kept in lockstep by `scripts/generate-demo-labels.cjs` (writes
-  BOTH directories) and guarded by `src/app/samples.test.ts` (byte-equality). They ARE fixtures
-  (filename-keyed), so the mock reads them locally, and it tolerates a browser download-rename like
-  `demo-old-tom-clean (1).png`. Rename one and you must update `eval/fixtures/cases.json` + the
+  the deployed URL runs a real provider. The verify screen offers the demo SAMPLE PRODUCT — the
+  Fear the Dragon front/back pair (real artwork) plus its non-bold-warning back (an EDITED test
+  artifact; the real label is compliant) — as plain download links ("No label handy?") served from
+  `public/samples/` — byte-copies of `eval/fixtures/images/fear-the-dragon-*.jpg` kept in lockstep
+  by `scripts/make-fear-the-dragon-demo.cjs` (writes BOTH directories; its SOURCE artwork lives
+  OUTSIDE the repo) and guarded by `src/app/samples.test.ts` (byte-equality). They ARE fixtures
+  (filename-keyed; the eval covers each panel ALONE, the demo pair merges to approve on the verify
+  screen), so the mock reads them locally, and it tolerates a browser download-rename like
+  `fear-the-dragon-front (1).jpg`. The old `demo-*.png` trio (generate-demo-labels.cjs) remains as
+  eval fixtures only. Rename a sample and you must update `eval/fixtures/cases.json` + the
   README walkthrough together.
 - **Uploads are downscaled in the browser first.** `src/app/imageDownscale.ts` shrinks phone photos
   to ~2000px longest edge (JPEG) to fit the latency/token budget. It NEVER throws (falls back to the

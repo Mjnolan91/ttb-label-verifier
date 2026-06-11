@@ -723,13 +723,12 @@ export function BatchVerify({ mockMode = false }: { mockMode?: boolean }) {
                   // class/type DESIGNATION only (e.g. "Rum", not "Superior Caribbean Rum"); `fanciful` +
                   // `composition` apply to specialties (no standard of identity); leave a cell blank if it
                   // doesn't apply.
-                  // The first three rows target the BUNDLED sample labels (downloadable from the
-                  // single screen's "No label handy?" links), so template + samples demo the full
-                  // verdict spread end to end — offline mock and live provider alike.
+                  // The first rows target the BUNDLED sample product (downloadable from the
+                  // single screen's "No label handy?" links; fronts and backs pair by filename),
+                  // so template + samples demo end to end — offline mock and live provider alike.
                   "filename,brand,class,fanciful,composition,alcohol,net,name,address,country\n" +
-                    "demo-old-tom-clean.png,OLD TOM DISTILLERY,Kentucky Straight Bourbon Whiskey,,,45% Alc./Vol. (90 Proof),750 mL,Old Tom Distillery,\"Louisville, KY\",\n" +
-                    "demo-warning-title-case.png,OLD TOM DISTILLERY,Kentucky Straight Bourbon Whiskey,,,45% Alc./Vol. (90 Proof),750 mL,Old Tom Distillery,\"Louisville, KY\",\n" +
-                    "demo-brand-typo.png,Old Tom Distillery,Kentucky Straight Bourbon Whiskey,,,45% Alc./Vol. (90 Proof),750 mL,Old Tom Distillery,\"Louisville, KY\",\n" +
+                    "fear-the-dragon-front.jpg,Fear the Dragon,Spirit Distilled from Grain and Pumpkin,,Spirit made from the mash of Flying Dog's The Fear,50% Alc./Vol. (100 Proof),750ML,\"Dragon Distillery, LLC\",\"Frederick, MD\",\n" +
+                    "fear-the-dragon-warning-not-bold-back.jpg,Fear the Dragon,Spirit Distilled from Grain and Pumpkin,,Spirit made from the mash of Flying Dog's The Fear,50% Alc./Vol. (100 Proof),750ML,\"Dragon Distillery, LLC\",\"Frederick, MD\",\n" +
                     "jolly-jerrys-front.jpg,Jolly Jerry's,Rum,,,40% Alc/Vol (80 Proof),750 mL,Sea Trader Imports,\"Miami, FL\",Product of Barbados\n" +
                     "granite-peak-front.jpg,Granite Peak,India Pale Ale,,,6.5% Alc/Vol,12 FL OZ,Granite Peak Brewing Co.,\"Portland, OR\",\n" +
                     "bayou-spiced-front.jpg,Bayou,,Spiced Rum,Rum with natural flavors added,35% Alc/Vol (70 Proof),750 mL,Bayou Spirits Co.,\"New Orleans, LA\",\n",

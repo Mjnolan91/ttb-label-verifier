@@ -26,7 +26,7 @@ describe("HelpButton", () => {
     expect(document.activeElement).toBe(trigger);
   });
 
-  it("explains the three verdicts and links all three sample labels as downloads", () => {
+  it("explains the three verdicts and links the sample pair + defect variant as downloads", () => {
     render(<HelpButton />);
     fireEvent.click(screen.getByRole("button", { name: /help/i }));
     const dialog = within(screen.getByRole("dialog", { name: /help/i }));
@@ -34,9 +34,9 @@ describe("HelpButton", () => {
     for (const verdict of ["Approve.", "Needs review.", "Reject."]) {
       expect(dialog.getByText(verdict)).toBeTruthy();
     }
-    for (const name of [/clean bourbon/i, /title-case warning/i, /brand typo/i]) {
+    for (const name of [/front label/i, /^back label/i, /edited back label/i]) {
       const link = dialog.getByRole("link", { name }) as HTMLAnchorElement;
-      expect(link.getAttribute("href")).toMatch(/^\/samples\/demo-/);
+      expect(link.getAttribute("href")).toMatch(/^\/samples\/fear-the-dragon-/);
       expect(link.hasAttribute("download")).toBe(true);
     }
     expect(dialog.getByRole("link", { name: /batch screen/i })).toBeTruthy();

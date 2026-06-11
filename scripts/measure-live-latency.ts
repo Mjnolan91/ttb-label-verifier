@@ -2,15 +2,17 @@
  * measure-live-latency.ts — measure END-TO-END /api/verify latency against a DEPLOYED target.
  *
  * The offline eval reports sub-millisecond pipeline latency (the mock skips the model call), so the
- * brief's ~5s budget can only be proven against a real deployment. This script POSTs the three
- * bundled sample labels to the target's /api/verify exactly the way the browser does (multipart
- * image + position + application brand/alcohol, so the full extract -> completeness -> compare path
- * runs) and prints per-sample and overall p50/p95 wall-clock times. Each response's verdict is also
+ * brief's ~5s budget can only be proven against a real deployment. This script POSTs the bundled
+ * sample products to the target's /api/verify exactly the way the browser does (multipart
+ * image(s) + position(s) + application brand/alcohol, so the full extract -> completeness -> compare
+ * path runs) and prints per-sample and overall p50/p95 wall-clock times. Both samples are TWO-IMAGE
+ * products (front + back read jointly), so the numbers measure the real multi-image path, not the
+ * easier single-image case. Each response's verdict is also
  * checked against the sample's expected verdict, so a misconfigured target can't post good numbers.
  *
  *   npx tsx scripts/measure-live-latency.ts [baseUrl] [roundsPerImage]
  *
- * Defaults: the public demo URL, 5 rounds per sample (15 sequential requests). Requests run
+ * Defaults: the public demo URL, 5 rounds per sample (10 sequential requests). Requests run
  * SEQUENTIALLY to measure a single agent's experience (and to avoid hammering the demo). When the
  * target runs a real provider, every request costs real model calls — keep rounds modest. The first
  * request often includes serverless cold start; it is included in the numbers (an agent's first
@@ -24,13 +26,28 @@ import { percentile } from "../eval/percentile";
 const DEFAULT_TARGET = "https://ttb-label-verifier-matthew-nolan-s-projects.vercel.app";
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
-/** The three bundled demo labels with the application values the README walkthrough uses. */
+/** The bundled demo products (front+back pairs) with the application values the README uses. */
 const SAMPLES = [
-  { filename: "demo-old-tom-clean.png", brand: "OLD TOM DISTILLERY", expect: "approve" },
-  { filename: "demo-warning-title-case.png", brand: "OLD TOM DISTILLERY", expect: "reject" },
-  { filename: "demo-brand-typo.png", brand: "Old Tom Distillery", expect: "review" },
+  {
+    name: "fear-the-dragon (clean pair)",
+    files: [
+      { filename: "fear-the-dragon-front.jpg", position: "front" },
+      { filename: "fear-the-dragon-back.jpg", position: "back" },
+    ],
+    brand: "Fear the Dragon",
+    expect: "approve",
+  },
+  {
+    name: "fear-the-dragon (non-bold warning back)",
+    files: [
+      { filename: "fear-the-dragon-front.jpg", position: "front" },
+      { filename: "fear-the-dragon-warning-not-bold-back.jpg", position: "back" },
+    ],
+    brand: "Fear the Dragon",
+    expect: "reject",
+  },
 ] as const;
-const ALCOHOL = "45% Alc./Vol. (90 Proof)";
+const ALCOHOL = "50% Alc./Vol. (100 Proof)";
 
 interface Run {
   ms: number;
@@ -69,12 +86,19 @@ async function main(): Promise<void> {
 
   const all: Run[] = [];
   for (const sample of SAMPLES) {
-    const bytes = await readFile(path.join(REPO_ROOT, "eval", "fixtures", "images", sample.filename));
+    const images = await Promise.all(
+      sample.files.map(async (f) => ({
+        ...f,
+        bytes: await readFile(path.join(REPO_ROOT, "eval", "fixtures", "images", f.filename)),
+      })),
+    );
     const runs: Run[] = [];
     for (let i = 0; i < rounds; i++) {
       const form = new FormData();
-      form.append("image", new Blob([new Uint8Array(bytes)], { type: "image/png" }), sample.filename);
-      form.append("position", "front");
+      for (const img of images) {
+        form.append("image", new Blob([new Uint8Array(img.bytes)], { type: "image/jpeg" }), img.filename);
+        form.append("position", img.position);
+      }
       form.append("brand", sample.brand);
       form.append("alcoholContent", ALCOHOL);
       const t0 = performance.now();
@@ -97,9 +121,9 @@ async function main(): Promise<void> {
       const verdictNote = run.ok
         ? `verdict=${run.verdict ?? "(none)"}${run.verdict !== sample.expect ? ` (EXPECTED ${sample.expect})` : ""}`
         : `HTTP ${run.status || "ERR"}`;
-      console.log(`  ${sample.filename} #${i + 1}: ${(run.ms / 1000).toFixed(1)}s ${verdictNote}`);
+      console.log(`  ${sample.name} #${i + 1}: ${(run.ms / 1000).toFixed(1)}s ${verdictNote}`);
     }
-    console.log(`${sample.filename} (expect ${sample.expect}): ${summarize(runs)}\n`);
+    console.log(`${sample.name} (expect ${sample.expect}): ${summarize(runs)}\n`);
     all.push(...runs);
   }
 
