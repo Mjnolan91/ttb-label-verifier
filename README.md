@@ -56,7 +56,7 @@ live demo already runs one.
 All checks run offline with no keys:
 
 ```bash
-npm test           # 817 unit + integration + component tests (deterministic)
+npm test           # 826 unit + integration + component tests (deterministic)
 npm run eval       # accuracy over labeled fixtures; hard CI gate at 0.98 approve-precision
 npm run typecheck  # strict TypeScript
 npm run lint
