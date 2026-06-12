@@ -165,7 +165,8 @@ label-carries-every-required-element check (`src/compare/completeness.ts`). `com
   strong model re-agreeing with its own words is not independent evidence) are fully untouchable;
   a lone violation signal from any single source lands in review, never a hard fail. Measured (2026-06-10, 9 live reads per config): Flash
   extraction + Pro judge = 9/9 verdicts, p95 4.5s (the concurrent judge hides behind the
-  extraction wall-clock); Pro extraction = p95 8.1s with quota failures — extraction
+  extraction wall-clock); Pro extraction = p95 8.1s with quota failures (4 of the 9 requests
+  failed outright on the preview model's 25-requests/minute tier) — extraction
   stays on Flash BY MEASUREMENT, not preference. The same split was measured on OpenAI
   (gpt-4.1 extraction + gpt-5.5 judge = 6/6 at p50 2.8s; gpt-5.5 extraction doubled the
   median), and the hosted demo runs that OpenAI split — the fast-model-extracts /
