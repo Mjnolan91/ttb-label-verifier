@@ -21,7 +21,7 @@ const {
   TabStopType, TabStopPosition, HeadingLevel, BorderStyle, PageNumber,
 } = require("docx");
 
-const TEST_COUNT = "811";
+const TEST_COUNT = "817";
 const FILE_COUNT = "63";
 const EVAL_CASES = "27";
 
