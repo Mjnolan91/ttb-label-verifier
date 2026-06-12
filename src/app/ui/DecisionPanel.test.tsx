@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 import { cleanup, render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { DecisionPanel } from "./DecisionPanel";
 
@@ -97,6 +97,30 @@ describe("DecisionPanel focus management", () => {
     fireEvent.click(screen.getByRole("button", { name: /record decision & send email/i }));
     fireEvent.click(screen.getByRole("button", { name: /change decision/i }));
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole("group", { name: /^decision$/i })));
+  });
+
+  test("the recorded confirmation offers 'Start the next label' only when wired, and it fires the callback", () => {
+    const onStartNext = vi.fn();
+    render(
+      <DecisionPanel
+        verdict="approve"
+        brand="Old Tom Distillery"
+        approveNotes=""
+        rejectNotes=""
+        onRecord={() => {}}
+        onStartNext={onStartNext}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /approve cola/i }));
+    fireEvent.click(screen.getByRole("button", { name: /record decision & send email/i }));
+    fireEvent.click(screen.getByRole("button", { name: /start the next label/i }));
+    expect(onStartNext).toHaveBeenCalledTimes(1);
+
+    cleanup();
+    renderPanel(); // no onStartNext prop
+    fireEvent.click(screen.getByRole("button", { name: /approve cola/i }));
+    fireEvent.click(screen.getByRole("button", { name: /record decision & send email/i }));
+    expect(screen.queryByRole("button", { name: /start the next label/i })).toBeNull();
   });
 
   test("RE-CLICKING the already-resumed decision still brings up the composer (React bails out of the render)", async () => {

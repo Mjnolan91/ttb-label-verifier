@@ -204,7 +204,11 @@ pipeline and the "why". As built, the load-bearing pieces are:
   component; each control is its own client leaf); the help panel opens in the shared `Drawer`
   (`closeLabel` prop). The pages' eyebrow right-padding (`pr-44 sm:pr-80 2xl:pr-0`) and the progress pill's
   viewport-aware label cap (PipelineSteps.tsx) both clear the three-control cluster — widen both
-  if a fourth control lands. Modal
+  if a fourth control lands. The floating corners are allocated: progress pill top-left (verify
+  screen only), `BackToTop` bottom-right (BOTH pages render it inside `<main>` so the modal inert
+  contract covers it; it scrolls to top and focuses `#main-content`). The verify screen's
+  `startOver` (Step 1 header) resets every slot + the application + review state in one action,
+  confirming only when typed work would be lost. Modal
   dialogs inert BOTH `#main-content` and the fixed `#site-controls` header wrapper, and the
   set/restore is NESTING-SAFE (the batch drawer opens an `ImageLightbox` on top of itself). The
   batch worklist renders as a 4-track GRID LIST (never a sideways-scrolling table): triage filter

@@ -9,7 +9,7 @@
  * and has no real COLA system behind it.
  */
 import { useRef, useState } from "react";
-import { IconPass, IconFail } from "./icons";
+import { IconPass, IconFail, IconRestart } from "./icons";
 import { inputClass } from "./fieldStyles";
 import type { OverallVerdict } from "@/compare";
 
@@ -58,6 +58,7 @@ export function DecisionPanel({
   initialDecision = null,
   initialNote,
   step,
+  onStartNext,
 }: {
   verdict: OverallVerdict;
   brand: string;
@@ -76,6 +77,10 @@ export function DecisionPanel({
   initialNote?: string;
   /** Optional step eyebrow (e.g. "Step 4") shown above the heading on the numbered single-screen flow. */
   step?: string;
+  /** Offered on the recorded confirmation as the loop-closing next action ("Start the next
+   *  label"). The verify screen wires it to its startOver reset, which never confirms once the
+   *  decision is recorded: the work is committed, the agent is moving on. */
+  onStartNext?: () => void;
 }) {
   const seedFor = (d: Decision) => (d === "approve" ? approveNotes : rejectNotes);
   const [decision, setDecision] = useState<Decision | null>(initialDecision);
@@ -307,6 +312,16 @@ export function DecisionPanel({
                 Change decision
               </button>
             </p>
+            {onStartNext && (
+              <button
+                type="button"
+                onClick={onStartNext}
+                className="mt-3 inline-flex min-h-[40px] items-center gap-1.5 rounded-field border border-border bg-surface px-3 text-sm font-semibold text-ink shadow-sm transition hover:bg-surface-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2"
+              >
+                <IconRestart className="h-4 w-4" />
+                Start the next label
+              </button>
+            )}
           </div>
         </div>
       )}

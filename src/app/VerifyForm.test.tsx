@@ -66,6 +66,44 @@ const READ_OK = (extracted = extractedBourbon()): VerifyApiResponse => ({
   provider: "mock", readable: true, extracted, result: null,
 });
 
+describe("VerifyForm — start over", () => {
+  it("is absent on a blank screen, guards typed work behind a confirm, then clears everything", () => {
+    const { container } = render(<VerifyForm />);
+    const q = within(container);
+    expect(q.queryByRole("button", { name: /start over/i })).toBeNull();
+
+    const brand = q.getByLabelText(/^Brand name/i) as HTMLInputElement;
+    fireEvent.change(brand, { target: { value: "Old Tom" } });
+
+    const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+    fireEvent.click(q.getByRole("button", { name: /start over/i }));
+    expect(brand.value).toBe("Old Tom"); // declined: nothing lost
+
+    confirmSpy.mockReturnValue(true);
+    fireEvent.click(q.getByRole("button", { name: /start over/i }));
+    expect(brand.value).toBe("");
+    expect(q.queryByRole("button", { name: /start over/i })).toBeNull(); // blank again
+    // Focus is handed to the front upload slot (the clicked button just unmounted itself).
+    expect(document.activeElement).toBe(container.querySelector('input[type="file"]'));
+  });
+
+  it("with only images placed, resets without nagging (re-adding an image is cheap)", ASYNC, async () => {
+    mockFetch(READ_OK());
+    const { container } = render(<VerifyForm />);
+    const q = within(container);
+    dropLabelImage(container);
+    const startOver = await q.findByRole("button", { name: /start over/i });
+
+    const confirmSpy = vi.spyOn(window, "confirm");
+    fireEvent.click(startOver);
+    expect(confirmSpy).not.toHaveBeenCalled();
+    await waitFor(() => expect(q.queryByRole("button", { name: /start over/i })).toBeNull());
+    expect(q.queryByText("old-tom.png")).toBeNull(); // the slot is empty again
+    // Focus is handed to the front upload slot (the clicked button just unmounted itself).
+    expect(document.activeElement).toBe(container.querySelector('input[type="file"]'));
+  });
+});
+
 describe("VerifyForm — verify against the application", () => {
   it("with no application values, prompts to COMPLETE the application (dynamic, per type)", ASYNC, async () => {
     mockFetch(READ_OK());

@@ -51,7 +51,7 @@ import { parsePositionToken } from "@/batch/pairing";
 import { ImageLightbox } from "./ui/ImageLightbox";
 import { ForwardLookingNote } from "./ui/ForwardLookingNote";
 import { VERDICT_LABEL } from "./ui/status";
-import { IconReview, IconSpinner, IconZoom, IconPass } from "./ui/icons";
+import { IconReview, IconRestart, IconSpinner, IconZoom, IconPass } from "./ui/icons";
 
 type SubmitState = "idle" | "loading" | "done" | "error";
 interface LabelImage {
@@ -198,6 +198,13 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
   const headlineRef = useRef<HTMLHeadingElement>(null);
   const readToken = useRef(0);
   const neckInputRef = useRef<HTMLInputElement>(null);
+  // The front slot's file input, for startOver's focus handoff (the Start over button hides itself
+  // once the screen is blank; leaving focus on a vanished control would strand keyboard users).
+  const frontInputRef = useRef<HTMLInputElement>(null);
+  // startOver clicked: focus the front input AFTER the re-render mounts its DropZone (while images
+  // are loaded the slot shows a figure, so the input doesn't exist at click time). Same
+  // consume-on-next-render shape as pendingVerdictFocus.
+  const pendingStartOverFocus = useRef(false);
   // Set by the explicit Accept-all click when the fill will complete the required set; consumed by
   // an effect below to land the user on the verdict that click just produced. Never set on the
   // typing path: stealing focus mid-keystroke would be hostile, the live region covers it.
@@ -511,6 +518,64 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
     }
   }
 
+  // Has the agent typed anything the screen would lose on a reset? (Images alone are cheap to
+  // re-add; typed application values, review notes, and a decision in progress are real work.)
+  const anyClaimTyped = [
+    claimBrand, claimAlcohol, claimClass, claimNet, claimName,
+    claimAddress, claimCountry, claimFanciful, claimSoc,
+  ].some((v) => v.trim() !== "");
+  const hasAnythingToClear = orderedImages.length > 0 || anyClaimTyped || classChoice !== null;
+
+  /** One-click reset to a blank screen for the next label: every slot, the typed application, the
+   *  per-field review state, and the decision. Confirms first ONLY when uncommitted typed work
+   *  would be lost: re-adding an image is cheap, retyping an application is not (the batch
+   *  screen's Clear worklist posture) — and a RECORDED decision means this label's work is done,
+   *  so the start-the-next-label path never nags. Mirrors clearSlot's new-product semantics in
+   *  one deliberate action, then hands focus to the front upload slot. */
+  function startOver() {
+    const losingWork =
+      !decisionProgress.recorded &&
+      (anyClaimTyped ||
+        classChoice !== null ||
+        decisionProgress.choice !== null ||
+        Object.keys(fieldOverrides).length > 0 ||
+        Object.keys(fieldNotes).length > 0);
+    if (
+      losingWork &&
+      !window.confirm(
+        decisionProgress.choice !== null
+          ? "Start over? This clears the images, the typed application, your review notes, and your decision. This can't be undone."
+          : "Start over? This clears the images, the typed application, and your review notes. This can't be undone.",
+      )
+    ) {
+      return;
+    }
+    for (const img of orderedImagesOf(slots)) URL.revokeObjectURL(img.preview);
+    setZoom(null);
+    setSlots({});
+    setNeckRevealed(false);
+    setPlacementNotice(null);
+    resetApplication();
+    setFieldOverrides({});
+    setFieldNotes({});
+    setDecisionProgress({ choice: null, recorded: false });
+    pendingVerdictFocus.current = false; // read()'s hygiene, mirrored: no stale focus steal
+    readToken.current++; // cancel any in-flight read
+    setState("idle");
+    setResponse(null);
+    setFormError(null);
+    pendingStartOverFocus.current = true;
+  }
+  // Consume the startOver focus flag once the blank slots have rendered. The flag stays ARMED
+  // until the front DropZone's input actually exists: a render queued before the click (e.g. a
+  // read completing) can flush first, and consuming on that stale render would drop the handoff
+  // (the front slot still shows its figure there, so the ref is null).
+  useEffect(() => {
+    if (!pendingStartOverFocus.current || !frontInputRef.current) return;
+    pendingStartOverFocus.current = false;
+    frontInputRef.current.focus();
+  });
+
   const exportBase = (orderedImages[0]?.file.name ?? "label").replace(/\.[^.]+$/, "");
   function onDownloadJson() {
     if (!response || !combined) return;
@@ -633,7 +698,21 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
 
       {/* Step 1 — upload into explicit Front / Back slots */}
       <div className="mt-6">
-        <h3 className="mb-1.5 block font-medium text-ink">Step 1 · Label images</h3>
+        {/* min-h keeps the row from shifting when Start over appears with the first image/value. */}
+        <div className="mb-1.5 flex min-h-[40px] items-center justify-between gap-3">
+          <h3 className="font-medium text-ink">Step 1 · Label images</h3>
+          {hasAnythingToClear && (
+            <button
+              type="button"
+              onClick={startOver}
+              disabled={sampleLoading !== null}
+              className="inline-flex min-h-[40px] items-center gap-1.5 rounded-field border border-border bg-surface px-3 text-sm font-medium text-ink-muted shadow-sm transition hover:bg-surface-muted hover:text-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-700 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              <IconRestart className="h-4 w-4" />
+              Start over
+            </button>
+          )}
+        </div>
         <p id={ids.imageHelp} className="sr-only">
           Upload the front label (required) and optionally the back and neck or strip labels. You can
           select several photos at once: filenames like name-front and name-back place themselves, and
@@ -682,7 +761,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
                     id={`${ids.image}-${key}`}
                     required={required}
                     ariaLabel={ariaLabel}
-                    inputRef={key === "neck" ? neckInputRef : undefined}
+                    inputRef={key === "neck" ? neckInputRef : key === "front" ? frontInputRef : undefined}
                     onFiles={(files) => placeFiles(key, files)}
                     describedById={ids.imageHelp}
                   />
@@ -987,6 +1066,7 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
                 rejectNotes={rejectNotes}
                 onRecord={(d) => setDecisionProgress({ choice: d, recorded: true })}
                 onDecisionChange={(choice) => setDecisionProgress({ choice, recorded: false })}
+                onStartNext={startOver}
               />
             </>
           ) : (

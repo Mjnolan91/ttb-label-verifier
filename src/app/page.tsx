@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { APP_TITLE } from "./constants";
 import { VerifyForm } from "./VerifyForm";
+import { BackToTop } from "./ui/BackToTop";
 import { cardClass, linkClass } from "./ui/fieldStyles";
 import { IconUsFlag } from "./ui/icons";
 // Single source of truth: the canonical warning shown as a reference comes from src/domain.
@@ -15,7 +16,9 @@ export default function Home() {
   // provider here (which would throw if a real provider is selected but unconfigured).
   const mockMode = (process.env.VISION_PROVIDER ?? "mock").toLowerCase() === "mock";
   return (
-    <main id="main-content" tabIndex={-1} className="mx-auto flex min-h-screen max-w-3xl flex-col gap-8 px-4 py-10 sm:py-14 focus:outline-none">
+    // The asymmetric bottom padding reserves the lane BackToTop floats in, so the footer's last
+    // control is never under the pill at full scroll.
+    <main id="main-content" tabIndex={-1} className="mx-auto flex min-h-screen max-w-3xl flex-col gap-8 px-4 pt-10 pb-24 sm:pt-14 sm:pb-28 focus:outline-none">
       <header>
         {/* The eyebrow shares the top edge with the fixed header controls (mode + help + theme), so
             it alone gets right padding until the 2xl outside margin clears them naturally. */}
@@ -47,6 +50,7 @@ export default function Home() {
           {WARNING_REMAINDER}
         </blockquote>
       </details>
+      <BackToTop />
     </main>
   );
 }

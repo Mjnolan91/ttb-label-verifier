@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { BatchVerify } from "./BatchVerify";
+import { BackToTop } from "../ui/BackToTop";
 import { linkClass } from "../ui/fieldStyles";
 import { IconUsFlag } from "../ui/icons";
 
@@ -8,7 +9,9 @@ export default function BatchPage() {
   // mock isn't surprised that their own photos can't be read. A configured real provider hides it.
   const mockMode = (process.env.VISION_PROVIDER ?? "mock").toLowerCase() === "mock";
   return (
-    <main id="main-content" tabIndex={-1} className="mx-auto flex min-h-screen max-w-4xl flex-col gap-8 px-4 py-10 sm:py-14 focus:outline-none">
+    // The asymmetric bottom padding reserves the lane BackToTop floats in, so the worklist's last
+    // row is never under the pill at full scroll.
+    <main id="main-content" tabIndex={-1} className="mx-auto flex min-h-screen max-w-4xl flex-col gap-8 px-4 pt-10 pb-24 sm:pt-14 sm:pb-28 focus:outline-none">
       <header>
         {/* The eyebrow shares the top edge with the fixed header controls (mode + help + theme), so
             it alone gets right padding — same treatment as the verify page. */}
@@ -28,6 +31,7 @@ export default function BatchPage() {
       </header>
 
       <BatchVerify mockMode={mockMode} />
+      <BackToTop />
     </main>
   );
 }

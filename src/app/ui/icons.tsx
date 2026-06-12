@@ -170,6 +170,25 @@ export function IconSingle(props: IconProps) {
   );
 }
 
+/** IconArrowUp — the floating back-to-top glyph (BackToTop). */
+export function IconArrowUp(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M10 16.5V4M5 9l5-5 5 5" />
+    </Svg>
+  );
+}
+
+/** IconRestart — the start-over glyph (a counterclockwise reset arrow on the verify screen). */
+export function IconRestart(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M4.5 8.2A6.2 6.2 0 1110 16.2a6.2 6.2 0 01-5.8-4" />
+      <path d="M4.3 4.2v4h4" />
+    </Svg>
+  );
+}
+
 /** IconHelp — the header help-panel trigger glyph (question mark in a circle). */
 export function IconHelp(props: IconProps) {
   return (
