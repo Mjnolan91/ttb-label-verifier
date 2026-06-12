@@ -173,10 +173,12 @@ function pillLabel(stage: Stage, verdict: OverallVerdict | undefined, decision: 
  * PipelineProgressPill — the spine, condensed to a floating chip for the long scroll below the
  * fold (9 application inputs + the result + the decision panel). The verify screen pins it
  * top-left ONLY while the real spine is scrolled out of view (IntersectionObserver), mirroring
- * the fixed Help/Theme controls top-right. Four mini step dots re-state the spine (verdict and
- * decision dots carry their tone colors); the text names the active step. Clicking it jumps back
- * to the spine — it is a navigation button, not a duplicate landmark, so screen readers get one
- * step list plus a labelled shortcut.
+ * the fixed header controls (mode/help/theme) top-right. Four mini step dots re-state the spine
+ * (verdict and decision dots carry their tone colors); the text names the active step. Clicking
+ * it jumps back to the spine — it is a navigation button, not a duplicate landmark, so screen
+ * readers get one step list plus a labelled shortcut. The label's max-width is viewport-aware:
+ * it reserves room for the three-control cluster on the right (~166px icon-only below sm,
+ * ~336px labeled at sm+), so the two fixed top-3/top-4 elements can never overlap.
  */
 export function PipelineProgressPill({
   stage,
@@ -220,7 +222,7 @@ export function PipelineProgressPill({
       <span aria-hidden="true" className="flex items-center gap-1.5">
         {STEPS.map((_, i) => dot(i))}
       </span>
-      <span aria-hidden="true" className="max-w-[40vw] truncate text-xs font-semibold text-ink sm:max-w-xs">
+      <span aria-hidden="true" className="max-w-[calc(100vw-300px)] truncate text-xs font-semibold text-ink sm:max-w-[min(20rem,calc(100vw-480px))]">
         {label}
       </span>
       {stage === "reading" && <IconSpinner className="h-4 w-4 shrink-0 text-brand-700 motion-safe:animate-spin" />}

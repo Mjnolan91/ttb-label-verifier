@@ -1,8 +1,9 @@
 /**
  * icons.tsx — small inline status/UI icons. Crisper and more consistent than Unicode glyphs, with
  * no icon-library dependency. All are DECORATIVE: aria-hidden + focusable=false, stroke=currentColor
- * so they inherit the surrounding text color. The adjacent text label is always the accessible name
- * (WCAG 1.4.1 is satisfied by the text, never the icon alone).
+ * so they inherit the surrounding text color. The adjacent text label (or, on the header controls
+ * whose text hides below sm, the control's aria-label) is always the accessible name
+ * (WCAG 1.4.1 is satisfied by text, never the icon alone).
  */
 import type { SVGProps } from "react";
 
@@ -143,6 +144,28 @@ export function IconMoon(props: IconProps) {
   return (
     <Svg {...props}>
       <path d="M16 11.6A6.4 6.4 0 118.4 4a5 5 0 007.6 7.6z" />
+    </Svg>
+  );
+}
+
+/**
+ * IconBatch / IconSingle — the header mode-switch glyphs: a stack of labels for the batch
+ * worklist, one label sheet for the single verify screen. Each shows the DESTINATION mode
+ * (the same convention as IconSun/IconMoon on the theme toggle).
+ */
+export function IconBatch(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="6.5" y="3" width="10" height="10" rx="1.2" />
+      <path d="M13.5 16.5h-9A1.5 1.5 0 013 15V6.5" />
+    </Svg>
+  );
+}
+export function IconSingle(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <rect x="5" y="3" width="10" height="14" rx="1.2" />
+      <path d="M7.5 7h5M7.5 10h5M7.5 13h3" strokeWidth={1.8} />
     </Svg>
   );
 }

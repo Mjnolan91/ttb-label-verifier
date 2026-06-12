@@ -6,6 +6,7 @@ import "./globals.css";
 import { APP_TITLE, APP_DESCRIPTION } from "./constants";
 import { ThemeToggle } from "./ui/ThemeToggle";
 import { HelpButton } from "./ui/HelpButton";
+import { ModeToggle } from "./ui/ModeToggle";
 
 // Runs before hydration (next/script beforeInteractive) so the saved theme is applied with no flash of
 // the wrong colors. Default is LIGHT; dark only applies when the agent explicitly chose it. Static,
@@ -39,6 +40,7 @@ export default function RootLayout({
         {/* id="site-controls": the modal dialogs (Drawer / ImageLightbox) inert this wrapper while
             open, since it sits outside #main-content. */}
         <div id="site-controls" className="fixed right-3 top-3 z-40 flex items-center gap-2 sm:right-4 sm:top-4">
+          <ModeToggle />
           <HelpButton />
           <ThemeToggle />
         </div>

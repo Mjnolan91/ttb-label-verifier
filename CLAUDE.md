@@ -199,8 +199,12 @@ pipeline and the "why". As built, the load-bearing pieces are:
   shared primitives. Each application input has a `FieldHelp` "?" toggletip (copy lives ONCE in
   `src/app/ui/fieldHelpCopy.ts`, typed so a new input without copy fails the build; the file is named
   fieldHelpCopy, not fieldHelp, because Windows is case-insensitive and `FieldHelp.tsx` would collide).
-  The header has a `HelpButton` "?" beside `ThemeToggle` (layout.tsx stays a server component; the
-  button is the client leaf) opening the help panel in the shared `Drawer` (`closeLabel` prop). Modal
+  The header has a `ModeToggle` (a styled next/link on `usePathname`, single verify <-> batch,
+  labeled by destination) beside a `HelpButton` "?" and `ThemeToggle` (layout.tsx stays a server
+  component; each control is its own client leaf); the help panel opens in the shared `Drawer`
+  (`closeLabel` prop). The pages' eyebrow right-padding (`pr-44 sm:pr-80 2xl:pr-0`) and the progress pill's
+  viewport-aware label cap (PipelineSteps.tsx) both clear the three-control cluster — widen both
+  if a fourth control lands. Modal
   dialogs inert BOTH `#main-content` and the fixed `#site-controls` header wrapper, and the
   set/restore is NESTING-SAFE (the batch drawer opens an `ImageLightbox` on top of itself). The
   batch worklist renders as a 4-track GRID LIST (never a sideways-scrolling table): triage filter
