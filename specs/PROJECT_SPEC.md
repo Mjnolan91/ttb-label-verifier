@@ -21,7 +21,7 @@ result exports as JSON or CSV — no manual data entry.
 Each requirement below traces to a stakeholder, so the "why" stays visible:
 
 - **~5-second result ceiling (hard).** A prior scanning vendor took 30–40s per label and
-  was abandoned; speed is the #1 adoption gate (Sarah, supervising agent). → parallel
+  was abandoned; speed is the #1 adoption gate (Sarah, Deputy Director). → parallel
   extraction with per-call timeouts.
 - **Usable by a 73-year-old; half the team is 50+.** One clean screen, large targets, no
   hunting for buttons (Sarah). → accessibility-first single-page UI.

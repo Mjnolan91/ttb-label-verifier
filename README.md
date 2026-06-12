@@ -1,341 +1,181 @@
 # TTB Label Verifier
 
+[![CI](https://github.com/Mjnolan91/ttb-label-verifier/actions/workflows/ci.yml/badge.svg)](https://github.com/Mjnolan91/ttb-label-verifier/actions/workflows/ci.yml)
+
 Upload a photo of an alcohol label. AI reads it into the full set of TTB-required fields, then
 deterministic code checks the label against the application's claimed values and against TTB's
 labeling rules, and returns an at-a-glance verdict: **Approve / Needs review / Reject**.
 
-**Live demo:** https://ttb-label-verifier-matthew-nolan-s-projects.vercel.app
-(runs a real vision model, OpenAI gpt-4.1, so it can read any label photo)
+**Live demo:** https://ttb-label-verifier-matthew-nolan-s-projects.vercel.app — runs a real
+vision model, so it can read any label photo.
 
 ![The verify screen: a real spirits label, front and back read together by the AI, checked field by field against the application, with an Approve verdict](docs/screenshot.png)
 
-Built for the take-home brief: the three core checks (brand name, alcohol content, government
-health warning) lead the screen. The same engine also extracts the full TTB field set (killing the
-manual data entry the agents complained about), runs a per-beverage-type completeness check, exports
-JSON/CSV, and handles batch uploads. The approach, design decisions, and trade-offs are written up
-for reviewers in
+The approach, design decisions, and trade-offs are written up for reviewers in
 [docs/TTB-Label-Verifier-Approach-and-Design.pdf](docs/TTB-Label-Verifier-Approach-and-Design.pdf)
-(viewable right here on GitHub; the same document as
-[.docx](docs/TTB-Label-Verifier-Approach-and-Design.docx)). This README covers the same ground with
-more operational detail.
+(viewable on GitHub; same document as the
+[.docx](docs/TTB-Label-Verifier-Approach-and-Design.docx)).
 
-## Try it in two minutes
+## What it does
 
-1. Open the [live demo](https://ttb-label-verifier-matthew-nolan-s-projects.vercel.app).
-2. Click **Load the sample label** ("No label handy?"): the bundled sample is a real spirits
-   label (Fireball Cinnamon Whisky, from the public TTB COLA registry), a front/back pair placed
-   into both slots with one click, so the read exercises the joint multi-image path and the
-   import checks (importer line + "Product of Canada"). Any bottle photo of your own works too
-   (uploads accept multi-select: -front/-back filenames place themselves).
-3. The AI reads the pair as one product and pre-fills "The application" inputs with gray
-   suggestions; press Tab to accept one, or click **Accept all AI suggestions**. (In real use the
-   agent would type what the COLA (Certificate of Label Approval) application claims. Accepting
-   the suggestions simulates an application that matches the label.)
-4. The verdict appears as soon as every field TTB requires for the beverage type is filled in.
-
-| Sample product | The defect on the label | What to enter | Expected verdict |
-| --- | --- | --- | --- |
-| **Load the sample label**: the clean pair ([front](eval/fixtures/images/fireball-front.jpg) + [back](eval/fixtures/images/fireball-back.jpg)) | none (brand and alcohol on the front; net contents, importer line, warning, and origin on the back) | accept all suggestions | **Approve** |
-| **Load the defective-warning version**: the same front + the [edited back](eval/fixtures/images/fireball-warning-not-bold-back.jpg) | the prefix prints "Government Warning:" in title case and regular weight (an edited test image; the real label is compliant) | accept all suggestions | **Reject**. 27 CFR 16.22(a)(2) requires the all-caps bold prefix |
-
-You never type the government warning: the tool compares the label's warning text word for word
-against the statutory text automatically. (Live model reads can occasionally vary; locally, the
-offline mock reproduces these verdicts deterministically.) The third verdict, **Needs review**, is
-what uncertainty gets instead of a guess: type a slightly different brand than the label prints and
-the near-miss routes to a human rather than auto-deciding (the eval fixtures cover this path).
-
-For the batch workflow (the brief's importers dumping 200 to 300 applications at once), open
-[/batch](https://ttb-label-verifier-matthew-nolan-s-projects.vercel.app/batch): drop many images,
-fronts and backs pair by filename, optionally attach a CSV of claimed values (the downloadable
-template ships ready-made rows for the sample product), and results stream into a reviewable
-worklist with CSV export. Each row leads with a clickable thumbnail; two rows that read the same
-brand (camera filenames defeat pairing) offer a one-click, human-confirmed combine that re-reads
-them as one product. Transient service failures auto-retry with jittered backoff and adaptive
-pacing, narrating each attempt on the row and ending in an honest error plus a Retry (and a
-"Retry all failed" sweep) rather than a dead end. A row that settles cleanly but missing a
-mandatory element gets a background second look after a short delay: one focused re-read of
-exactly the missing fields on the strong model, whose finds surface at review confidence for a
-person to confirm — caught, never silently passed. The review drawer lets you supply or correct
-application values in place, so a batch without a CSV is still fully workable, and rows settle one
-by one, so a 300-label dump is triaged continuously rather than waited on. On the single verify
-screen, a multi-photo selection places itself: filename tokens (name-front, name-back, name-neck)
-claim their slots and the rest fill the open slots in order.
+- **Verifies a label against its application.** Brand name (fuzzy: case/punctuation noise passes,
+  near-misses go to review), alcohol content (within the legal tolerance for the beverage class),
+  and the government warning (verbatim against the statutory text, with caps/bold prefix checks)
+  lead the screen; the other application fields (class/type, net contents, producer name and
+  address, country of origin, and more) are compared whenever the application supplies them.
+- **Kills manual data entry.** The AI reads front/back/neck photos together into the full TTB
+  field set and pre-fills the application inputs as gray suggestions — Tab accepts one, a button
+  accepts all. Every read exports as JSON or CSV.
+- **Checks completeness per beverage type.** Each element TTB mandates for the class is flagged
+  present / missing / malformed / unverifiable, so a label missing a required element can never
+  be auto-approved.
+- **Handles batch.** Drop a couple hundred images on [/batch](https://ttb-label-verifier-matthew-nolan-s-projects.vercel.app/batch):
+  fronts and backs pair by filename, an optional CSV supplies claimed values, and results stream
+  into a reviewable worklist with retries, in-place application editing, and CSV export. A header
+  toggle switches between single and batch mode from anywhere.
+- **Routes uncertainty to a human.** Low-confidence reads, near-misses, and unverifiable checks
+  become "Needs review" — never a silent pass. CI fails if approve-precision drops below 0.98 on
+  the labeled eval cases.
 
 ## Run it locally
 
+Requires [Node.js](https://nodejs.org) 20.9 or newer.
+
 ```bash
+git clone https://github.com/Mjnolan91/ttb-label-verifier.git
+cd ttb-label-verifier
 npm install
-npm run dev        # http://localhost:3000, zero API keys needed
+npm run dev        # → http://localhost:3000, zero API keys needed
 ```
 
-Requires Node 20.9+. With no keys the app runs on an offline **mock** provider: it recognizes the
-bundled sample labels by filename (including the pair above, which yields the same verdicts
-locally) but cannot read arbitrary photos. To read your own images locally,
-[enable a real vision provider](#enable-a-real-vision-provider); the live demo already runs one.
+Out of the box the app runs on an offline **mock** provider: it recognizes the bundled sample
+labels (click **Load the sample label** on the verify screen) but cannot read arbitrary photos.
+To read your own images, [enable a real vision provider](#enable-a-real-vision-provider) — the
+live demo already runs one.
+
+All checks run offline with no keys:
 
 ```bash
-npm test           # unit + integration + component tests (offline, no keys, deterministic)
-npm run eval       # accuracy + latency over labeled fixtures; gates CI (see below)
+npm test           # 811 unit + integration + component tests (deterministic)
+npm run eval       # accuracy over labeled fixtures; hard CI gate at 0.98 approve-precision
 npm run typecheck  # strict TypeScript
 npm run lint
 npm run build      # production build (Next standalone)
 ```
 
-## How it works: AI extracts, code decides
+## Try it in two minutes
 
-```
-image(s) ──> VisionProvider(s) ──> reconciler ──> completeness check + comparator ──> verdict
-             (probabilistic)       (agree/disagree)  (pure, deterministic, tested)
-```
+1. Open the [live demo](https://ttb-label-verifier-matthew-nolan-s-projects.vercel.app) (or `npm run dev`).
+2. Click **Load the sample label** ("No label handy?"): a real spirits label (Fireball Cinnamon
+   Whisky, from the public TTB COLA registry) placed into the front and back slots with one click.
+3. The AI reads the pair as one product and pre-fills "The application" inputs with gray
+   suggestions; click **Accept all AI suggestions** (in real use the agent types what the COLA
+   application claims).
+4. The verdict appears once every field TTB requires for the beverage type is filled in.
 
-- **Extraction is probabilistic, so it never gets the final word.** Vision models read the
-  front/back/neck images together into one structured record with per-field confidence. Every
-  pass/review/fail decision is made afterwards by pure, unit-tested code. In a government context,
-  the answer to "why was this rejected?" must be rules-based and reproducible, so a model never
-  makes the compliance verdict.
-- **Providers are swappable behind one interface.** `mock` (default, offline), `openai`,
-  `gemini`, `llm` (Azure OpenAI), `ocr` (Azure AI Document Intelligence), and `ensemble`
-  (both Azure providers in parallel, disagreements routed to review). Adding Gemini was a ~300-line
-  drop-in behind the [`VisionProvider`](src/extraction/VisionProvider.ts) interface.
-- **The real providers use current best practice.** Strict structured outputs
-  (`response_format: json_schema` on the OpenAI-dialect providers, Gemini's `responseSchema`
-  equivalent) so the model is constrained to the exact field shape; bounded retry on 429/5xx and a
-  self-limiting per-call timeout on every real provider. A multi-image product (front + back) is
-  read JOINTLY by default: every image rides ONE request as separate full-resolution, position-
-  labeled parts, so the model allocates fields with cross-panel context and a two-image product
-  costs half the requests (never a stitched composite — vision APIs cap total per-image resolution,
-  so splicing halves each label's pixels and degrades the fine print exactly where the government
-  warning lives; a model-reported front-vs-back CONFLICT on a field is capped to review, never
-  silently resolved). Each read is sampled N times in parallel
-  (self-consistency, default 3) and per-field confidence is the agreement fraction across reads,
-  which is better calibrated than a model's self-reported confidence. The vote is CLUSTERED, not
-  literal: reads that differ only cosmetically (a dropped cedilla or comma, a less complete variant
-  of the same value) count as one reading, while a numeric difference never clusters — so noise
-  doesn't dilute confidence but a real conflict still does. An ADAPTIVE second batch is available
-  as an opt-in (`SELF_CONSISTENCY_ESCALATION`): when a verdict-relevant field lands just below the
-  review gate, extra reads are drawn once (the knob's value, capped at 3) and the vote re-runs — at
-  the recommended 2, a single noisy sample out
-  of three recovers to 4/5 agreement instead of sending a correct field to review, while genuine
-  splits stay flagged. (Off by default on the demo, by measurement: contested reads pay one extra
-  parallel batch, which measurably pushed the live median toward the ~5s ceiling.) When a
-  verdict-relevant field still lands below the review gate, a LOW-CONFIDENCE RESCUE re-reads
-  exactly those fields on the strongest model in one bounded call across all the product's images:
-  if the smarter read agrees with the fast majority, two independent models agreeing clears the
-  field for verdict; if it disagrees, the smarter read becomes the suggestion but the field still
-  goes to a human. A rescue can clear a false alarm; it can never silently flip a conflict to
-  pass. A
-  dedicated second pass
-  judges whether the "GOVERNMENT WARNING:" prefix is printed in bold; because the warning is the
-  one check that can hard-fail a label, that judge can run on a stronger model than the bulk reads
-  (`WARNING_JUDGE_MODEL`), and "verified" means verified: when neither the extraction nor the judge
-  can confirm the prefix format, the verdict says so and routes to review instead of silently
-  passing. And when the warning is REQUIRED but still missing or unverified after all of that, a
-  WARNING FOCUS escalation runs one strong-model pass that finds the warning in any orientation
-  (sideways and upside-down text are normal on bottles), then crops the region, rotates it upright,
-  and upscales it (sharp, the project's one image-processing dependency) so a second judgment reads
-  the prefix strokes at several times the effective
-  resolution — a recovered warning surfaces at review-band confidence for a human, never as a
-  silent pass (`scripts/test-warning-focus-live.ts` measures this path on adversarial renders).
-- **The rules live once, in a CFR-verified module.** The canonical warning text, the per-class
-  alcohol tolerance matrix, and the mandatory-elements matrix are hand-written in
-  [`src/domain/`](src/domain/README.md) with inline CFR citations, and treated as statutory:
-  never reworded or retuned to make a test pass.
-- **Uncertainty routes to a human.** Low-confidence fields downgrade to review; an unreadable
-  photo gets a "please re-upload" prompt instead of a guessed verdict; the verdict takes the worse
-  of the application comparison and the completeness check, so a label missing a TTB-mandatory
-  element can never be auto-approved.
-
-## Design decisions, traced to the brief
-
-Every major choice maps to a person from the discovery interviews. (Full requirement trace in
-[`specs/PROJECT_SPEC.md`](specs/PROJECT_SPEC.md).)
-
-| Who | Their need | What was built |
+| Sample | Defect | Expected verdict |
 | --- | --- | --- |
-| **Sarah**, Deputy Director | A prior scanner took 30-40s per label and was abandoned: results must come back in about 5 seconds.<br>Agents range from fresh graduates to a 73-year-old benchmark user.<br>Importers dump 200-300 applications at once | A hard latency budget: providers run in parallel with a per-call timeout (~3s mock / ~8s real), reconciling whatever returned instead of blocking on a straggler.<br>One accessibility-first screen (WCAG 2.1 AA targets: 4.5:1 contrast in both themes, 44px primary targets with everything else at 24px+, full keyboard order, visible focus).<br>Batch upload with streaming results and CSV export |
-| **Marcus**, IT | The outbound firewall blocked the last vendor's ML endpoints. Azure shop. Standalone prototype, no PII | Extraction sits behind a swappable `VisionProvider` interface and the production providers are Azure-native, so the model calls run inside the tenant the firewall trusts. No auth, no PII stored, no COLA integration. Mock mode means the app and full test suite run with zero keys |
-| **Dave**, 28-year agent | "STONE'S THROW" vs "Stone's Throw" is obviously the same product; pure pattern matching creates false rejections | Fuzzy brand comparison: normalize case, whitespace, punctuation, and smart quotes, then compare. Exact after normalization passes; a near-miss goes to review with the discrepancy shown; only a clear mismatch fails |
-| **Jenny**, junior agent | The warning must match word for word, and "GOVERNMENT WARNING:" must be all-caps and bold. Title case gets rejected. Bad photos shouldn't crash the flow | Strict verbatim comparison against the statutory text, plus explicit all-caps and bold checks on the prefix (bold is tri-state: "undetectable" is routed to review, not called a violation). Unreadable images fail gracefully to a re-upload prompt |
+| **Load the sample label** — the clean pair ([front](eval/fixtures/images/fireball-front.jpg) + [back](eval/fixtures/images/fireball-back.jpg)) | none | **Approve** |
+| **Load the defective-warning version** — the same front + an [edited back](eval/fixtures/images/fireball-warning-not-bold-back.jpg) | warning prefix printed "Government Warning:" in title case, regular weight (an edited test image; the real label is compliant) | **Reject** — 27 CFR 16.22(a)(2) requires the all-caps bold prefix |
 
-The unifying thesis (expanded in [`AGENTS.md`](AGENTS.md)): be superhuman on the axes where
-machines win (consistency, throughput, tireless recall of routine checks) while routing ambiguity
-to a human. Thresholds are deliberately asymmetric: an unnecessary review is cheap, a false
-approval is not.
+You never type the government warning: it is compared word for word against the statutory text
+automatically. Typing a slightly different brand than the label prints shows the third verdict —
+**Needs review** — which is what uncertainty gets instead of a guess.
 
-## Measured, not claimed
+## How it works
 
-`npm run eval` runs the full pipeline offline over labeled fixtures
-([`eval/fixtures/cases.json`](eval/fixtures/cases.json)): clean labels plus deliberately broken
-ones (title-case warning, out-of-tolerance ABV, brand typo, missing warning, an unreadable photo
-that must never auto-approve). It prints per-field precision/recall and latency p50/p95, and it is
-a hard gate: if precision on "approve" drops below **0.98**, the run exits non-zero and
-[CI fails](.github/workflows/ci.yml). A false approval is the one error class this tool refuses to
-ship.
+```
+image(s) ──> VisionProvider(s) ──> reconciler ──> completeness check + comparators ──> verdict
+             (probabilistic)       (vote/merge)    (pure, deterministic, tested)
+```
 
-The offline latency it prints is sub-millisecond because the mock skips the model call; it measures
-the pipeline, not a vision model. Real-deployment latency is measured too:
-[`scripts/measure-live-latency.ts`](scripts/measure-live-latency.ts) posts the bundled sample
-products (both are two-image front+back pairs, so the numbers measure the real multi-image path)
-to a deployed `/api/verify` end to end and checks each verdict. Against the live demo (OpenAI on
-Vercel, gpt-4.1 extraction + a gpt-5.5 warning judge, a 7-wide self-consistency vote under a 5s
-straggler cap, 15 sequential reads, 2026-06-10): **p50 3.1s, p95 5.2s, 15/15 verdicts correct, no
-timeouts**. The median sits comfortably inside the ~5s budget; the single 5.2s read was the first
-request, which pays the serverless cold start.
+- **AI extracts, code decides.** Vision models only transcribe the label into structured fields
+  with per-field confidence. Every pass/review/fail decision is made by pure, unit-tested code —
+  in a government context, "why was this rejected?" must be rules-based and reproducible.
+- **Confidence is measured, not self-reported.** Each product is read several times in parallel
+  (front + back ride one request as full-resolution parts) and a field's confidence is the
+  agreement fraction across samples. Verdict-relevant fields that stay uncertain get bounded
+  escalations — a strong-model re-read, a dedicated bold-prefix judge, a crop/derotate/upscale
+  warning-focus pass — each able to clear a false alarm but never to silently flip a conflict to
+  pass.
+- **The rules live once, CFR-verified.** The statutory warning text, the per-class alcohol
+  tolerance matrix, and the mandatory-elements matrix are hand-written in
+  [`src/domain/`](src/domain/README.md) with inline citations, and never retuned to make a test
+  pass.
 
-That 7-wide/5s pairing was later SUPERSEDED by its own measurement gap: the 15 reads were
-single-image demo labels, and on a real front+back product the dense back label (the statutory
-warning paragraph dominates generation time) reads in ~5s+, so the 5s cap could kill every sample
-of the back image. The pipeline now reports a dropped image instead of silently proceeding (the
-response carries `imageFailures`, both screens warn and offer a retry, and a partial read can never
-headline Approve), and the recommended pairing is **`SELF_CONSISTENCY_SAMPLES=5` +
-`VISION_TIMEOUT_MS=8000`** (measured: the same dense pair reads fully in ~4.9s). The levers are
-documented in [`.env.example`](.env.example), including `SELF_CONSISTENCY_ESCALATION` (opt-in extra
-reads on a contested verdict-relevant field; accuracy over tail latency) and the model choice.
-Uploads are downscaled in the browser to keep request sizes inside the budget.
+## Project structure
 
-The bundled sample was measured the same way after it shipped (2026-06-11, three sequential rounds
-per product against the deployed demo): the clean Fireball front+back pair read 3 of 3 Approve at
-6.6 to 8.7s, and the defective-warning pair read 3 of 3 Reject at 12.8 to 14.0s. The defect's
-extra seconds are the warning-focus escalation taking its zoomed look before committing to a hard
-fail; the verdict itself is deterministic (the title-case prefix fails from the transcript).
+```
+src/
+  domain/        CFR-verified rules: statutory warning text, tolerance matrix, label requirements
+  extraction/    VisionProvider interface + 6 providers (mock default), self-consistency vote,
+                 rescue / warning-judge / warning-focus escalations
+  compare/       deterministic comparators, completeness check, thresholds, combined verdict
+  batch/         filename pairing + CSV claimed-value matching
+  pipeline.ts    end-to-end flow: read images → merge → readability gate → verdict
+  app/           verify screen, /batch worklist, /api/verify routes
+eval/            evaluation harness + labeled fixtures (the CI accuracy gate)
+scripts/         live-latency measurement, sample-label builders, submission-doc generator
+specs/           PROJECT_SPEC.md — requirements traced to the stakeholder interviews
+docs/            reviewer-facing approach document (.pdf/.docx) + dated working artifacts
+AGENTS.md        the architecture bible: the three checks, constraints, conventions
+```
 
-The deployed config was chosen by A/B measurement, not preference: on OpenAI (local dev server,
-real API, 2026-06-10), gpt-4.1 extraction with a gpt-5.5 warning judge measured **6/6 verdicts at
-p50 2.8s, p95 3.0s**, while moving extraction itself to gpt-5.5 doubled the median (p50 6.5s) for
-identical verdicts —
-so on either vendor, the fast model transcribes and the strongest model judges the one check that
-can hard-fail a label. (The gpt-5/o-series' chat params differ from the gpt-4 line; the provider
-adapts automatically — see `src/extraction/openaiTuning.ts`.)
-
-The same split holds on Gemini, measured the same way (local dev server, real Gemini API, 9
-sequential reads per config, 2026-06-10); an earlier Gemini deployment of this demo measured
-p50 4.1s, p95 7.7s, 15/15 verdicts correct on the same script. Flash extraction with the Pro warning judge: **9/9 verdicts correct, p50
-3.3s, p95 4.5s** — inside the budget, because the judge runs concurrently with extraction and its
-~2s hides behind the extraction wall-clock. Running extraction itself on the Pro model: p50 6.0s,
-p95 8.1s, and 4 of 9 requests failed outright on the preview model's 25-requests/minute quota
-(extraction needs ~4 Pro calls per verify; the judge needs at most 3 and degrades gracefully to
-Flash on a 429). That is why extraction stays on Flash and the strongest model is spent only on
-the one judgment that can hard-fail a label.
-
-## Assumptions and trade-offs
-
-- **Mock provider by default, real extraction opt-in.** Everything runs hermetically with no
-  network and no keys, which keeps tests and CI deterministic. The cost: out of the box you
-  exercise the pipeline and verdict logic, not a real model's reading accuracy. The live demo runs
-  a real provider so reviewers get both.
-- **Test fixtures key off the image filename, not pixels.** That is what makes the offline suite
-  possible. The defect fixtures are lightweight SVG placeholders; the demo labels are real
-  rasters so a live provider extracts genuine pixels from them.
-- **The application is required for a verdict.** The brief's core task is "does the label match
-  the application", so the screen leads with that comparison and blocks the verdict until the
-  TTB-required fields for the beverage type are supplied. The label read and completeness check
-  still render without one.
-- **Azure is the chosen cloud, not a multi-cloud abstraction.** The in-tenant Azure providers are
-  the answer to Marcus's firewall constraint. The interface stays generic; OpenAI and Gemini
-  providers exist for keyless-Azure demo situations, and the public demo uses one.
-- **The alcohol tolerance is selected by beverage class, from the CFR.** Spirits ±0.3pp, wine
-  ±1.5pp/±1.0pp around the 14% tax-class boundary, malt ±0.3pp with the 0.5% floor, each with its
-  carve-outs (alcohol content is even optional on malt labels by default). The full matrix, the
-  citations, and the two judgment calls flagged "VERIFY before production" live in
-  [`src/domain/`](src/domain/README.md).
-- **The government warning text is statutory and verbatim** (27 CFR 16.21, re-verified unchanged
-  as of 2026-06). It lives once in [`src/domain/warning.ts`](src/domain/warning.ts), guarded by a
-  byte-for-byte unit test. The 2025 Surgeon General cancer advisory is a proposal, not law; if
-  Congress amends the text, the fix is editing that one constant.
-- **Deliberate scope cuts.** No COLA integration, no auth, no PII storage, no image
-  deskewing/glare correction (bad photos get a re-upload prompt, per the brief's guidance), and no
-  physical type-size checks (millimeter minimums can't be measured from extracted text). The same
-  boundary covers the TTB checklists' placement rules (same field of vision, "separate and apart",
-  no intervening text): extraction merges a label's text and discards layout. Rules that need TTB's
-  records rather than the label itself (formula approvals, permit and brewer's-notice matching,
-  multi-plant coding systems) are also out: the tool sees only the image and the application values.
-- **No rate limiting on the demo endpoints.** `/api/verify` and the second look's
-  `/api/verify/focus` (a direct handle on the provider's strongest model; `SECOND_LOOK=0` disables
-  it) are unauthenticated and, with a real provider configured, fan out to model calls per request,
-  so a hammering client could exhaust the demo key's quota. Uploads are size- and type-capped, but
-  per-client throttling is left to the platform or an API gateway in a real deployment; documented
-  here rather than hand-rolling middleware into a prototype.
-- **One build-time network fetch.** `next/font/google` downloads the Inter font during
-  `npm run build` only. Dev, tests, and the running app are fully offline; a strictly air-gapped
-  build would swap in `next/font/local`.
+**Stack:** Next.js 16 (App Router) + React 19 + TypeScript (strict) + Tailwind 4 + Vitest.
+No database; the one runtime dependency beyond Next/React is
+[sharp](https://sharp.pixelplumbing.com) (server-side crop/derotate/upscale for the
+warning-focus pass). AI: OpenAI (hosted demo) or Google Gemini, and Azure OpenAI / Azure AI
+Document Intelligence as the in-tenant production target — all behind one interface.
 
 ## Enable a real vision provider
 
-Optional: the default `mock` needs nothing. Set `VISION_PROVIDER` plus the matching variables
-(all documented in [`.env.example`](.env.example)) in `.env.local`:
+Optional — the default `mock` needs nothing. Set `VISION_PROVIDER` plus its variables in
+`.env.local` (full matrix with every knob documented in [`.env.example`](.env.example)):
 
 ```bash
-# Option A: OpenAI directly (simplest, one key)
+# simplest: OpenAI directly, one key
 VISION_PROVIDER=openai
 OPENAI_API_KEY=sk-...
-
-# Option B: Google Gemini directly (one key, from aistudio.google.com/apikey)
-VISION_PROVIDER=gemini
-GEMINI_API_KEY=...
-
-# Option C: Azure OpenAI (the in-tenant production target)
-VISION_PROVIDER=llm
-AZURE_OPENAI_ENDPOINT=https://<your-resource>.openai.azure.com
-AZURE_OPENAI_API_KEY=<key>
-AZURE_OPENAI_DEPLOYMENT=<your-vision-capable-deployment>
-
-# Option D: Azure AI Document Intelligence (dedicated OCR)
-VISION_PROVIDER=ocr
-AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT=https://<your-resource>.cognitiveservices.azure.com
-AZURE_DOCUMENT_INTELLIGENCE_KEY=<key>
-
-# Option E: ensemble, both Azure providers in parallel with disagreement -> review (needs both sets)
-VISION_PROVIDER=ensemble
 ```
 
-If a selected provider's variables are missing, the request fails loudly with an actionable error.
-It never silently falls back to the mock and pretends to read the image.
+Also supported: `gemini` (one key), `llm` (Azure OpenAI), `ocr` (Azure AI Document
+Intelligence), and `ensemble` (both Azure providers in parallel, disagreements routed to
+review). If a selected provider's variables are missing, the request fails loudly — it never
+silently falls back to the mock. For real deployments the measured-recommended pairing is
+`SELF_CONSISTENCY_SAMPLES=5` + `VISION_TIMEOUT_MS=8000`.
 
-Two optional knobs tune accuracy against cost: `SELF_CONSISTENCY_SAMPLES` (how many times each
-image is read; agreement becomes the confidence) and `WARNING_JUDGE_MODEL` (which model runs the
-dedicated government-warning format judge). On the Gemini provider the judge already **defaults to
-the strongest available model** (`gemini-3.1-pro-preview`) and automatically falls back to the
-extraction model if that call fails (a rotated preview id or its 25-requests/minute quota must
-degrade to the Flash judgment, never to no judgment); set `WARNING_JUDGE_MODEL` to pin something
-else. The OpenAI provider mirrors that: the judge **defaults to `gpt-5.5`** (the measured split
-above) and falls back to `OPENAI_MODEL` if the call fails; set `WARNING_JUDGE_MODEL` to pin
-something else. On Azure the judge defaults to the extraction deployment and the variable
-upgrades it.
+## Measured, not claimed
 
-## Internationalization (a design note, deliberately not shipped)
+Performance and accuracy claims trace to dated measurements (the full story is in the
+[approach document](docs/TTB-Label-Verifier-Approach-and-Design.pdf)):
 
-The UI is English-only on purpose, but the i18n boundary was thought through, because in this
-domain it is unusual: the content that matters most is **regulatory English** and must stay that
-way. The statutory government warning (27 CFR 16.21) is verbatim English by law and is never
-translated; extracted label values are whatever the label prints; the field-level audit reasons
-cite CFR sections; and the CSV export schema is a stable interface. What a Spanish-speaking
-reviewer would actually need translated is the UI chrome: headings, buttons, step labels, verdict
-names, and helper copy.
-
-The design that fits this codebase, if shipped: a typed dictionary module (`en`/`es` objects behind
-one `Dict` type, so a missing key is a compile error), a React context with an `EN/ES` toggle next
-to the theme toggle, English as the default so all existing tests and the eval pass unchanged, and
-the regulatory-English boundary documented at the dictionary so the statutory warning, CFR-cited
-audit prose, and CSV schema are excluded by construction. No locale routing: a reviewer tool wants
-a per-person preference, not per-URL content. It is cut from this submission because a
-half-translated compliance screen (Spanish chrome around English statutory text) reads worse than a
-clean English one; the boundary decision is the part worth showing.
+- **Offline gate:** `npm run eval` scores 27 labeled cases (clean labels + deliberate defects) at
+  100%, with the 0.98 approve-precision floor enforced in [CI](.github/workflows/ci.yml).
+- **Live latency (deployed demo, 2026-06-10):** p50 3.1s / p95 5.2s over 15 sequential reads,
+  15/15 verdicts correct, inside the brief's ~5s budget (single-image reads under the earlier
+  7-sample/5s config; the front+back sample below pays the fuller multi-image path). The model
+  split was chosen by A/B measurement: moving extraction to the strong model doubled the median
+  for identical verdicts, so the fast model extracts and the strongest model is reserved for the
+  narrow judgments.
+- **Bundled sample (deployed demo, 2026-06-11):** the clean pair read 3/3 Approve at 6.6–8.7s;
+  the defective-warning pair 3/3 Reject at 12.8–14.0s (the extra seconds are the warning-focus
+  pass taking a zoomed look before committing to a hard fail).
 
 ## Deploying
 
-**Vercel (the live demo).** Zero config: Vercel detects Next.js and auto-deploys from `main`. Set
-`VISION_PROVIDER` and the provider key in Settings -> Environment Variables so the hosted app reads
-real uploads; with none set it serves mock mode.
+**Vercel (the live demo).** Zero config: Vercel detects Next.js and auto-deploys from `main`.
+Set `VISION_PROVIDER` + the provider key in Settings → Environment Variables; with none set it
+serves mock mode.
 
-**Azure (the in-tenant production target).** The real extractors run inside the Azure tenant,
-which is what survives the outbound firewall that killed the previous vendor. Either path works
-with zero keys (mock mode) and picks up real extraction later via app settings. Both assume the
-[Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) and `az login`.
+**Azure** (the in-tenant production target — the extraction calls run inside the tenant, which
+is what survives the outbound firewall described in the brief). Both paths work with zero keys
+(mock mode) and pick up real extraction later via app settings; both assume the
+[Azure CLI](https://learn.microsoft.com/cli/azure/install-azure-cli) and `az login`:
 
 ```bash
 az group create --name ttb-label-verifier-rg --location eastus
 
-# Path A: App Service (simplest)
+# Path A: App Service
 npm install && npm run build
 az webapp up --name ttb-label-verifier --resource-group ttb-label-verifier-rg \
   --runtime "NODE:20-lts" --sku B1
@@ -355,22 +195,10 @@ az containerapp up --name ttb-label-verifier --resource-group ttb-label-verifier
   --target-port 3000 --ingress external
 ```
 
-## Project layout
+## Documentation
 
-| Path | Purpose |
-| --- | --- |
-| [`src/domain/`](src/domain/README.md) | CFR-verified rules: canonical warning, tolerance matrix, mandatory-elements matrix |
-| [`src/extraction/`](src/extraction) | `VisionProvider` interface, the six providers, reconciler, self-consistency |
-| [`src/compare/`](src/compare) | Deterministic comparators, completeness check, thresholds, combined verdict |
-| [`src/pipeline.ts`](src/pipeline.ts) | The end-to-end flow: read images, merge, gate on readability, verdict |
-| [`src/app/`](src/app) | The verify screen, `/api/verify` route, `/batch` worklist |
-| [`eval/`](eval) | Evaluation harness + labeled fixtures (the CI accuracy gate) |
-| [`AGENTS.md`](AGENTS.md) | The project bible: architecture, the three checks, conventions |
-| [`specs/PROJECT_SPEC.md`](specs/PROJECT_SPEC.md) | Requirements traced to the stakeholder interviews |
-| [`docs/`](docs) | The reviewer-facing design document (.docx) + [`docs/superpowers/`](docs/superpowers/README.md), dated working artifacts (plans, specs, audits) from the AI-assisted, human-verified build, kept for transparency |
-
-**Stack:** Next.js 16 (App Router) + React 19 + TypeScript (strict) + Tailwind 4 + Vitest. No
-database; the one runtime dependency beyond Next/React is [sharp](https://sharp.pixelplumbing.com)
-(server-side crop/derotate/upscale for the warning-focus pass). AI: OpenAI (hosted demo) / Google
-Gemini, and Azure OpenAI / Azure AI Document Intelligence (in-tenant target), all behind one
-interface.
+- [docs/TTB-Label-Verifier-Approach-and-Design.pdf](docs/TTB-Label-Verifier-Approach-and-Design.pdf) — the reviewer-facing approach document: summary, what the stakeholders asked for, how it was implemented, and why this architecture.
+- [`AGENTS.md`](AGENTS.md) — the architecture bible: the three checks, the latency budget, the thresholds philosophy, conventions.
+- [`specs/PROJECT_SPEC.md`](specs/PROJECT_SPEC.md) — requirements traced to the stakeholder interviews.
+- [`src/domain/README.md`](src/domain/README.md) — the CFR-verified domain module and its citations.
+- [`.env.example`](.env.example) — every provider and tuning knob, documented.
