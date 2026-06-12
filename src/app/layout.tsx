@@ -41,8 +41,8 @@ export default function RootLayout({
             open, since it sits outside #main-content. */}
         <div id="site-controls" className="fixed right-3 top-3 z-40 flex items-center gap-2 sm:right-4 sm:top-4">
           <ModeToggle />
-          <HelpButton />
           <ThemeToggle />
+          <HelpButton />
         </div>
         {children}
       </body>

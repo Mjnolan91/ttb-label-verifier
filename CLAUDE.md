@@ -199,8 +199,8 @@ pipeline and the "why". As built, the load-bearing pieces are:
   shared primitives. Each application input has a `FieldHelp` "?" toggletip (copy lives ONCE in
   `src/app/ui/fieldHelpCopy.ts`, typed so a new input without copy fails the build; the file is named
   fieldHelpCopy, not fieldHelp, because Windows is case-insensitive and `FieldHelp.tsx` would collide).
-  The header has a `ModeToggle` (a styled next/link on `usePathname`, single verify <-> batch,
-  labeled by destination) beside a `HelpButton` "?" and `ThemeToggle` (layout.tsx stays a server
+  The header runs `ModeToggle` (a styled next/link on `usePathname`, single verify <-> batch,
+  labeled by destination), then `ThemeToggle`, then `HelpButton` "?" (layout.tsx stays a server
   component; each control is its own client leaf); the help panel opens in the shared `Drawer`
   (`closeLabel` prop). The pages' eyebrow right-padding (`pr-44 sm:pr-80 2xl:pr-0`) and the progress pill's
   viewport-aware label cap (PipelineSteps.tsx) both clear the three-control cluster — widen both
