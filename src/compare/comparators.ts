@@ -666,20 +666,30 @@ export function compareWarning(args: {
       "Warning text does not match the canonical statutory wording (27 CFR 16.21).",
     );
   }
-  if (allCaps === false) {
+  // 16.22(a)(2) prefix format: CAPITAL LETTERS and BOLD TYPE are one requirement with two parts
+  // (the first sentence of the rule; the remainder-bold check below enforces its second sentence
+  // separately), so a confident violation of either fails with a reason that reports BOTH parts.
+  // A single-flag early return here once hid the second defect (found live 2026-06-12: the
+  // title-case demo defect read bold=null and the reason never mentioned bold) — an applicant told
+  // only about the caps would fix them, resubmit, and bounce again on bold. The other flag's null
+  // is DISCLOSED as unverified in the same reason, never asserted as a violation.
+  if (allCaps === false || bold === false) {
+    const defects = [
+      ...(allCaps === false ? ["is not in all capital letters"] : []),
+      ...(bold === false ? ["is not in bold type"] : []),
+    ];
+    const alsoUnverified =
+      allCaps === false && bold === null
+        ? " Bold type could not be verified from the image; confirm it on the label."
+        : bold === false && allCaps === null
+          ? " All capital letters could not be verified from the image; confirm them on the label."
+          : "";
     return result(
       "fail",
       canonical,
       text,
-      'The "GOVERNMENT WARNING:" prefix must be in all capital letters (27 CFR 16.22(a)(2)).',
-    );
-  }
-  if (bold === false) {
-    return result(
-      "fail",
-      canonical,
-      text,
-      'The "GOVERNMENT WARNING:" prefix must be bold (27 CFR 16.22(a)(2)).',
+      'The "GOVERNMENT WARNING:" prefix must be in ALL CAPITAL LETTERS and BOLD type ' +
+        `(27 CFR 16.22(a)(2)). This label's prefix ${defects.join(" and ")}.${alsoUnverified}`,
     );
   }
   if (remainderBold === true) {

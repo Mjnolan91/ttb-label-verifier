@@ -112,26 +112,32 @@ export function evaluateWarningElement(spec: RequirementSpec, e: ExtractedFields
       detail: "The warning text does not match the canonical statutory wording verbatim (27 CFR 16.21).",
     };
   }
-  // A CONFIDENT title/mixed-case prefix is a hard fail; "cannot tell" (null) is surfaced for a human
-  // (mirrors the bold flag) rather than failed on absence of evidence.
-  if (e.warningPrefixIsAllCaps === false) {
+  // 16.22(a)(2) prefix format: CAPITAL LETTERS and BOLD TYPE are one requirement with two parts,
+  // so a CONFIDENT violation of either is malformed with a detail that reports BOTH parts — a
+  // single-flag early return here once told the applicant about the caps and never mentioned bold
+  // (found live 2026-06-12; mirrors compareWarning). "Cannot tell" (null) on the other flag is
+  // DISCLOSED as unverified in the same detail, never asserted as a violation — consistent with
+  // the "minimize false approvals" philosophy without failing on absence of evidence.
+  if (e.warningPrefixIsAllCaps === false || e.warningPrefixIsBold === false) {
+    const defects = [
+      ...(e.warningPrefixIsAllCaps === false ? ["is not in all capital letters"] : []),
+      ...(e.warningPrefixIsBold === false ? ["is not in bold type"] : []),
+    ];
+    // No call-to-action here: the rendering surfaces (ResultView's concern callout) append their
+    // own "Confirm it on the label, or flag the problem." — a trailing ask here rendered doubled.
+    const alsoUnverified =
+      e.warningPrefixIsAllCaps === false && e.warningPrefixIsBold === null
+        ? " Bold type could not be verified from the image."
+        : e.warningPrefixIsBold === false && e.warningPrefixIsAllCaps === null
+          ? " All capital letters could not be verified from the image."
+          : "";
     return {
       ...base(spec),
       status: "malformed",
       value: w,
-      detail: 'The "GOVERNMENT WARNING:" prefix must be in ALL CAPITAL LETTERS (27 CFR 16.22(a)(2)).',
-    };
-  }
-  // Bold is a real CFR requirement (16.22(a)(2)) and a documented agent rejection criterion. A
-  // CONFIDENTLY not-bold prefix (false) is a hard fail — consistent with the comparator (compareWarning)
-  // and the "minimize false approvals" philosophy. UNDETECTABLE bold (null) is not asserted either way;
-  // we surface it for human confirmation rather than failing on absence of evidence.
-  if (e.warningPrefixIsBold === false) {
-    return {
-      ...base(spec),
-      status: "malformed",
-      value: w,
-      detail: 'The "GOVERNMENT WARNING:" prefix must be in BOLD type (27 CFR 16.22(a)(2)).',
+      detail:
+        'The "GOVERNMENT WARNING:" prefix must be in ALL CAPITAL LETTERS and BOLD type ' +
+        `(27 CFR 16.22(a)(2)). The prefix ${defects.join(" and ")}.${alsoUnverified}`,
     };
   }
   // 16.22(a)(2) second sentence: the REMAINDER of the statement may not appear in bold type. A

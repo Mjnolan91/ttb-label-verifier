@@ -98,9 +98,31 @@ describe("compareWarning", () => {
     });
     expect(r.status).toBe("fail");
     expect(r.reason.toLowerCase()).toContain("capital");
+    // The reason states the FULL 16.22(a)(2) prefix requirement, not just the violated half.
+    expect(r.reason.toLowerCase()).toContain("bold");
   });
   it("FAIL: prefix detectably not bold", () => {
     expect(compareWarning({ ...ok, warningPrefixIsBold: false }).status).toBe("fail");
+  });
+  it("FAIL: a caps violation with UNDETECTABLE bold reports both (the bold gap is disclosed, not dropped)", () => {
+    // Found live 2026-06-12 on the demo defect sample: caps=false, bold=null produced a reason
+    // that never mentioned bold, so the applicant was told about one of two prefix problems.
+    const r = compareWarning({ ...ok, warningPrefixIsAllCaps: false, warningPrefixIsBold: null });
+    expect(r.status).toBe("fail");
+    expect(r.reason).toContain("ALL CAPITAL LETTERS and BOLD type");
+    expect(r.reason).toContain("is not in all capital letters");
+    expect(r.reason).toContain("Bold type could not be verified");
+  });
+  it("FAIL: caps and bold BOTH detectably wrong list both defects in one reason", () => {
+    const r = compareWarning({ ...ok, warningPrefixIsAllCaps: false, warningPrefixIsBold: false });
+    expect(r.status).toBe("fail");
+    expect(r.reason).toContain("is not in all capital letters and is not in bold type");
+  });
+  it("FAIL: a bold violation with UNDETECTABLE caps discloses the unverified caps", () => {
+    const r = compareWarning({ ...ok, warningPrefixIsAllCaps: null, warningPrefixIsBold: false });
+    expect(r.status).toBe("fail");
+    expect(r.reason).toContain("is not in bold type");
+    expect(r.reason).toContain("All capital letters could not be verified");
   });
   it("FAIL: the statement REMAINDER detectably bold — 16.22(a)(2) forbids a bold body", () => {
     // An extra-bold prefix over a bold body satisfies "prefix bolder than body" yet still violates

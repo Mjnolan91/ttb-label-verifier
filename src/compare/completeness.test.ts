@@ -216,6 +216,34 @@ describe("checkCompleteness", () => {
     expect(r.overall).toBe("incomplete");
   });
 
+  it("a title-case prefix's malformed detail states the FULL 16.22(a)(2) requirement (caps AND bold)", () => {
+    // Found live 2026-06-12: the detail named only the capital letters, so the applicant was never
+    // told the prefix must also be bold (here bold is undetectable and disclosed as unverified).
+    const r = checkCompleteness(ds({ warningPrefixIsAllCaps: false, warningPrefixIsBold: null }));
+    const el = r.elements.find((e) => e.key === "governmentWarning");
+    expect(el?.status).toBe("malformed");
+    expect(el?.detail).toContain("ALL CAPITAL LETTERS and BOLD type");
+    expect(el?.detail).toContain("is not in all capital letters");
+    expect(el?.detail).toContain("Bold type could not be verified");
+    // No trailing call-to-action: ResultView's concern callout appends its own confirm/flag ask.
+    expect(el?.detail).not.toContain("confirm it on the label");
+  });
+
+  it("caps and bold BOTH detectably wrong list both defects in one malformed detail", () => {
+    const r = checkCompleteness(ds({ warningPrefixIsAllCaps: false, warningPrefixIsBold: false }));
+    const el = r.elements.find((e) => e.key === "governmentWarning");
+    expect(el?.status).toBe("malformed");
+    expect(el?.detail).toContain("is not in all capital letters and is not in bold type");
+  });
+
+  it("a bold violation with UNDETECTABLE caps discloses the unverified caps (mirror of the comparator)", () => {
+    const r = checkCompleteness(ds({ warningPrefixIsAllCaps: null, warningPrefixIsBold: false }));
+    const el = r.elements.find((e) => e.key === "governmentWarning");
+    expect(el?.status).toBe("malformed");
+    expect(el?.detail).toContain("is not in bold type");
+    expect(el?.detail).toContain("All capital letters could not be verified");
+  });
+
   it("treats UNDETECTABLE bold (null) as present (no assertion), not a violation", () => {
     const r = checkCompleteness(ds({ warningPrefixIsBold: null }));
     expect(statusOf(r, "governmentWarning")).toBe("present");
