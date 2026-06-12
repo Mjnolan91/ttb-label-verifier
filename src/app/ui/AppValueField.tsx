@@ -58,6 +58,15 @@ export const AppValueField = forwardRef<
         if (e.key === "Enter") e.preventDefault(); // single logical line; Enter must not grow the value
         onKeyDown?.(e);
       }}
+      onFocus={(e) => {
+        // Keyboard focus (Tab) drops a textarea's caret at position 0 — the start of the value —
+        // unlike an <input>. Park it at the end, where editing continues. A mouse click still wins:
+        // the browser places the click's caret after this focus handler runs.
+        const el = e.currentTarget;
+        if (el.value && el.selectionStart === 0 && el.selectionEnd === 0) {
+          el.setSelectionRange(el.value.length, el.value.length);
+        }
+      }}
       placeholder={placeholder}
       required={required}
       aria-required={required || undefined}

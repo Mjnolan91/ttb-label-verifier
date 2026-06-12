@@ -43,10 +43,59 @@ export interface RawExtractedFields {
 }
 
 /**
+ * Collapse a value that is literally the SAME READING TWICE. A joint front+back read sometimes
+ * transcribes a fact printed on both panels into one field ("750 mL 750 ML", "ALC. 33% ... twice"),
+ * and the duplicate then rides into the suggestion, the field table, and the exports. The collapse
+ * is deliberately strict, so a real value can never be halved:
+ *  - it applies only to DIGIT-BEARING values: the double-print bug is a numeric-fact phenomenon
+ *    (net contents, alcohol statements), and no legal single value repeats a digit-bearing phrase,
+ *    while name-like values legitimately double ("Walla Walla", "New York, New York") and must
+ *    never be touched;
+ *  - the two halves must be identical once case, whitespace, and separator punctuation are folded;
+ *  - the split point must fall AT a printed separator (whitespace or punctuation) in the original,
+ *    so a single continuous token ("5050", "ABAB") is never split.
+ * The first reading is returned as printed (its casing wins). Three-or-more repeats stay untouched
+ * (halves won't match), which is the conservative side of the trade.
+ */
+export function dedupeRepeatedRead(value: string): string {
+  if (!/\d/.test(value)) return value; // name-like values legitimately double; never touch them
+  const SEPARATOR = /[\s.,;:|/()\\-]/;
+  // The compact spelling (folded case, separators dropped) plus, per compact char, its index in
+  // the original string and whether a separator run sits immediately before it.
+  const chars: { c: string; at: number; sepBefore: boolean }[] = [];
+  let sepRun = false;
+  for (let i = 0; i < value.length; i++) {
+    const ch = value[i];
+    if (SEPARATOR.test(ch)) {
+      sepRun = true;
+      continue;
+    }
+    chars.push({ c: ch.toLowerCase(), at: i, sepBefore: sepRun });
+    sepRun = false;
+  }
+  const n = chars.length;
+  // Half >= 3 compact chars: a tiny doubled token ("50/50", "5 5") is more plausibly a real value
+  // (a brand, a fraction) than a double transcription of one printed fact.
+  if (n < 6 || n % 2 !== 0) return value;
+  const half = n / 2;
+  if (!chars[half].sepBefore) return value; // the repeat must start at a printed separator
+  for (let i = 0; i < half; i++) {
+    if (chars[i].c !== chars[half + i].c) return value;
+  }
+  // Cut the original just before the second reading begins, then drop the trailing LINKING
+  // separators (space, slash, comma...) plus any dangling OPENING bracket ("750 mL (750 ML)"
+  // cuts to "750 mL (" without it). A closing ")" stays: it belongs to the first reading
+  // ("(66 PROOF)"); brackets only fold for the half comparison above.
+  return value.slice(0, chars[half].at).replace(/[\s.,;:|/\\({[-]+$/, "");
+}
+
+/**
  * Map a raw extraction block to the domain `ExtractedFields`. Values (including empty strings) are
  * passed through verbatim — an empty warningText at HIGH confidence means "confidently absent"
  * (a real violation), distinct from the all-low-confidence unreadable case. Alcohol is carried as
- * raw text (`alcoholContentText`); the comparator parses it.
+ * raw text (`alcoholContentText`); the comparator parses it. ONE exception to verbatim: a value
+ * that is the same reading printed twice collapses to its first reading (dedupeRepeatedRead) —
+ * except warningText, whose statutory comparison must always see the honest transcription.
  */
 export function mapRawExtracted(raw: RawExtractedFields): ExtractedFields {
   const confidence: FieldConfidence = {};
@@ -64,7 +113,7 @@ export function mapRawExtracted(raw: RawExtractedFields): ExtractedFields {
   for (const d of FIELD_CATALOG) {
     const cell = rawByKey[d.rawKey];
     if (cell) {
-      outByKey[d.key] = cell.value;
+      outByKey[d.key] = d.key === "warningText" ? cell.value : dedupeRepeatedRead(cell.value);
       confidence[d.confKey] = cell.confidence;
     }
   }

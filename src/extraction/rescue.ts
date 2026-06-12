@@ -28,6 +28,7 @@
 import type { ExtractedFields } from "@/domain";
 import { FIELD_REVIEW_CONFIDENCE } from "@/compare";
 import { FIELD_CATALOG, type FieldDescriptor } from "./fieldCatalog";
+import { dedupeRepeatedRead } from "./extractedShape";
 import { DISAGREEMENT_CONFIDENCE, canonical, valuesAgree } from "./reconcile";
 import { VERDICT_RELEVANT_FIELDS } from "./selfConsistency";
 import type { ImageInput, VisionProvider } from "./VisionProvider";
@@ -95,7 +96,12 @@ export function applyRescue(
     const d = byConfKey.get(k);
     if (!d) continue;
     const raw = strong[d.rawKey];
-    const strongValue = typeof raw === "string" ? raw.trim() : "";
+    // The strong read gets the same twice-printed-fact collapse as the mapper (the rescue prompt
+    // is the same "transcribe wherever it appears" multi-image shape that produces the doubling) —
+    // without it, valuesAgree's keep-the-more-complete-form preference would REPLACE a clean
+    // merged value with the doubled one at agree confidence. warningText stays verbatim.
+    const trimmed = typeof raw === "string" ? raw.trim() : "";
+    const strongValue = k === "warningText" ? trimmed : dedupeRepeatedRead(trimmed);
     if (strongValue === "") continue; // the strong model couldn't read it either: unchanged
     const cur = valueOf(e, d);
     if (cur === "") continue; // absent fields are never rescued (see module docs)

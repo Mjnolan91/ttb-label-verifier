@@ -117,6 +117,14 @@ describe("applySecondLook", () => {
     expect(e.netContents).toBeUndefined(); // the original row state is untouched
   });
 
+  it("collapses a twice-printed fact in the focused read before filling (same rule as the mapper)", () => {
+    const e = frontOnlySpirits();
+    const { merged } = applySecondLook(e, {
+      netContents: { value: "750 ML 750ml", confidence: SECOND_LOOK_CONFIDENCE },
+    });
+    expect(merged.netContents).toBe("750 ML");
+  });
+
   it("never overwrites a present value and never touches a cross-image hold", () => {
     const e = frontOnlySpirits({ netContents: "750 mL", crossImageConflicts: ["name"] });
     e.confidence.netContents = 0.95;

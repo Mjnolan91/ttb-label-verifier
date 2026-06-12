@@ -6,7 +6,8 @@
  * Drop a product's label image(s) — front, back, and the neck/strip if there is one — and the AI
  * reads them TOGETHER into one structured
  * record. The screen ALWAYS runs the deterministic TTB completeness check; the agent then confirms the
- * application's values (the AI's reading is SUGGESTED in grey — Tab or "Accept all" to accept), and the
+ * application's values (the AI's reading is PREVIEWED in grey — click the suggested value, Tab in the
+ * field, or "Accept all" to accept), and the
  * screen LEADS with the label-vs-application comparison once every field TTB REQUIRES for the beverage
  * type is supplied. The required set is DYNAMIC per type (requiredInputKeysFor, from the CFR matrix):
  * spirits/wine>14%/unknown require alcohol; wine≤14%/malt/cider don't. Accessibility (WCAG 2.1 AA):
@@ -885,9 +886,11 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
         <p className="mb-3 mt-1 text-sm text-ink-muted">
           {extracted ? (
             <>
-              The AI&apos;s reading is suggested in gray. Press <kbd className="rounded border border-border bg-surface-muted px-1 font-sans text-xs">Tab</kbd> to accept a field, or use{" "}
-              <strong className="text-ink">Accept all</strong>. Fields TTB requires for this type are
-              marked <span className="font-bold text-fail-900">*</span> and must be filled to verify.
+              The AI&apos;s reading is previewed in gray. Click the suggested value under a field (or press{" "}
+              <kbd className="rounded border border-border bg-surface-muted px-1 font-sans text-xs">Tab</kbd> in the
+              field) to accept it; accepted values stay editable. Or use{" "}
+              <strong className="text-ink">Accept all</strong>. Fields TTB requires for this type are marked{" "}
+              <span className="font-bold text-fail-900">*</span> and must be filled to verify.
             </>
           ) : (
             <>Upload a label first. The AI&apos;s reading will pre-fill these as suggestions you can accept or correct.</>
@@ -969,7 +972,10 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
                     markEdited(f.id);
                   }}
                   onKeyDown={(e) => acceptOnTab(e, f.id, f.value, f.suggestion, f.set)}
-                  placeholder={hasSuggestion && !editedInputs.has(f.id) ? f.suggestion : undefined}
+                  /* The ghost says it IS a ghost: an unlabeled gray value reads as populated text,
+                     and agents click it expecting to edit (found live 2026-06-12). The "Suggested:"
+                     prefix marks it as a preview at the exact spot the eye is on. */
+                  placeholder={hasSuggestion && !editedInputs.has(f.id) ? `Suggested: ${f.suggestion}` : undefined}
                   required={required}
                   aria-describedby={describedBy || undefined}
                   className={lowConf ? LOW_CONF_INPUT : inputClass}
@@ -996,10 +1002,33 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
                 {showHint && (
                   /* The FULL suggestion is repeated here (wrapping): a long value truncates inside
                      the single-line input's placeholder, and the agent must be able to read what
-                     they are about to accept. */
-                  <span id={hintId} className="mt-1 block break-words text-xs text-ink-muted">
-                    Suggested: <span className="font-medium text-ink">{f.suggestion}</span>. Press Tab
-                    to accept.
+                     they are about to accept. It is a BUTTON: the gray in-field preview is a
+                     placeholder, not text (you cannot click into it and edit it), so mouse users
+                     need a per-field accept; clicking fills the field and lands the caret at the
+                     end, ready to edit (found live 2026-06-12: an agent tried to edit the gray
+                     text in place). Tab-to-accept stays for keyboard flow. */
+                  <span id={hintId} className="mt-1 block break-words text-sm text-ink-muted">
+                    Suggested:{" "}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const v = (f.suggestion ?? "").trim();
+                        f.set(v);
+                        const el = document.getElementById(f.id) as HTMLTextAreaElement | null;
+                        el?.focus();
+                        // After React commits the new value, park the caret at the end so the
+                        // agent can immediately refine what they just accepted.
+                        requestAnimationFrame(() => el?.setSelectionRange(v.length, v.length));
+                      }}
+                      aria-label={`Accept the suggestion for ${f.label}: ${f.suggestion}`}
+                      /* The app's action-link styling (linkClass), not meta text: this is the
+                         rescue affordance for the placeholder illusion, so it must LOOK clickable
+                         at a glance. py/-my enlarge the hit area without layout shift. */
+                      className={`${linkClass} inline-block py-1.5 -my-1.5 transition`}
+                    >
+                      {f.suggestion}
+                    </button>
+                    . Click it to accept, or press Tab in the field.
                   </span>
                 )}
               </div>
@@ -1097,8 +1126,9 @@ export function VerifyForm({ mockMode = false }: { mockMode?: boolean }) {
                     ))}
                   </ul>
                   <p className="mt-2.5 text-sm text-ink-muted">
-                    Accept the gray suggestions above (Tab or <strong className="text-ink">Accept all</strong>), or
-                    type the application&apos;s values.
+                    Accept the suggestions above (click a suggested value, press Tab in its field,
+                    or use <strong className="text-ink">Accept all</strong>), or type the
+                    application&apos;s values.
                   </p>
                 </div>
               </div>

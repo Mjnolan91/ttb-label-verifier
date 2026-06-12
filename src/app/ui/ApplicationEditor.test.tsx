@@ -39,16 +39,18 @@ function renderEditor(onChange = vi.fn()) {
 }
 
 describe("ApplicationEditor — AI suggestions in the empty inputs", () => {
-  it("shows each suggestion as the input's grey placeholder (single-screen parity)", () => {
+  it("shows each suggestion as a self-labeling grey preview placeholder (single-screen parity)", () => {
+    // The "Suggested:" prefix marks the ghost as a preview: an unlabeled gray value reads as
+    // populated text, and reviewers tried to edit it in place (found live 2026-06-12).
     renderEditor();
     expect((screen.getByLabelText(/^Brand name/) as HTMLTextAreaElement).placeholder).toBe(
-      "Old Tom Distillery",
+      "Suggested: Old Tom Distillery",
     );
     expect(
       (screen.getByLabelText(/^Class \/ type designation/) as HTMLTextAreaElement).placeholder,
-    ).toBe("Kentucky Straight Bourbon Whiskey");
+    ).toBe("Suggested: Kentucky Straight Bourbon Whiskey");
     expect((screen.getByLabelText(/^Alcohol content/) as HTMLTextAreaElement).placeholder).toBe(
-      "45% Alc./Vol. (90 Proof)",
+      "Suggested: 45% Alc./Vol. (90 Proof)",
     );
   });
 

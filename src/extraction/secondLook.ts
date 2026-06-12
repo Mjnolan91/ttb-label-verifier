@@ -36,6 +36,7 @@
 import type { ExtractedFields, FieldConfidence, RequirementKey } from "@/domain";
 import type { CompletenessResult } from "@/compare";
 import { FIELD_CATALOG, type FieldDescriptor } from "./fieldCatalog";
+import { dedupeRepeatedRead } from "./extractedShape";
 
 /** Confidence stamped on every second-look recovery: review-band on purpose (see module docs). */
 export const SECOND_LOOK_CONFIDENCE = 0.65;
@@ -123,7 +124,10 @@ export function applySecondLook(
     const d = byConfKey.get(key);
     if (!d || !found || held.has(key)) continue;
     if (valueOf(merged, d) !== "") continue; // present values are never overwritten
-    (merged as unknown as Record<string, string | undefined>)[d.key] = found.value;
+    // The focused re-read is a strong-model transcription too: collapse a twice-printed fact the
+    // same way the mapper does (warningText stays verbatim for the statutory comparison).
+    (merged as unknown as Record<string, string | undefined>)[d.key] =
+      d.key === "warningText" ? found.value : dedupeRepeatedRead(found.value);
     merged.confidence[key] = found.confidence;
     filled.push(key);
   }

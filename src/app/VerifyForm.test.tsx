@@ -66,6 +66,32 @@ const READ_OK = (extracted = extractedBourbon()): VerifyApiResponse => ({
   provider: "mock", readable: true, extracted, result: null,
 });
 
+describe("VerifyForm — clickable suggestions", () => {
+  it("clicking a suggestion hint fills the field, which stays fully editable", ASYNC, async () => {
+    mockFetch(READ_OK());
+    const { container } = render(<VerifyForm />);
+    const q = within(container);
+    dropLabelImage(container);
+
+    // The hint under the empty Net contents input is a button carrying the suggestion.
+    const useSuggestion = await q.findByRole("button", { name: /accept the suggestion for net contents/i });
+
+    const net = q.getByLabelText(/^Net contents/i) as HTMLTextAreaElement;
+    // While unaccepted, the in-field ghost labels itself as a preview (the placeholder illusion cure).
+    expect(net.placeholder).toBe("Suggested: 750 mL");
+
+    fireEvent.click(useSuggestion);
+    expect(net.value).toBe("750 mL");
+    expect(document.activeElement).toBe(net); // focus lands in the field, ready to edit
+
+    // The accepted value is ordinary text: editing it works and the state takes the edit.
+    fireEvent.change(net, { target: { value: "750 mL corrected" } });
+    expect(net.value).toBe("750 mL corrected");
+    // The consumed hint is gone (the field is no longer empty).
+    expect(q.queryByRole("button", { name: /accept the suggestion for net contents/i })).toBeNull();
+  });
+});
+
 describe("VerifyForm — start over", () => {
   it("is absent on a blank screen, guards typed work behind a confirm, then clears everything", () => {
     const { container } = render(<VerifyForm />);

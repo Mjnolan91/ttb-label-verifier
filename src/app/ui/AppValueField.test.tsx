@@ -42,4 +42,19 @@ describe("AppValueField", () => {
     expect(enter).toBe(false); // preventDefault was called
     expect(onKeyDown).toHaveBeenCalled();
   });
+
+  it("keyboard focus on a populated field parks the caret at the END, ready to edit", () => {
+    // A textarea drops Tab-focus at position 0 (unlike an <input>); editing continues at the end.
+    const { field } = renderField({ value: "750 ML" });
+    field.setSelectionRange(0, 0); // pin the (0,0) caret a browser Tab-landing produces
+    fireEvent.focus(field);
+    expect([field.selectionStart, field.selectionEnd]).toEqual([6, 6]);
+  });
+
+  it("focus never disturbs an existing caret position (a click's placement wins)", () => {
+    const { field } = renderField({ value: "750 ML" });
+    field.setSelectionRange(3, 3); // as if the user clicked mid-value
+    fireEvent.focus(field);
+    expect([field.selectionStart, field.selectionEnd]).toEqual([3, 3]);
+  });
 });

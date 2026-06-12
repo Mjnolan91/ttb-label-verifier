@@ -39,6 +39,18 @@ describe("rescue constants sit on the right sides of the review gate", () => {
   });
 });
 
+describe("a doubled strong read never re-introduces the duplicate", () => {
+  it("dedupes the strong value, so keep-the-fuller-form cannot replace a clean value with a doubled one", () => {
+    // Without the dedupe, "750 mL 750 ML" reads as the "more complete form" of "750 mL" under
+    // valuesAgree (numeric multiset containment) and REPLACES it at agree confidence — shipping
+    // the twice-printed-fact bug above the review gate.
+    const e = extracted({ confidence: { brand: 0.95, classType: 0.95, alcoholContent: 0.95, netContents: 0.5 } });
+    applyRescue(e, ["netContents"], { netContents: "750 mL 750 ML" });
+    expect(e.netContents).toBe("750 mL");
+    expect(e.confidence.netContents).toBe(RESCUE_AGREED_CONFIDENCE);
+  });
+});
+
 describe("rescueEligibleKeys — only contested, present, verdict-relevant fields", () => {
   it("picks the borderline field and nothing else", () => {
     const e = extracted({ confidence: { brand: 0.6, classType: 0.95, alcoholContent: 0.95, netContents: 0.95 } });
