@@ -77,8 +77,8 @@ describe("VerifyForm — clickable suggestions", () => {
     const useSuggestion = await q.findByRole("button", { name: /accept the suggestion for net contents/i });
 
     const net = q.getByLabelText(/^Net contents/i) as HTMLTextAreaElement;
-    // While unaccepted, the in-field ghost labels itself as a preview (the placeholder illusion cure).
-    expect(net.placeholder).toBe("Suggested: 750 mL");
+    // The unaccepted ghost is the bare gray value (the quiet pre-existing treatment, kept by user call).
+    expect(net.placeholder).toBe("750 mL");
 
     fireEvent.click(useSuggestion);
     expect(net.value).toBe("750 mL");

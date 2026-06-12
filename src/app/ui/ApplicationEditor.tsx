@@ -168,9 +168,7 @@ export function ApplicationEditor({
                 id={id}
                 value={value}
                 onValueChange={(v) => onChange(f.key, v)}
-                /* Same ghost-labeling as the verify screen: an unlabeled gray value reads as
-                   populated text. The "Suggested:" prefix marks it as a preview. */
-                placeholder={showSuggestion ? `Suggested: ${suggestion}` : undefined}
+                placeholder={showSuggestion ? suggestion : undefined}
                 aria-describedby={describedBy || undefined}
                 className={lowConf || needsAttention ? LOW_CONF_INPUT : inputClass}
               />

@@ -75,9 +75,8 @@ export function HelpButton() {
             </li>
             <li>
               Fill in <strong>The application</strong>: what the applicant claims. The AI&apos;s
-              reading is previewed in gray. Click the suggested value under a field (or press Tab
-              in the empty field) to accept it, use Accept all AI suggestions, or type the
-              application&apos;s values. An accepted value stays fully editable.
+              reading is suggested in gray. Press Tab to accept a field, or use Accept all AI
+              suggestions, or type the application&apos;s values.
             </li>
             <li>
               Once every field TTB requires for the beverage type is filled, the screen compares the
